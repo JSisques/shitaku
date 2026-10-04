@@ -72,11 +72,12 @@ The tables below are generated from `catalog/` by `pnpm run docs:catalog`. Do no
 
 <!-- catalog:mcps:start -->
 
-| Name         | Description                                                                                                                              |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `context7`   | Up-to-date library documentation for coding agents                                                                                       |
-| `github`     | GitHub remote MCP server (repositories, issues, pull requests)                                                                           |
-| `playwright` | Browser automation via accessibility snapshots, screenshots, console messages and viewport resizing; can interact with any page it opens |
+| Name         | Description                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `context7`   | Up-to-date library documentation for coding agents                                                                                                                              |
+| `figma`      | Official Figma remote MCP for design context, Code Connect and canvas write; authenticate with Figma OAuth in the MCP client (no desktop app; available on all seats and plans) |
+| `github`     | GitHub remote MCP server (repositories, issues, pull requests)                                                                                                                  |
+| `playwright` | Browser automation via accessibility snapshots, screenshots, console messages and viewport resizing; can interact with any page it opens                                        |
 
 <!-- catalog:mcps:end -->
 
@@ -218,6 +219,7 @@ The text output is grouped by kind (`mcps`, `profiles`, `skills`), sorted by nam
 ```
 mcps:
   context7       Up-to-date library documentation for coding agents
+  figma          Official Figma remote MCP for design context, Code Connect and canvas write; authenticate with Figma OAuth in the MCP client (no desktop app; available on all seats and plans)
   github         GitHub remote MCP server (repositories, issues, pull requests)
   playwright     Browser automation via accessibility snapshots, screenshots, console messages and viewport resizing; can interact with any page it opens
 profiles:
