@@ -6,7 +6,7 @@
 
 <!--
   Badges that are intentionally NOT here yet (add them when their dependency lands):
-  TODO(website) (#78): website badge/link once the docs site exists (#52).
+  TODO(website) (#78): website badge once agreed — docs site already exists (#52).
 -->
 
 <p align="center">
@@ -17,6 +17,8 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
   <a href="CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" /></a>
 </p>
+
+Docs: [jsisques.github.io/shitaku](https://jsisques.github.io/shitaku/en/).
 
 <!--
   TODO(demo) (#75): add a GIF or screenshot of `shitaku init` running here, e.g.
