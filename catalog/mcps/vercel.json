@@ -1,0 +1,8 @@
+{
+  "name": "vercel",
+  "description": "Official Vercel remote MCP for projects, deployments and logs; authenticate with Vercel OAuth in the MCP client (available on all plans)",
+  "server": {
+    "type": "http",
+    "url": "https://mcp.vercel.com"
+  }
+}
