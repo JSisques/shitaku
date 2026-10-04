@@ -1,0 +1,9 @@
+{
+  "name": "playwright",
+  "description": "Browser automation via accessibility snapshots, screenshots, console messages and viewport resizing; can interact with any page it opens",
+  "server": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp@latest"]
+  }
+}
