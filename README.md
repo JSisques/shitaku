@@ -2,6 +2,8 @@
 
 > Install a curated AI agent setup (MCP servers and skills) for Claude Code with one command.
 
+> **shitaku** (支度, したく) is Japanese for "preparation" or "getting ready", like getting ready before you head out. shitaku gets your agent environment ready: MCP servers, skills and agents, installed in one go.
+
 <!--
   Badges that are intentionally NOT here yet (add them when their dependency lands):
   TODO(website) (#78): website badge/link once the docs site exists (#52).
