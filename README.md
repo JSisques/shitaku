@@ -75,6 +75,7 @@ The tables below are generated from `catalog/` by `pnpm run docs:catalog`. Do no
 | Name         | Description                                                                                                                                                                     |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `context7`   | Up-to-date library documentation for coding agents                                                                                                                              |
+| `docker`     | Local Docker containers, images and Compose stacks (can run and stop containers); requires Docker installed and running                                                         |
 | `figma`      | Official Figma remote MCP for design context, Code Connect and canvas write; authenticate with Figma OAuth in the MCP client (no desktop app; available on all seats and plans) |
 | `github`     | GitHub remote MCP server (repositories, issues, pull requests)                                                                                                                  |
 | `playwright` | Browser automation via accessibility snapshots, screenshots, console messages and viewport resizing; can interact with any page it opens                                        |
@@ -220,11 +221,13 @@ The text output is grouped by kind (`mcps`, `profiles`, `skills`), sorted by nam
 ```
 mcps:
   context7       Up-to-date library documentation for coding agents
+  docker         Local Docker containers, images and Compose stacks (can run and stop containers); requires Docker installed and running
   figma          Official Figma remote MCP for design context, Code Connect and canvas write; authenticate with Figma OAuth in the MCP client (no desktop app; available on all seats and plans)
   github         GitHub remote MCP server (repositories, issues, pull requests)
   playwright     Browser automation via accessibility snapshots, screenshots, console messages and viewport resizing; can interact with any page it opens
   vercel         Official Vercel remote MCP for projects, deployments and logs; authenticate with Vercel OAuth in the MCP client (available on all plans)
 profiles:
+  backend        Backend development
   base           Essentials for any project
   web            Web development
 skills:

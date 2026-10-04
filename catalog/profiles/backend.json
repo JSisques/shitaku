@@ -1,0 +1,6 @@
+{
+  "name": "backend",
+  "description": "Backend development",
+  "extends": ["base"],
+  "mcps": ["github", "docker"]
+}

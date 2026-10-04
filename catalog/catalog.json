@@ -1,8 +1,8 @@
 {
   "version": 1,
   "items": {
-    "mcps": ["github", "context7", "playwright", "figma", "vercel"],
+    "mcps": ["github", "context7", "playwright", "figma", "vercel", "docker"],
     "skills": ["example-skill"],
-    "profiles": ["base", "web"]
+    "profiles": ["base", "web", "backend"]
   }
 }
