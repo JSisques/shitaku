@@ -1,0 +1,8 @@
+{
+  "name": "cloudflare-docs",
+  "description": "Official Cloudflare docs MCP for up-to-date product reference; authenticate with Cloudflare OAuth in the MCP client",
+  "server": {
+    "type": "http",
+    "url": "https://docs.mcp.cloudflare.com/mcp"
+  }
+}

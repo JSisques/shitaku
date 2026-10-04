@@ -10,15 +10,42 @@ describe('bundled catalog', () => {
       'bundled',
     ).load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.mcps.map((m) => m.name)).toEqual(['github', 'context7', 'playwright', 'figma', 'vercel']);
-    expect(
-      resolveProfile(
-        'web',
-        catalog.profiles,
-        catalog.mcps.map((m) => m.name),
-        catalog.skills.map((sk) => sk.name),
-      ),
-    ).toEqual({ mcps: ['context7', 'github', 'playwright', 'figma', 'vercel'], skills: [] });
+    expect(catalog.mcps.map((m) => m.name)).toEqual([
+      'github',
+      'context7',
+      'playwright',
+      'figma',
+      'vercel',
+      'docker',
+      'sqlite',
+      'supabase',
+      'notion',
+      'atlassian',
+      'brave-search',
+      'cloudflare-docs',
+      'cloudflare-bindings',
+      'cloudflare-observability',
+    ]);
+    const mcpNames = catalog.mcps.map((m) => m.name);
+    const skillNames = catalog.skills.map((sk) => sk.name);
+    expect(resolveProfile('web', catalog.profiles, mcpNames, skillNames)).toEqual({
+      mcps: [
+        'context7',
+        'github',
+        'playwright',
+        'figma',
+        'vercel',
+        'brave-search',
+        'cloudflare-docs',
+        'cloudflare-bindings',
+        'cloudflare-observability',
+      ],
+      skills: [],
+    });
+    expect(resolveProfile('backend', catalog.profiles, mcpNames, skillNames)).toEqual({
+      mcps: ['context7', 'github', 'docker', 'sqlite', 'supabase'],
+      skills: [],
+    });
   });
 
   it('loads the bundled example skill with its frontmatter', async () => {

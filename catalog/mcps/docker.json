@@ -1,0 +1,9 @@
+{
+  "name": "docker",
+  "description": "Local Docker containers, images and Compose stacks (can run and stop containers); requires Docker installed and running",
+  "server": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@hypnosis/docker-mcp-server"]
+  }
+}

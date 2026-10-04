@@ -1,0 +1,8 @@
+{
+  "name": "cloudflare-bindings",
+  "description": "Official Cloudflare Workers Bindings MCP for storage, AI and compute primitives; OAuth in the MCP client",
+  "server": {
+    "type": "http",
+    "url": "https://bindings.mcp.cloudflare.com/mcp"
+  }
+}
