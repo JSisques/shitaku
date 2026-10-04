@@ -72,13 +72,22 @@ The tables below are generated from `catalog/` by `pnpm run docs:catalog`. Do no
 
 <!-- catalog:mcps:start -->
 
-| Name         | Description                                                                                                                                                                     |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `context7`   | Up-to-date library documentation for coding agents                                                                                                                              |
-| `figma`      | Official Figma remote MCP for design context, Code Connect and canvas write; authenticate with Figma OAuth in the MCP client (no desktop app; available on all seats and plans) |
-| `github`     | GitHub remote MCP server (repositories, issues, pull requests)                                                                                                                  |
-| `playwright` | Browser automation via accessibility snapshots, screenshots, console messages and viewport resizing; can interact with any page it opens                                        |
-| `vercel`     | Official Vercel remote MCP for projects, deployments and logs; authenticate with Vercel OAuth in the MCP client (available on all plans)                                        |
+| Name                       | Description                                                                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `atlassian`                | Official Atlassian Rovo remote MCP for Jira and Confluence; authenticate with Atlassian OAuth in the MCP client                                                                 |
+| `brave-search`             | Official Brave Search MCP for current web results; requires BRAVE_API_KEY                                                                                                       |
+| `cloudflare-bindings`      | Official Cloudflare Workers Bindings MCP for storage, AI and compute primitives; OAuth in the MCP client                                                                        |
+| `cloudflare-docs`          | Official Cloudflare docs MCP for up-to-date product reference; authenticate with Cloudflare OAuth in the MCP client                                                             |
+| `cloudflare-observability` | Official Cloudflare Workers Observability MCP for logs and analytics; OAuth in the MCP client                                                                                   |
+| `context7`                 | Up-to-date library documentation for coding agents                                                                                                                              |
+| `docker`                   | Local Docker containers, images and Compose stacks (can run and stop containers); requires Docker installed and running                                                         |
+| `figma`                    | Official Figma remote MCP for design context, Code Connect and canvas write; authenticate with Figma OAuth in the MCP client (no desktop app; available on all seats and plans) |
+| `github`                   | GitHub remote MCP server (repositories, issues, pull requests)                                                                                                                  |
+| `notion`                   | Official Notion remote MCP for workspace search and page updates; authenticate with Notion OAuth in the MCP client                                                              |
+| `playwright`               | Browser automation via accessibility snapshots, screenshots, console messages and viewport resizing; can interact with any page it opens                                        |
+| `sqlite`                   | Inspect and query a local SQLite database file (can write); set SQLITE_DB_PATH; requires uvx (Astral uv)                                                                        |
+| `supabase`                 | Official Supabase remote MCP for projects and database tools; OAuth in the MCP client; defaults to read-only (?read_only=true)                                                  |
+| `vercel`                   | Official Vercel remote MCP for projects, deployments and logs; authenticate with Vercel OAuth in the MCP client (available on all plans)                                        |
 
 <!-- catalog:mcps:end -->
 
@@ -219,16 +228,26 @@ The text output is grouped by kind (`mcps`, `profiles`, `skills`), sorted by nam
 
 ```
 mcps:
-  context7       Up-to-date library documentation for coding agents
-  figma          Official Figma remote MCP for design context, Code Connect and canvas write; authenticate with Figma OAuth in the MCP client (no desktop app; available on all seats and plans)
-  github         GitHub remote MCP server (repositories, issues, pull requests)
-  playwright     Browser automation via accessibility snapshots, screenshots, console messages and viewport resizing; can interact with any page it opens
-  vercel         Official Vercel remote MCP for projects, deployments and logs; authenticate with Vercel OAuth in the MCP client (available on all plans)
+  atlassian                 Official Atlassian Rovo remote MCP for Jira and Confluence; authenticate with Atlassian OAuth in the MCP client
+  brave-search              Official Brave Search MCP for current web results; requires BRAVE_API_KEY
+  cloudflare-bindings       Official Cloudflare Workers Bindings MCP for storage, AI and compute primitives; OAuth in the MCP client
+  cloudflare-docs           Official Cloudflare docs MCP for up-to-date product reference; authenticate with Cloudflare OAuth in the MCP client
+  cloudflare-observability  Official Cloudflare Workers Observability MCP for logs and analytics; OAuth in the MCP client
+  context7                  Up-to-date library documentation for coding agents
+  docker                    Local Docker containers, images and Compose stacks (can run and stop containers); requires Docker installed and running
+  figma                     Official Figma remote MCP for design context, Code Connect and canvas write; authenticate with Figma OAuth in the MCP client (no desktop app; available on all seats and plans)
+  github                    GitHub remote MCP server (repositories, issues, pull requests)
+  notion                    Official Notion remote MCP for workspace search and page updates; authenticate with Notion OAuth in the MCP client
+  playwright                Browser automation via accessibility snapshots, screenshots, console messages and viewport resizing; can interact with any page it opens
+  sqlite                    Inspect and query a local SQLite database file (can write); set SQLITE_DB_PATH; requires uvx (Astral uv)
+  supabase                  Official Supabase remote MCP for projects and database tools; OAuth in the MCP client; defaults to read-only (?read_only=true)
+  vercel                    Official Vercel remote MCP for projects, deployments and logs; authenticate with Vercel OAuth in the MCP client (available on all plans)
 profiles:
-  base           Essentials for any project
-  web            Web development
+  backend                   Backend development
+  base                      Essentials for any project
+  web                       Web development
 skills:
-  example-skill  Minimal example skill that shows the catalog skill layout.
+  example-skill             Minimal example skill that shows the catalog skill layout.
 ```
 
 When nothing matches it prints `no matching items`.

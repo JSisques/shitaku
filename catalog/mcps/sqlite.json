@@ -1,0 +1,16 @@
+{
+  "name": "sqlite",
+  "description": "Inspect and query a local SQLite database file (can write); set SQLITE_DB_PATH; requires uvx (Astral uv)",
+  "server": {
+    "type": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-sqlite", "--db-path", "${SQLITE_DB_PATH}"]
+  },
+  "env": [
+    {
+      "name": "SQLITE_DB_PATH",
+      "required": true,
+      "description": "Absolute path to the SQLite database file"
+    }
+  ]
+}

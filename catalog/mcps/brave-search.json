@@ -1,0 +1,19 @@
+{
+  "name": "brave-search",
+  "description": "Official Brave Search MCP for current web results; requires BRAVE_API_KEY",
+  "server": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@brave/brave-search-mcp-server"],
+    "env": {
+      "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+    }
+  },
+  "env": [
+    {
+      "name": "BRAVE_API_KEY",
+      "required": true,
+      "description": "Brave Search API key"
+    }
+  ]
+}

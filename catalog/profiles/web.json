@@ -2,5 +2,14 @@
   "name": "web",
   "description": "Web development",
   "extends": ["base"],
-  "mcps": ["github", "playwright", "figma", "vercel"]
+  "mcps": [
+    "github",
+    "playwright",
+    "figma",
+    "vercel",
+    "brave-search",
+    "cloudflare-docs",
+    "cloudflare-bindings",
+    "cloudflare-observability"
+  ]
 }

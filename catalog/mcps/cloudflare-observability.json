@@ -1,0 +1,8 @@
+{
+  "name": "cloudflare-observability",
+  "description": "Official Cloudflare Workers Observability MCP for logs and analytics; OAuth in the MCP client",
+  "server": {
+    "type": "http",
+    "url": "https://observability.mcp.cloudflare.com/mcp"
+  }
+}

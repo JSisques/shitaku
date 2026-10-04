@@ -1,8 +1,23 @@
 {
   "version": 1,
   "items": {
-    "mcps": ["github", "context7", "playwright", "figma", "vercel"],
+    "mcps": [
+      "github",
+      "context7",
+      "playwright",
+      "figma",
+      "vercel",
+      "docker",
+      "sqlite",
+      "supabase",
+      "notion",
+      "atlassian",
+      "brave-search",
+      "cloudflare-docs",
+      "cloudflare-bindings",
+      "cloudflare-observability"
+    ],
     "skills": ["example-skill"],
-    "profiles": ["base", "web"]
+    "profiles": ["base", "web", "backend"]
   }
 }
