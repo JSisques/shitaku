@@ -39,6 +39,8 @@ export interface CliDeps {
   out(line: string): void;
   err(line: string): void;
   now?: () => Date;
+  /** Installed package semver; omit/undefined when unreadable. */
+  cliVersion?: string;
   /** Enables the update notice; when absent, no check runs. */
   updates?: UpdateSettings;
 }
@@ -357,7 +359,19 @@ const csv = (value: string): string[] =>
     .map((s) => s.trim())
     .filter(Boolean);
 
+const UNREADABLE_VERSION = 'Unable to determine shitaku version.';
+
+/** True when argv (after node/script) asks for a top-level version report. */
+function isVersionInvocation(argv: string[]): boolean {
+  return argv.slice(2).some((token) => token === 'version' || token === '-v' || token === '--version');
+}
+
 export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
+  if (isVersionInvocation(argv) && deps.cliVersion === undefined) {
+    deps.err(UNREADABLE_VERSION);
+    return 1;
+  }
+
   let exitCode = 0;
   const strip = (s: string): string => s.replace(/\n$/, '');
   const program = new Command()
@@ -365,6 +379,17 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     .description('Install curated AI agent configuration from a catalog.')
     .exitOverride()
     .configureOutput({ writeOut: (s) => deps.out(strip(s)), writeErr: (s) => deps.err(strip(s)) });
+
+  const version = deps.cliVersion;
+  if (version !== undefined) {
+    program.version(version, '-v, --version');
+    program
+      .command('version')
+      .description('Print the installed shitaku version')
+      .action(() => {
+        deps.out(version);
+      });
+  }
 
   program
     .command('init')
@@ -436,16 +461,18 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     );
 
   // Started before dispatch so the lookup overlaps the command; checkForUpdate never rejects.
-  const pending = deps.updates
-    ? checkForUpdate(
-        { fs: deps.fs, paths: deps.paths, env: deps.env, source: deps.updates.source, now: deps.now },
-        {
-          currentVersion: deps.updates.currentVersion,
-          interactive: deps.updates.interactive,
-          timeoutMs: deps.updates.timeoutMs,
-        },
-      )
-    : undefined;
+  // Version entry points skip the check entirely (no cache/network side effects).
+  const pending =
+    deps.updates && !isVersionInvocation(argv)
+      ? checkForUpdate(
+          { fs: deps.fs, paths: deps.paths, env: deps.env, source: deps.updates.source, now: deps.now },
+          {
+            currentVersion: deps.updates.currentVersion,
+            interactive: deps.updates.interactive,
+            timeoutMs: deps.updates.timeoutMs,
+          },
+        )
+      : undefined;
 
   try {
     await program.parseAsync(argv);

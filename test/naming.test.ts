@@ -42,4 +42,12 @@ describe('product naming', () => {
     expect(await runCli(['node', 'shitaku', '--help'], deps)).toBe(0);
     expect(out.join('\n')).toContain('Usage: shitaku');
   });
+
+  it('documents version entry points and bare-semver stdout in README', () => {
+    const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
+    expect(readme).toContain('shitaku version');
+    expect(readme).toContain('shitaku -v');
+    expect(readme).toContain('shitaku --version');
+    expect(readme).toMatch(/bare semver/i);
+  });
 });

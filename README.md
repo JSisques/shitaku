@@ -43,6 +43,7 @@ Requires Node `>=22.13`. After a global install the command is just `shitaku`.
 - [Why shitaku](#why-shitaku)
 - [Catalog](#catalog)
 - [Usage](#usage)
+- [Version](#version)
 - [Custom catalogs and trust](#custom-catalogs-and-trust)
 - [Update notifications](#update-notifications)
 - [Known limitation](#known-limitation)
@@ -116,6 +117,11 @@ shitaku status [--scope project|user] [--source <folder>] [--json]
 
 # Diagnose installed items and suggest fixes (read-only, exits 4 on problems)
 shitaku doctor [--scope project|user] [--source <folder>] [--json]
+
+# Print the installed package version (bare semver on stdout)
+shitaku version
+shitaku -v
+shitaku --version
 ```
 
 Scopes: `project` writes MCPs to `./.mcp.json` and skills to `./.claude/skills/`; `user` writes MCPs to `~/.claude.json` and skills to `~/.claude/skills/` (close Claude Code first when writing `~/.claude.json`).
@@ -265,6 +271,10 @@ The catalog is loaded only to find `out-of-date` items. If it cannot be loaded, 
 
 Exit codes: `0` no problems (info findings allowed), `4` at least one problem, `1` error, including a corrupt manifest.
 
+### Version
+
+`shitaku version`, `shitaku -v`, and `shitaku --version` print the installed package version as bare semver on stdout (for example `0.2.0`) and exit `0`. There is no `-V` alias. If the version cannot be determined, they print `Unable to determine shitaku version.` on stderr and exit `1`. These entry points do not run the update check.
+
 ### Custom catalogs and trust
 
 `--source <folder>` reads a catalog from a folder instead of the bundled one. Treat it as code you run: stdio entries in a catalog are written to your config and Claude Code executes their `command` later. Skills from a `--source` folder are copied into your skills directory, and Claude Code may follow their instructions or run their scripts. Only use folders you trust.
@@ -279,7 +289,7 @@ Update available: shitaku 0.2.0 -> 0.3.0. Run: npm install -g @jsisques/shitaku
 
 The registry is asked at most once every 24 hours (the answer is cached in `~/.claude/.shitaku/update-check.json`) and the lookup gives up after 1.5 seconds, so offline runs are never blocked. stdout is never touched, so `status --json` stays valid JSON, and the exit code does not change.
 
-The check is skipped entirely when `CI` is set to a non-empty value, when stdout or stderr is not a terminal, or when `SHITAKU_NO_UPDATE_CHECK` is `1`, `true` or `yes` (case-insensitive). No request is made and nothing is written in those cases.
+The check is skipped entirely when `CI` is set to a non-empty value, when stdout or stderr is not a terminal, when `SHITAKU_NO_UPDATE_CHECK` is `1`, `true` or `yes` (case-insensitive), or when the command is `version` / `-v` / `--version`. No request is made and nothing is written in those cases.
 
 ### Known limitation
 
