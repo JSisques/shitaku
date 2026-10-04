@@ -167,3 +167,19 @@ An MCP config file that cannot be read or parsed MUST NOT abort `status`. Each i
 - GIVEN no manifest or no active installs
 - WHEN `status` runs
 - THEN it reports no managed items and exits 0
+
+### Requirement: Uninstalled items not reported
+
+Items removed by an uninstall (action `remove`) MUST NOT be listed by `status`, as they are no longer owned.
+
+#### Scenario: Uninstalled item hidden
+
+- GIVEN `demo` was installed and then uninstalled
+- WHEN `status` runs
+- THEN `demo` is not listed
+
+#### Scenario: Reappears after undo
+
+- GIVEN that uninstall was undone
+- WHEN `status` runs
+- THEN `demo` is listed again
