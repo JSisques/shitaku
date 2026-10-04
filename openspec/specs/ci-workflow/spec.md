@@ -110,6 +110,7 @@ The workflow file MUST pass `prettier --check .`.
 - GIVEN `.github/workflows/ci.yml` exists
 - WHEN `pnpm run format:check` runs
 - THEN it exits 0
+
 ### Requirement: Website excluded from CI gates
 
 `ci.yml` MUST NOT add website build, website install, or Pages deploy as a gate. Existing ordered gates MUST stay unchanged by website work.
