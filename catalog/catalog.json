@@ -1,7 +1,7 @@
 {
   "version": 1,
   "items": {
-    "mcps": ["github", "context7"],
+    "mcps": ["github", "context7", "playwright"],
     "skills": ["example-skill"],
     "profiles": ["base", "web"]
   }
