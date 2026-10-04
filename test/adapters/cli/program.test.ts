@@ -57,6 +57,7 @@ describe('runCli', () => {
   let conflicts: { kind: string; name: string; reason: string }[];
   let env: Record<string, string | undefined>;
   let updates: CliDeps['updates'];
+  let cliVersion: string | undefined;
   const mcpFile = () => join(tmp.cwd, '.mcp.json');
   const text = () => [...out, ...err].join('\n');
 
@@ -71,6 +72,7 @@ describe('runCli', () => {
       out: (l) => out.push(l),
       err: (l) => err.push(l),
       updates,
+      cliVersion,
     };
     return runCli(['node', 'shitaku', ...args], deps);
   };
@@ -83,6 +85,7 @@ describe('runCli', () => {
     err = [];
     env = { GITHUB_TOKEN: TOKEN };
     updates = undefined;
+    cliVersion = undefined;
     usePrompter();
   });
   afterEach(() => tmp.cleanup());
@@ -91,6 +94,32 @@ describe('runCli', () => {
     expect(await run('--help')).toBe(0);
     expect(text()).toContain('init');
     expect(text()).toContain('undo');
+  });
+
+  describe('version', () => {
+    it.each(['version', '-v', '--version'])('prints bare semver on stdout and exits 0 for %s', async (flag) => {
+      cliVersion = '0.2.0';
+      expect(await run(flag)).toBe(0);
+      expect(out).toEqual(['0.2.0']);
+      expect(err).toEqual([]);
+    });
+
+    it.each(['version', '-v', '--version'])(
+      'fails with the exact stderr message when version is unreadable for %s',
+      async (flag) => {
+        expect(await run(flag)).toBe(1);
+        expect(err).toEqual(['Unable to determine shitaku version.']);
+        expect(out.join('\n')).not.toMatch(/\d+\.\d+\.\d+/);
+      },
+    );
+
+    it('lists version in help and registers only -v/--version', async () => {
+      cliVersion = '0.2.0';
+      expect(await run('--help')).toBe(0);
+      expect(text()).toContain('version');
+      expect(text()).toMatch(/-v,\s*--version/);
+      expect(text()).not.toMatch(/(?:^|\s)-V(?:\s|,|$)/);
+    });
   });
 
   it('installs without prompting when --mcps and --scope are given', async () => {
@@ -868,6 +897,26 @@ describe('runCli', () => {
       expect(await run('status')).toBe(0);
       expect(asked).toBe(0);
       expect(err).toEqual([]);
+    });
+
+    it.each(['version', '-v', '--version'])(
+      'does not start the update check for %s even when updates are wired',
+      async (flag) => {
+        useUpdates('0.3.0');
+        cliVersion = '0.2.0';
+        expect(await run(flag)).toBe(0);
+        expect(asked).toBe(0);
+        expect(err).toEqual([]);
+        expect(out).toEqual(['0.2.0']);
+      },
+    );
+
+    it('still notifies on non-version commands when an update is available', async () => {
+      useUpdates('0.3.0');
+      cliVersion = '0.2.0';
+      expect(await run('status')).toBe(0);
+      expect(asked).toBe(1);
+      expect(err).toEqual([NOTICE]);
     });
   });
 

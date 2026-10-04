@@ -39,6 +39,7 @@ process.exitCode = await runCli(process.argv, {
   prompter: new ClackPrompter(),
   out: (line) => console.log(line),
   err: (line) => console.error(line),
+  cliVersion: version,
   updates:
     version === undefined
       ? undefined

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -49,6 +50,12 @@ describe('main (composition root)', () => {
     expect(deps.paths).toEqual({ homeDir: tmp.homeDir, cwd: tmp.cwd });
     expect(deps.target.id).toBe(claudeCodeTarget.id);
     expect(deps.env).toBe(process.env);
+  });
+
+  it('forwards cliVersion from package.json', async () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+    const deps = await bootMain();
+    expect(deps.cliVersion).toBe(pkg.version);
   });
 
   it('resolves --source relative to the working directory', async () => {
