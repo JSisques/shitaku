@@ -10,7 +10,7 @@ describe('bundled catalog', () => {
       'bundled',
     ).load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.mcps.map((m) => m.name)).toEqual(['github', 'context7', 'playwright', 'figma']);
+    expect(catalog.mcps.map((m) => m.name)).toEqual(['github', 'context7', 'playwright', 'figma', 'vercel']);
     expect(
       resolveProfile(
         'web',
@@ -18,7 +18,7 @@ describe('bundled catalog', () => {
         catalog.mcps.map((m) => m.name),
         catalog.skills.map((sk) => sk.name),
       ),
-    ).toEqual({ mcps: ['context7', 'github', 'playwright', 'figma'], skills: [] });
+    ).toEqual({ mcps: ['context7', 'github', 'playwright', 'figma', 'vercel'], skills: [] });
   });
 
   it('loads the bundled example skill with its frontmatter', async () => {

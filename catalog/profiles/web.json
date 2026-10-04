@@ -1,1 +1,6 @@
-{ "name": "web", "description": "Web development", "extends": ["base"], "mcps": ["github", "playwright", "figma"] }
+{
+  "name": "web",
+  "description": "Web development",
+  "extends": ["base"],
+  "mcps": ["github", "playwright", "figma", "vercel"]
+}
