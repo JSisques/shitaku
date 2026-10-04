@@ -1,11 +1,17 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { ESLint } from 'eslint';
+import * as prettier from 'prettier';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const FIXTURE = join(ROOT, 'test/fixtures/lint/floating-promise.ts');
 const SCANNED_DIRS = ['src', 'test', 'scripts'];
+const WEBSITE_ARTIFACTS = [
+  'website/dist/index.html',
+  'website/.astro/data-store.json',
+  'website/node_modules/pkg/index.js',
+];
 
 interface Manifest {
   version: string;
@@ -73,5 +79,26 @@ describe('inline disables', () => {
         .map((line) => `${file}: ${line.trim()}`),
     );
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('website build artifact ignores', () => {
+  it.each(WEBSITE_ARTIFACTS)('Prettier ignores %s', async (rel) => {
+    const info = await prettier.getFileInfo(join(ROOT, rel), {
+      ignorePath: join(ROOT, '.prettierignore'),
+    });
+    expect(info.ignored).toBe(true);
+  });
+
+  it.each(WEBSITE_ARTIFACTS)('ESLint ignores %s', async (rel) => {
+    const eslint = new ESLint({ cwd: ROOT });
+    expect(await eslint.isPathIgnored(join(ROOT, rel))).toBe(true);
+  });
+
+  it('gitignore lists website/dist, website/.astro, and website/node_modules', () => {
+    const gitignore = readFileSync(join(ROOT, '.gitignore'), 'utf8');
+    expect(gitignore).toMatch(/^website\/dist\/?$/m);
+    expect(gitignore).toMatch(/^website\/\.astro\/?$/m);
+    expect(gitignore).toMatch(/^website\/node_modules\/?$/m);
   });
 });

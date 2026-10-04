@@ -6,3 +6,6 @@ coverage
 .atl/
 openspec/changes/archive/
 CHANGELOG.md
+website/dist
+website/.astro
+website/node_modules

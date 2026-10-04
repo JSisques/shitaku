@@ -3,6 +3,11 @@ node_modules/
 dist/
 .pnpm-store/
 
+# Nested website build artifacts (also covered by broad rules above; listed for clarity)
+website/dist/
+website/.astro/
+website/node_modules/
+
 # Tests
 coverage/
 *.tgz

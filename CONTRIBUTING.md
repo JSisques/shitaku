@@ -53,6 +53,15 @@ Every item must be listed in `catalog/catalog.json` under `items.mcps`, `items.p
 
 After adding or changing an MCP or skill, run `pnpm run docs:catalog` to regenerate the catalog tables in `README.md`. CI fails (`pnpm run docs:catalog:check`) when they are out of date.
 
+When catalog items change, also refresh the docs site pages:
+
+```sh
+pnpm run docs:website-catalog
+pnpm run docs:website-catalog:check
+```
+
+That regenerates Markdown under `website/src/content/docs/{en,es}/catalog/` from `catalog/` (read-only). Profiles stay browse-only with a not-installable callout. The isolated `.github/workflows/website.yml` workflow runs the same emit step before the Astro build; root `ci.yml` / `cd.yml` do not.
+
 Names for MCPs and skills must match `^[a-z0-9][a-z0-9-]*$` (lowercase letters, digits and hyphens; no leading hyphen).
 
 ### Add a skill

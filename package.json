@@ -37,7 +37,9 @@
     "test:changed": "vitest run --changed origin/main --passWithNoTests",
     "smoke:pack": "node scripts/smoke-pack.mjs",
     "docs:catalog": "node scripts/generate-catalog-table.mjs",
-    "docs:catalog:check": "node scripts/generate-catalog-table.mjs --check"
+    "docs:catalog:check": "node scripts/generate-catalog-table.mjs --check",
+    "docs:website-catalog": "node scripts/generate-website-catalog.mjs",
+    "docs:website-catalog:check": "node scripts/generate-website-catalog.mjs --check"
   },
   "dependencies": {
     "@clack/prompts": "1.8.1",
