@@ -1,41 +1,59 @@
 schema: spec-driven
 context: |
   Project: shitaku (npm package @jsisques/shitaku).
-  Purpose: CLI that installs portable AI agent setups (skills, MCPs) via npx.
-  Stack: Node >=22, TypeScript 7 (ESM, strict, NodeNext, verbatimModuleSyntax), commander, @clack/prompts, zod.
-  Architecture: hexagonal (ports and adapters) under src/: domain, application, ports,
-  adapters/{catalog,claude-code,cli,fs}. Boundaries are enforced by test/architecture.test.ts.
-  Path aliases: "@/" (src) and "@test/" (test).
-  Conventions: prettier (printWidth 120, singleQuote, trailingComma all), conventional commits (commitlint),
-  husky (pre-commit lint-staged; pre-push typecheck, test:changed, build).
-  Artifacts language: English.
+  Purpose: CLI that installs portable AI agent setups (skills, MCPs, profiles) via npx/pnpm.
+  Stack: Node >=22.13, TypeScript (strict ESM NodeNext; package typescript 6 + typescript-native 7 for build/typecheck),
+  pnpm, Vitest 5, commander, @clack/prompts, zod.
+  Architecture: hexagonal under src/ — domain, ports, application, adapters/{catalog,claude-code,cli,fs};
+  composition root src/main.ts. Boundaries enforced by test/architecture.test.ts.
+  Path aliases: "@/" (src) and "@test/" (test). Subcommands today: init, undo, status.
+  Conventions: Prettier (printWidth 120, singleQuote, semi, trailingComma all), ESLint typescript-eslint,
+  conventional commits (commitlint), husky (pre-commit lint-staged; pre-push typecheck, test:changed, build).
+  Artifacts language: English. Persistence: hybrid (openspec + Engram project shitaku).
 strict_tdd: true
 strict_tdd_note: >
-  Workspace-level test command exists: "pnpm test" (vitest run).
-projects: []
+  Single in-scope project at "." with workspace-level test command "pnpm test" (vitest run).
+projects:
+  - path: .
+    stack: Node >=22.13 ESM TypeScript CLI (pnpm)
+    test_command: pnpm test
+    framework: vitest
+    coverage_command: pnpm run test:coverage
+    lint_command: pnpm run lint
+    typecheck_command: pnpm run typecheck
+    format_command: pnpm run format:check
 testing:
   runner: vitest
   command: pnpm test
   layers:
     unit: true
-    integration: false
+    integration: true
     e2e: false
-  coverage: false
-  linter: null
+  coverage: true
+  coverage_command: pnpm run test:coverage
+  linter: pnpm run lint
   type_checker: pnpm run typecheck
   formatter: pnpm run format:check
+  notes: >
+    Vitest unit/application/adapter tests under test/**/*.test.ts; architecture and tooling guards
+    act as integration-style repo checks. test/setup.ts sandboxes HOME; os.homedir is forbidden in tests.
 rules:
   proposal:
     - Include rollback plan and affected hexagonal layers
   specs:
     - Use Given/When/Then scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
   design:
     - Keep domain free of infrastructure imports; depend through ports
+    - Document architecture decisions with rationale
   tasks:
     - Forecast the 400-line review budget
+    - Group by phase; keep tasks completable in one session
   apply:
     - Follow hexagonal boundaries; write tests first (strict TDD)
+    - Never bypass git hooks; never touch real HOME from src outside main.ts or from tests
   verify:
-    - Run pnpm test, pnpm run typecheck and pnpm run format:check
+    - Run pnpm test, pnpm run typecheck, pnpm run lint and pnpm run format:check
+    - Prefer pnpm run build before archive-ready verify when dist contracts change
   archive:
     - Merge delta specs into openspec/specs before archiving
