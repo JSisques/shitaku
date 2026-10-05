@@ -158,14 +158,14 @@ describe('runCli', () => {
   });
 
   it('prompts for MCPs, scope and confirmation interactively', async () => {
-    usePrompter({ mcps: ['context7'], skills: [], scope: 'project', confirm: true });
+    usePrompter({ mcps: ['context7'], skills: [], scripts: [], scope: 'project', confirm: true });
     expect(await run('init')).toBe(0);
-    expect(calls).toEqual(['mcps', 'skills', 'scope', 'confirm']);
+    expect(calls).toEqual(['mcps', 'skills', 'scripts', 'scope', 'confirm']);
     expect(Object.keys(parseDoc(await readFile(mcpFile(), 'utf8')).mcpServers)).toEqual(['context7']);
   });
 
   it('writes nothing when the confirmation is declined', async () => {
-    usePrompter({ mcps: ['context7'], skills: [], scope: 'project', confirm: false });
+    usePrompter({ mcps: ['context7'], skills: [], scripts: [], scope: 'project', confirm: false });
     expect(await run('init')).toBe(0);
     await expect(readFile(mcpFile(), 'utf8')).rejects.toThrow();
     expect(await readdir(tmp.homeDir)).toEqual([]);
@@ -262,9 +262,9 @@ describe('runCli', () => {
     });
 
     it('prompts for MCPs, skills, scope and confirmation, then installs the skill', async () => {
-      usePrompter({ mcps: [], skills: ['example-skill'], scope: 'project', confirm: true });
+      usePrompter({ mcps: [], skills: ['example-skill'], scripts: [], scope: 'project', confirm: true });
       expect(await run('init')).toBe(0);
-      expect(calls).toEqual(['mcps', 'skills', 'scope', 'confirm']);
+      expect(calls).toEqual(['mcps', 'skills', 'scripts', 'scope', 'confirm']);
       expect(await readFile(skillFile(), 'utf8')).toBe(await bundled());
       await expect(readFile(mcpFile(), 'utf8')).rejects.toThrow();
     });
@@ -283,14 +283,14 @@ describe('runCli', () => {
     });
 
     it('exits 1 when the interactive selection is empty for both kinds', async () => {
-      usePrompter({ mcps: [], skills: [], scope: 'project' });
+      usePrompter({ mcps: [], skills: [], scripts: [], scope: 'project' });
       expect(await run('init')).toBe(1);
       expect(text()).toMatch(/at least one/i);
       expect(calls).not.toContain('confirm');
     });
 
     it('writes nothing when the interactive confirmation is declined', async () => {
-      usePrompter({ mcps: [], skills: ['example-skill'], scope: 'project', confirm: false });
+      usePrompter({ mcps: [], skills: ['example-skill'], scripts: [], scope: 'project', confirm: false });
       expect(await run('init')).toBe(0);
       await expect(readdir(join(tmp.cwd, '.claude'))).rejects.toThrow();
     });
@@ -323,7 +323,14 @@ describe('runCli', () => {
       });
 
       it('asks per skill conflict interactively and honours skip', async () => {
-        usePrompter({ mcps: [], skills: ['example-skill'], scope: 'project', conflict: 'skip', confirm: true });
+        usePrompter({
+          mcps: [],
+          skills: ['example-skill'],
+          scripts: [],
+          scope: 'project',
+          conflict: 'skip',
+          confirm: true,
+        });
         expect(await run('init')).toBe(0);
         expect(conflicts.map((c) => [c.kind, c.name])).toEqual([['skill', 'example-skill']]);
         expect(conflicts[0]?.reason).toMatch(/different skill/);
@@ -331,7 +338,14 @@ describe('runCli', () => {
       });
 
       it('asks per skill conflict interactively and honours overwrite', async () => {
-        usePrompter({ mcps: [], skills: ['example-skill'], scope: 'project', conflict: 'overwrite', confirm: true });
+        usePrompter({
+          mcps: [],
+          skills: ['example-skill'],
+          scripts: [],
+          scope: 'project',
+          conflict: 'overwrite',
+          confirm: true,
+        });
         expect(await run('init')).toBe(0);
         expect(await readFile(skillFile(), 'utf8')).toBe(await bundled());
       });
@@ -359,7 +373,14 @@ describe('runCli', () => {
     });
 
     it('asks per conflict interactively and honours skip', async () => {
-      usePrompter({ mcps: ['github', 'context7'], skills: [], scope: 'project', conflict: 'skip', confirm: true });
+      usePrompter({
+        mcps: ['github', 'context7'],
+        skills: [],
+        scripts: [],
+        scope: 'project',
+        conflict: 'skip',
+        confirm: true,
+      });
       expect(await run('init')).toBe(0);
       const servers = parseDoc(await readFile(mcpFile(), 'utf8')).mcpServers;
       expect(servers.github?.command).toBe('mine');
@@ -369,7 +390,14 @@ describe('runCli', () => {
     });
 
     it('asks per conflict interactively and honours overwrite', async () => {
-      usePrompter({ mcps: ['github'], skills: [], scope: 'project', conflict: 'overwrite', confirm: true });
+      usePrompter({
+        mcps: ['github'],
+        skills: [],
+        scripts: [],
+        scope: 'project',
+        conflict: 'overwrite',
+        confirm: true,
+      });
       expect(await run('init')).toBe(0);
       expect(parseDoc(await readFile(mcpFile(), 'utf8')).mcpServers.github?.type).toBe('http');
     });
@@ -811,8 +839,9 @@ describe('runCli', () => {
 
       it('lists the bundled catalog with a header per kind', async () => {
         expect(await run('list')).toBe(0);
-        expect(out.filter((l) => !l.startsWith(' '))).toEqual(['mcps:', 'profiles:', 'skills:']);
+        expect(out.filter((l) => !l.startsWith(' '))).toEqual(['mcps:', 'profiles:', 'scripts:', 'skills:']);
         expect(out).toContainEqual(expect.stringMatching(/^ {2}github\s+\S/));
+        expect(out).toContainEqual(expect.stringMatching(/^ {2}complexity\s+\S/));
       });
     });
 
@@ -1196,7 +1225,7 @@ describe('runCli', () => {
     const art = () => plain()[1] ?? '';
 
     const interactive = () => {
-      usePrompter({ mcps: ['context7'], skills: [], scope: 'project', confirm: true });
+      usePrompter({ mcps: ['context7'], skills: [], scripts: [], scope: 'project', confirm: true });
       terminal = { tty: true, color: false, unicode: false };
       cliVersion = '0.2.0';
     };
@@ -1286,7 +1315,7 @@ describe('runCli', () => {
     ])('hides the banner with --no-banner %s', async (_label, args) => {
       interactive();
       expect(await run(...args)).toBe(0);
-      expect(calls).toEqual(['mcps', 'skills', 'scope', 'confirm']);
+      expect(calls).toEqual(['mcps', 'skills', 'scripts', 'scope', 'confirm']);
       expect(shown()).not.toContain(art());
     });
 
