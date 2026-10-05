@@ -42,30 +42,32 @@ const result = (status: UndoResult['status'], install?: Install, changed: string
   changed,
 });
 
-const skillRoots = (install: Install): Set<string> =>
-  new Set(install.files.flatMap((f) => f.items.flatMap((i) => (i.kind === 'skill' ? [i.root] : []))));
+const treeRoots = (install: Install): Set<string> =>
+  new Set(
+    install.files.flatMap((f) => f.items.flatMap((i) => (i.kind === 'skill' || i.kind === 'script' ? [i.root] : []))),
+  );
 
-/** LIFO per file and per skill root: refuse while a newer non-undone install touched the same file or skill. */
+/** LIFO per file and per skill/script root: refuse while a newer non-undone install touched the same file or tree. */
 function assertNewestPerFile(manifest: Manifest, install: Install): void {
   const newer = manifest.installs.slice(manifest.installs.indexOf(install) + 1).filter((i) => i.undoneAt === null);
-  const roots = skillRoots(install);
+  const roots = treeRoots(install);
   for (const file of install.files) {
     const blocker = newer.find((i) => i.files.some((f) => f.path === file.path));
     if (blocker) throw new UndoSelectionError(`${file.path} has a newer install (${blocker.id}); undo that one first`);
   }
   for (const root of roots) {
-    const blocker = newer.find((i) => skillRoots(i).has(root));
+    const blocker = newer.find((i) => treeRoots(i).has(root));
     if (blocker) throw new UndoSelectionError(`${root} has a newer install (${blocker.id}); undo that one first`);
   }
 }
 
 const hashOf = (data: string | Uint8Array | null): string | null => (data === null ? null : sha256(data));
 
-/** Skill files are raw bytes; MCP config files stay text. */
-const isSkillFile = (file: InstalledFile): boolean => file.items.some((i) => i.kind === 'skill');
+/** Skill and script files are raw bytes; MCP config files stay text. */
+const isTreeFile = (file: InstalledFile): boolean => file.items.some((i) => i.kind === 'skill' || i.kind === 'script');
 
 const currentHash = async (deps: UndoDeps, file: InstalledFile): Promise<string | null> =>
-  hashOf(isSkillFile(file) ? await deps.fs.readBytes(file.path) : await deps.fs.readText(file.path));
+  hashOf(isTreeFile(file) ? await deps.fs.readBytes(file.path) : await deps.fs.readText(file.path));
 
 /** Like `currentHash`, but a file that is unsafe on the current tree (a symlink, a special file) counts as drift. */
 const UNSAFE = Symbol('unsafe');
@@ -82,7 +84,7 @@ async function restore(deps: UndoDeps, file: InstalledFile): Promise<void> {
   const backupPath = file.backup === null ? null : `${stateDir(deps.paths.homeDir)}/${file.backup}`;
   if (backupPath === null) {
     await deps.fs.remove(file.path);
-  } else if (isSkillFile(file)) {
+  } else if (isTreeFile(file)) {
     const bytes = await deps.fs.readBytes(backupPath);
     if (bytes === null) throw new UndoVerifyError(`backup for ${file.path} is missing`);
     await deps.fs.writeBytes(file.path, bytes);
@@ -95,16 +97,16 @@ async function restore(deps: UndoDeps, file: InstalledFile): Promise<void> {
     throw new UndoVerifyError(`${file.path} does not match its pre-install content after restore`);
 }
 
-/** Files under a skill root that the install did not record: user additions. */
+/** Files under a skill/script root that the install did not record: user additions. */
 async function unrecordedFiles(deps: UndoDeps, install: Install): Promise<string[]> {
   const recorded = new Set(install.files.map((f) => f.path));
   const extra: string[] = [];
-  for (const root of skillRoots(install))
+  for (const root of treeRoots(install))
     try {
       for (const rel of (await deps.fs.listFiles(root)) ?? [])
         if (!recorded.has(`${root}/${rel}`)) extra.push(`${root}/${rel}`);
     } catch (e) {
-      // A symlink or special file inside the skill: the tree can no longer be proven ours, so report the root.
+      // A symlink or special file inside the tree: the tree can no longer be proven ours, so report the root.
       if (!(e instanceof UnsafeTreeError)) throw e;
       extra.push(root);
     }
@@ -121,12 +123,12 @@ async function assertBackupsPresent(deps: UndoDeps, install: Install): Promise<v
 }
 
 /**
- * Only directories the install can have created are pruned: a recorded skill root, one of its ancestors or one of
+ * Only directories the install can have created are pruned: a recorded skill/script root, one of its ancestors or one of
  * its subdirectories, that lies strictly inside the home or working directory. Anything else in a tampered manifest is ignored.
  */
 function prunableDirs(deps: UndoDeps, install: Install): string[] {
   const { homeDir, cwd } = deps.paths;
-  const roots = [...skillRoots(install)];
+  const roots = [...treeRoots(install)];
   const inside = (dir: string, base: string): boolean => dir.startsWith(`${base}/`);
   return install.createdDirs.filter(
     (dir) =>
