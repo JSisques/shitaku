@@ -4,7 +4,7 @@
 **Batch**: Phase 1–3 preserved + Phase 4 / PR4 (tasks 4.1–4.3)
 **Branch**: feat/catalog-scripts-docs (stacked on feat/catalog-scripts-run / PR3)
 **Chain strategy**: stacked-to-main
-**Status**: Phase 4 complete — all tasks done
+**Status**: Phase 4 complete — verify PASS (PARTIALs closed)
 **Date**: 2026-10-05
 
 ## Completed Tasks
@@ -47,7 +47,21 @@
 
 ## Remaining
 
-- None — all catalog-scripts tasks complete. Ready for sdd-verify / PR4 open (orchestrator).
+- None — all catalog-scripts tasks complete. Verify PARTIALs closed; verify-report PASS persisted.
+
+## Verify PARTIAL closures (post Phase 4)
+
+Closed after sdd-verify PASS WITH WARNINGS (3 PARTIAL scenarios). Coverage-only; no product code changes.
+
+| Gap                                                 | Test added                                                         | Result |
+| --------------------------------------------------- | ------------------------------------------------------------------ | ------ |
+| Dual-scope status (same script name project + user) | `test/application/status.test.ts` — lists both scopes/paths        | ✅     |
+| Multi-kind status (mcp + skill + script)            | `test/application/status.test.ts` — one install reports all three  | ✅     |
+| `package.json` non-mutation on `run`                | `test/application/run-script.test.ts` — contents + mtime unchanged | ✅     |
+
+- Focused: `vitest run test/application/status.test.ts test/application/run-script.test.ts` → **39 passed**
+- Full: `vitest run` → **838 passed / 43 files**
+- Windows CI matrix expansion: **deferred** (out of scope; noted in verify-report)
 
 ## TDD Cycle Evidence
 
@@ -75,18 +89,24 @@ Triangulation skipped for pure docs prose beyond README contract assertions: str
 
 ## Verification (observed)
 
-- Full: `vitest run` → **835 passed / 43 files**
+- Full: `vitest run` → **838 passed / 43 files** (was 835; +3 PARTIAL-closure tests)
 - `tsc --noEmit`: pass
 - `eslint .`: pass
 - `prettier --check .`: pass
 - `pnpm run build`: pass (`check-dist-aliases: 48 files clean`)
 - `pnpm run docs:catalog:check`: pass
 - `pnpm run docs:website-catalog:check`: pass
+- Verify report: `openspec/changes/catalog-scripts/verify-report.md` → **PASS** (50/50 scenarios)
 
 ## Commits (Phase 4 on feat/catalog-scripts-docs)
 
 1. `fbfbc18` feat(catalog): ship empty scripts catalog structure
 2. `411a407` docs(catalog): document scripts kind and shitaku run
+
+## Commits (verify PARTIAL closures)
+
+1. `4242dc7` test(status): cover dual-scope and multi-kind script reporting
+2. `4173125` test(run): assert package.json is not mutated
 
 ## Workload / PR Boundary
 
