@@ -124,8 +124,9 @@
 
 ## Deviations from Design
 
-- Per-run eslint config file under script root (unique name) instead of only static `eslint.config.mjs`, because ESM caches flat configs by URL and would freeze the first consumer `.gitignore`. Still uses shipped rules + `includeIgnoreFile` + `-c` (not consumer config).
+- Per-run eslint config file under script root (unique name) instead of only static `complexity.eslint.config.mjs`, because ESM caches flat configs by URL and would freeze the first consumer `.gitignore`. Still uses shipped rules + `includeIgnoreFile` + `-c` (not consumer config).
 - Tool versions: eslint 10 / sonarjs 4 (design ranges were ^9/^3); required for `includeIgnoreFile` named export and sonar peer range.
+- Shipped config file named `complexity.eslint.config.mjs` (not `eslint.config.mjs`) so repo lint-staged does not auto-load the scoring rules against the script sources.
 
 ## Issues Found
 
