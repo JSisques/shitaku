@@ -36,14 +36,14 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Install lifecycle (PR2)
 
-- [ ] 2.1 RED→GREEN: `script-plan.ts` + `change-plan.ts` — create\|skip\|update\|conflict; dry-run/force
-- [ ] 2.2 RED→GREEN: `manifest.ts` — `kind:'script'` tree hash + ownership
-- [ ] 2.3 RED: init conflict exit 2 / dry-run no writes / unknown `--scripts`
-- [ ] 2.4 GREEN: `init-mcps.ts`/`skill-tree.ts`/`prompter.ts` — Paths roots; `--scripts`; prompts
-- [ ] 2.5 RED→GREEN: mid-write failure rollback — no partial dir; no manifest row
-- [ ] 2.6 RED→GREEN: `status-plan.ts`/`status.ts` — script states; unsafe → `modified`
-- [ ] 2.7 RED→GREEN: `undo-install.ts` — script undo; refuse drift
-- [ ] 2.8 RED→GREEN: `uninstall-item.ts` — `--kind script`; collision; modified exit 3 / force keeps extras
+- [x] 2.1 RED→GREEN: `script-plan.ts` + `change-plan.ts` — create\|skip\|update\|conflict; dry-run/force
+- [x] 2.2 RED→GREEN: `manifest.ts` — `kind:'script'` tree hash + ownership
+- [x] 2.3 RED: init conflict exit 2 / dry-run no writes / unknown `--scripts`
+- [x] 2.4 GREEN: `init-mcps.ts`/`skill-tree.ts`/`prompter.ts` — Paths roots; `--scripts`; prompts
+- [x] 2.5 RED→GREEN: mid-write failure rollback — no partial dir; no manifest row
+- [x] 2.6 RED→GREEN: `status-plan.ts`/`status.ts` — script states; unsafe → `modified`
+- [x] 2.7 RED→GREEN: `undo-install.ts` — script undo; refuse drift
+- [x] 2.8 RED→GREEN: `uninstall-item.ts` — `--kind script`; collision; modified exit 3 / force keeps extras
 
 ## Phase 3: Run + ProcessRunner + doctor (PR3)
 
