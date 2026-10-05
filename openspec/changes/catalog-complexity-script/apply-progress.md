@@ -108,19 +108,20 @@
 
 ## Files Changed (PR2)
 
-| File                                            | Action   | What Was Done                                                          |
-| ----------------------------------------------- | -------- | ---------------------------------------------------------------------- |
-| `catalog/scripts/complexity/index.mjs`          | Modified | D1A bootstrap, eslint spawn, D4A map, thresholds, formats, threat-safe |
-| `catalog/scripts/complexity/eslint.config.mjs`  | Modified | D3A includeIgnoreFile + fixed ignores                                  |
-| `catalog/scripts/complexity/eslint.rules.mjs`   | Created  | Shared complexity/sonar rules                                          |
-| `catalog/scripts/complexity/package.json`       | Modified | eslint 10 + sonarjs 4                                                  |
-| `catalog/scripts/complexity/package-lock.json`  | Created  | Shipped lock for `npm ci`                                              |
-| `catalog/scripts/complexity/script.json`        | Modified | Description; D2A tools already present                                 |
-| `test/fixtures/complexity/**`                   | Created  | under/over/gitignore fixtures                                          |
-| `test/catalog/scripts/complexity.test.ts`       | Created  | Spawn RED/GREEN coverage                                               |
-| `test/application/doctor.test.ts`               | Modified | Five-tool binless info                                                 |
-| `test/adapters/catalog/bundled-catalog.test.ts` | Modified | Expect lock + rules files                                              |
-| `openspec/.../tasks.md`                         | Modified | Phase 2 marked `[x]`                                                   |
+| File                                                      | Action   | What Was Done                                                          |
+| --------------------------------------------------------- | -------- | ---------------------------------------------------------------------- |
+| `catalog/scripts/complexity/index.mjs`                    | Modified | D1A bootstrap, eslint spawn, D4A map, thresholds, formats, threat-safe |
+| `catalog/scripts/complexity/complexity.eslint.config.mjs` | Created  | D3A includeIgnoreFile + fixed ignores (non-auto-load name)             |
+| `catalog/scripts/complexity/eslint.config.mjs`            | Deleted  | Renamed away from auto-discovered flat-config filename                 |
+| `catalog/scripts/complexity/eslint.rules.mjs`             | Created  | Shared complexity/sonar rules                                          |
+| `catalog/scripts/complexity/package.json`                 | Modified | eslint 10 + sonarjs 4                                                  |
+| `catalog/scripts/complexity/package-lock.json`            | Created  | Shipped lock for `npm ci`                                              |
+| `catalog/scripts/complexity/script.json`                  | Modified | Description; D2A tools already present                                 |
+| `test/fixtures/complexity/**`                             | Created  | under/over/gitignore fixtures                                          |
+| `test/catalog/scripts/complexity.test.ts`                 | Created  | Spawn RED/GREEN coverage                                               |
+| `test/application/doctor.test.ts`                         | Modified | Five-tool binless info                                                 |
+| `test/adapters/catalog/bundled-catalog.test.ts`           | Modified | Expect lock + rules files                                              |
+| `openspec/.../tasks.md`                                   | Modified | Phase 2 marked `[x]`                                                   |
 
 ## Deviations from Design
 
