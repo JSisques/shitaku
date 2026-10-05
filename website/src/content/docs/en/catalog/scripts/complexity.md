@@ -1,11 +1,11 @@
 ---
 title: 'complexity'
-description: 'Measure cyclomatic and cognitive complexity for JS/TS (stub — behavior in follow-up).'
+description: 'Measure cyclomatic and cognitive complexity for JS/TS.'
 ---
 
 # `complexity`
 
-Measure cyclomatic and cognitive complexity for JS/TS (stub — behavior in follow-up).
+Measure cyclomatic and cognitive complexity for JS/TS.
 
 This page is generated from `catalog/scripts/complexity/script.json`.
 

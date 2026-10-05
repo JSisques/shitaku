@@ -5,4 +5,4 @@ description: Browse MCP servers, skills, scripts, and profiles from the bundled 
 
 # Catalog overview
 
-Catalog pages are generated from `catalog/` in the repository. Item descriptions stay in English in every locale. The bundled catalog currently ships no scripts; pages appear under `catalog/scripts/` when items are listed in `items.scripts`.
+Catalog pages are generated from `catalog/` in the repository. Item descriptions stay in English in every locale. The bundled catalog ships **`complexity`** under `catalog/scripts/`; list more names in `items.scripts` and regenerate website pages to add them here.

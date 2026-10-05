@@ -129,7 +129,7 @@ Examples: `catalog/mcps/github.json` (http with a secret header) and `catalog/mc
    "scripts": ["my-script"]
    ```
 
-3. Update `test/adapters/catalog/bundled-catalog.test.ts` if the bundled empty-scripts assertion no longer holds (the shipped catalog currently keeps `items.scripts: []` on purpose).
+3. Update `test/adapters/catalog/bundled-catalog.test.ts` when you add or change bundled scripts (the shipped catalog currently lists `complexity` in `items.scripts`).
 4. Verify:
 
    ```sh
@@ -139,7 +139,7 @@ Examples: `catalog/mcps/github.json` (http with a secret header) and `catalog/mc
    pnpm test
    ```
 
-   The dry run prints `my-script: create` and writes nothing. After a real install, `shitaku run` lists it and `shitaku run my-script` executes `index.mjs`. Do not commit concrete scripts in this repository unless a follow-up change explicitly adds them.
+   The dry run prints `my-script: create` and writes nothing. After a real install, `shitaku run` lists it and `shitaku run my-script` executes `index.mjs`. Regenerate README and website catalog tables with `pnpm run docs:catalog` and `pnpm run docs:website-catalog` when bundled scripts change.
 
 Install roots: project `./.shitaku/scripts/<name>/`, user `~/.claude/.shitaku/scripts/<name>/` — never agent skill directories.
 

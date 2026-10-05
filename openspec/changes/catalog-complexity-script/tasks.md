@@ -48,6 +48,6 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Docs / regen (PR3)
 
-- [ ] 3.1 Soften empty-scripts / “ships none” prose in `README.md` and `CONTRIBUTING.md` for shipped `complexity`.
-- [ ] 3.2 Regen README + website catalog tables; verify `pnpm run docs:catalog:check` and `pnpm run docs:website-catalog:check`.
-- [ ] 3.3 Confirm website catalog surfaces list `complexity`; remove leftover no-scripts copy under `website/`.
+- [x] 3.1 Soften empty-scripts / “ships none” prose in `README.md` and `CONTRIBUTING.md` for shipped `complexity`.
+- [x] 3.2 Regen README + website catalog tables; verify `pnpm run docs:catalog:check` and `pnpm run docs:website-catalog:check`.
+- [x] 3.3 Confirm website catalog surfaces list `complexity`; remove leftover no-scripts copy under `website/`.

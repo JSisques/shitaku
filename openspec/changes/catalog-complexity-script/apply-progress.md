@@ -1,7 +1,7 @@
 # Apply Progress: catalog-complexity-script
 
 **Mode**: Strict TDD  
-**Slice**: PR1 Foundation + ADR-2 (1.1–1.6) + PR2 Behavior (2.1–2.10)  
+**Slice**: PR1 + PR2 + PR3 (docs/regen) complete  
 **Delivery**: auto-chain / stacked-to-main  
 **Updated**: 2026-10-05
 
@@ -29,9 +29,15 @@
 - [x] 2.9 RED: Doctor five tools → `script-tool-missing` info when binless
 - [x] 2.10 GREEN: Finalize `script.json` D2A tools list
 
+### PR3 Docs / regen
+
+- [x] 3.1 Soften empty-scripts prose in README + CONTRIBUTING
+- [x] 3.2 Regen README + website catalog tables; docs checks pass
+- [x] 3.3 Website lists `complexity`; overview copy updated (en/es)
+
 ## Remaining Tasks
 
-- [ ] Phase 3 (PR3): 3.1–3.3 docs / regen
+- None (19/19 tasks complete; verify/archive when PR chain lands)
 
 ## Decision: cognitive threshold 0 vs -1
 
