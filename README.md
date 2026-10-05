@@ -109,8 +109,9 @@ Installable Node scripts live under `catalog/scripts/<name>/` (`index.mjs` + `sc
 
 <!-- catalog:scripts:start -->
 
-| Name | Description |
-| ---- | ----------- |
+| Name         | Description                                                                           |
+| ------------ | ------------------------------------------------------------------------------------- |
+| `complexity` | Measure cyclomatic and cognitive complexity for JS/TS (stub — behavior in follow-up). |
 
 <!-- catalog:scripts:end -->
 
