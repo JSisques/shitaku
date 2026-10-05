@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   deriveOwnedItems,
   deriveOwnership,
+  deriveScriptOwnership,
   deriveSkillOwnership,
   emptyManifest,
   ManifestError,
@@ -74,6 +75,45 @@ const removeSkillInstall = (id: string, root: string, over: Partial<Install> = {
     items: [
       {
         kind: 'skill' as const,
+        name: root.split('/').pop() ?? '',
+        action: 'remove' as const,
+        entryHash: 'observed',
+        root,
+      },
+    ],
+  })),
+  createdDirs: [],
+  ...over,
+});
+
+const scriptInstall = (id: string, root: string, entryHash: string, over: Partial<Install> = {}): Install => ({
+  id,
+  createdAt: '2026-10-02T10:15:00.000Z',
+  undoneAt: null,
+  source: { kind: 'bundled', location: '/catalog', catalogVersion: 1 },
+  files: ['index.mjs', 'script.json'].map((f) => ({
+    path: `${root}/${f}`,
+    scope: 'project' as const,
+    backup: null,
+    beforeHash: null,
+    afterHash: 'h',
+    items: [{ kind: 'script' as const, name: root.split('/').pop() ?? '', action: 'create' as const, entryHash, root }],
+  })),
+  createdDirs: [root],
+  ...over,
+});
+
+const removeScriptInstall = (id: string, root: string, over: Partial<Install> = {}): Install => ({
+  ...scriptInstall(id, root, 'observed'),
+  files: ['index.mjs', 'script.json'].map((f) => ({
+    path: `${root}/${f}`,
+    scope: 'project' as const,
+    backup: `backups/${id}/${f}`,
+    beforeHash: 'h',
+    afterHash: null,
+    items: [
+      {
+        kind: 'script' as const,
         name: root.split('/').pop() ?? '',
         action: 'remove' as const,
         entryHash: 'observed',
@@ -180,10 +220,49 @@ describe('deriveSkillOwnership', () => {
     );
     expect(owned).toEqual({ [root]: 'tree2' });
   });
+
+  it('ignores script items', () => {
+    expect(deriveSkillOwnership(manifest([scriptInstall('a', '/w/.shitaku/scripts/lint', 'tree1')]))).toEqual({});
+  });
+});
+
+describe('deriveScriptOwnership', () => {
+  const root = '/w/.shitaku/scripts/lint';
+
+  it('is empty for an empty manifest or one with only MCP/skill items', () => {
+    expect(deriveScriptOwnership(emptyManifest())).toEqual({});
+    expect(deriveScriptOwnership(manifest([install('a', 'github', 'h1')]))).toEqual({});
+    expect(deriveScriptOwnership(manifest([skillInstall('a', '/h/.claude/skills/demo', 'tree1')]))).toEqual({});
+  });
+
+  it('maps each script root to its installed tree hash', () => {
+    expect(deriveScriptOwnership(manifest([scriptInstall('a', root, 'tree1')]))).toEqual({ [root]: 'tree1' });
+  });
+
+  it('lets a later install replace the hash and ignores undone installs', () => {
+    const undone = scriptInstall('c', root, 'tree3', { undoneAt: '2026-10-03T00:00:00.000Z' });
+    const owned = deriveScriptOwnership(
+      manifest([scriptInstall('a', root, 'tree1'), scriptInstall('b', root, 'tree2'), undone]),
+    );
+    expect(owned).toEqual({ [root]: 'tree2' });
+  });
+
+  it('a script remove drops the root; remove then reinstall owns again', () => {
+    expect(
+      deriveScriptOwnership(manifest([scriptInstall('a', root, 'tree1'), removeScriptInstall('b', root)])),
+    ).toEqual({});
+    const steps = [
+      scriptInstall('a', root, 'tree1'),
+      removeScriptInstall('b', root),
+      scriptInstall('c', root, 'tree3'),
+    ];
+    expect(deriveScriptOwnership(manifest(steps))).toEqual({ [root]: 'tree3' });
+  });
 });
 
 describe('deriveOwnedItems', () => {
   const root = '/h/.claude/skills/demo';
+  const scriptRoot = '/w/.shitaku/scripts/lint';
 
   it('is empty for an empty manifest', () => {
     expect(deriveOwnedItems(emptyManifest())).toEqual([]);
@@ -194,6 +273,13 @@ describe('deriveOwnedItems', () => {
     expect(owned).toEqual([
       { kind: 'mcp', scope: 'project', path: '/p/.mcp.json', name: 'github', hash: 'h1', installId: 'a' },
       { kind: 'skill', scope: 'user', path: root, name: 'demo', hash: 'tree1', installId: 'b' },
+    ]);
+  });
+
+  it('lists scripts by root with kind script', () => {
+    const owned = deriveOwnedItems(manifest([scriptInstall('s', scriptRoot, 'tree1')]));
+    expect(owned).toEqual([
+      { kind: 'script', scope: 'project', path: scriptRoot, name: 'lint', hash: 'tree1', installId: 's' },
     ]);
   });
 
@@ -226,6 +312,12 @@ describe('deriveOwnedItems', () => {
   it('lists a skill once even though its install records one item per file', () => {
     expect(deriveOwnedItems(manifest([skillInstall('a', root, 'tree1')]))).toHaveLength(1);
   });
+
+  it('drops a removed script from owned items', () => {
+    expect(
+      deriveOwnedItems(manifest([scriptInstall('a', scriptRoot, 'tree1'), removeScriptInstall('b', scriptRoot)])),
+    ).toEqual([]);
+  });
 });
 
 describe('parseManifest', () => {
@@ -245,6 +337,12 @@ describe('parseManifest', () => {
     expect(() => parseManifest(JSON.stringify(manifest([{ ...base, files: [file] }])))).toThrow(ManifestError);
     const skill = skillInstall('b', '/h/.claude/skills/demo', 'th');
     const dropped = { ...skill, files: skill.files.map((f) => ({ ...f, afterHash: null })) };
+    expect(parseManifest(JSON.stringify(manifest([dropped]))).installs[0]?.files[0]?.afterHash).toBeNull();
+  });
+
+  it('accepts a null afterHash on a script file', () => {
+    const script = scriptInstall('s', '/w/.shitaku/scripts/lint', 'th');
+    const dropped = { ...script, files: script.files.map((f) => ({ ...f, afterHash: null })) };
     expect(parseManifest(JSON.stringify(manifest([dropped]))).installs[0]?.files[0]?.afterHash).toBeNull();
   });
 
