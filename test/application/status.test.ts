@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
 import { NodeFileSystem } from '@/adapters/fs/node-fs.js';
 import { initMcps, type InitDeps } from '@/application/init-mcps.js';
-import { loadManifest, manifestPath, saveManifest } from '@/application/journal.js';
+import { loadManifest, manifestPath, saveManifest, stateDir } from '@/application/journal.js';
 import { getStatus } from '@/application/status.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
@@ -322,5 +322,52 @@ describe('getStatus (scripts)', () => {
     await rm(join(root(), 'index.mjs'));
     await symlink(tmp.root, join(root(), 'index.mjs'));
     expect(await statesOf()).toEqual({ 'project/script/lint': 'modified' });
+  });
+
+  it('lists the same script name once per scope when installed in project and user', async () => {
+    await initMcps({ ...deps(), source: scriptSource([SCRIPT_V1]) }, { mcps: [], scripts: ['lint'], scope: 'project' });
+    await initMcps({ ...deps(), source: scriptSource([SCRIPT_V1]) }, { mcps: [], scripts: ['lint'], scope: 'user' });
+    const report = await getStatus(deps(), {});
+    const lintItems = report.items.filter((i) => i.kind === 'script' && i.name === 'lint');
+    expect(lintItems).toHaveLength(2);
+    expect(lintItems.map((i) => i.scope).sort()).toEqual(['project', 'user']);
+    expect(lintItems.every((i) => i.state === 'installed')).toBe(true);
+    expect(lintItems.find((i) => i.scope === 'project')?.path).toBe(join(tmp.cwd, '.shitaku', 'scripts', 'lint'));
+    expect(lintItems.find((i) => i.scope === 'user')?.path).toBe(join(stateDir(tmp.homeDir), 'scripts', 'lint'));
+  });
+
+  it('reports mcp, skill and script together when all three are installed', async () => {
+    catalog = {
+      mcps: [GITHUB],
+      skills: [DEMO_V1],
+      scripts: [SCRIPT_V1],
+      profiles: [],
+      issues: [],
+    };
+    await initMcps(deps(), { mcps: ['github'], skills: ['demo'], scripts: ['lint'], scope: 'project' });
+    const report = await getStatus(deps(), {});
+    expect(report.items).toEqual([
+      expect.objectContaining({
+        scope: 'project',
+        kind: 'mcp',
+        name: 'github',
+        state: 'installed',
+        path: join(tmp.cwd, '.mcp.json'),
+      }),
+      expect.objectContaining({
+        scope: 'project',
+        kind: 'script',
+        name: 'lint',
+        state: 'installed',
+        path: join(tmp.cwd, '.shitaku', 'scripts', 'lint'),
+      }),
+      expect.objectContaining({
+        scope: 'project',
+        kind: 'skill',
+        name: 'demo',
+        state: 'installed',
+        path: join(tmp.cwd, '.claude', 'skills', 'demo'),
+      }),
+    ]);
   });
 });
