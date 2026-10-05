@@ -8,7 +8,7 @@ export const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
 /** A catalog source that serves the given skills and no MCPs. */
 export const skillSource = (skills: SkillItem[]): CatalogSource => ({
   ref: () => ({ kind: 'bundled', location: '/catalog' }),
-  load: () => Promise.resolve({ mcps: [], skills, profiles: [], issues: [] }),
+  load: () => Promise.resolve({ mcps: [], skills, scripts: [], profiles: [], issues: [] }),
 });
 
 /** Four files, one of them binary and two in subdirectories. SKILL.md sorts after assets/ and refs/ only by the apply order. */

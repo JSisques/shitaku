@@ -7,12 +7,14 @@ import {
   LeakError,
   StaleFileError,
   UnknownMcpError,
+  UnknownScriptError,
   UnknownSkillError,
 } from '@/application/init-mcps.js';
 import type { InitDeps } from '@/application/init-mcps.js';
 import { checkForUpdate } from '@/application/check-update.js';
 import { getDiagnosis } from '@/application/doctor.js';
 import { CatalogLoadError, listCatalog } from '@/application/list-catalog.js';
+import { runScript } from '@/application/run-script.js';
 import { getStatus, type StatusReport } from '@/application/status.js';
 import { undoInstall, UndoSelectionError, UndoVerifyError } from '@/application/undo-install.js';
 import { uninstallItem, UninstallSelectionError } from '@/application/uninstall-item.js';
@@ -26,6 +28,7 @@ import type { AgentTarget, Scope } from '@/ports/agent-target.js';
 import type { CatalogSource } from '@/ports/catalog-source.js';
 import { UnsafeTreeError, type FileSystem } from '@/ports/file-system.js';
 import type { Paths } from '@/ports/paths.js';
+import type { ProcessRunner } from '@/ports/process-runner.js';
 import { PromptCancelled } from '@/ports/prompter.js';
 import type { Prompter } from '@/ports/prompter.js';
 import type { LatestVersionSource } from '@/ports/version-source.js';
@@ -48,6 +51,12 @@ export interface CliDeps {
   updates?: UpdateSettings;
   /** Terminal facts for the startup banner. When absent, the banner is not shown. */
   terminal?: TerminalSettings;
+  /** Required to execute `shitaku run`; omitted only in tests that never invoke it. */
+  processRunner?: ProcessRunner;
+  /** Node binary for `shitaku run` (usually `process.execPath`). */
+  execPath?: string;
+  /** Host platform for PATH / `.bin` probing; defaults inside the use case. */
+  platform?: string;
 }
 
 /** What the update check needs beyond the shared deps: where to ask, who we are, and whether to bother. */
@@ -64,6 +73,7 @@ export interface UpdateSettings {
 interface InitOptions {
   mcps?: string[];
   skills?: string[];
+  scripts?: string[];
   scope?: Scope;
   source?: string;
   dryRun?: boolean;
@@ -134,21 +144,25 @@ function printPlan(deps: CliDeps, plan: ChangePlan): void {
     deps.out(`${skill.scope} scope: ${skill.root}`);
     deps.out(row(skill.name, skill.action, skill.reason));
   }
+  for (const script of plan.scripts) {
+    deps.out(`${script.scope} scope: ${script.root}`);
+    deps.out(row(script.name, script.action, script.reason));
+  }
   for (const v of plan.requiredEnv)
     deps.out(v.set ? `env ${v.name}: set` : `warning: ${v.name} is not set; set it before using the server`);
 }
 
 /** `--yes`, or a kind flag together with `--scope`, means `init` will not prompt. */
 function initIsNonInteractive(opts: InitOptions): boolean {
-  const kindFlag = opts.mcps !== undefined || opts.skills !== undefined;
+  const kindFlag = opts.mcps !== undefined || opts.skills !== undefined || opts.scripts !== undefined;
   return opts.yes === true || (kindFlag && opts.scope !== undefined);
 }
 
 async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
-  const kindFlag = opts.mcps !== undefined || opts.skills !== undefined;
+  const kindFlag = opts.mcps !== undefined || opts.skills !== undefined || opts.scripts !== undefined;
   const nonInteractive = initIsNonInteractive(opts);
   if (nonInteractive && !kindFlag) {
-    deps.err('error: select at least one kind: pass --mcps and/or --skills');
+    deps.err('error: select at least one kind: pass --mcps, --skills and/or --scripts');
     return 1;
   }
   if (nonInteractive && opts.scope === undefined) {
@@ -174,23 +188,27 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
   }
   for (const issue of catalog.issues) deps.err(`warning: skipped ${issue.file}: ${issue.reason}`);
 
-  // A flag for one kind means the other kind is not wanted; with no flag both kinds are asked.
+  // A flag for one kind means the other kinds are not wanted; with no flag every kind is asked.
   const mcps = opts.mcps ?? (kindFlag ? [] : await deps.prompter.selectMcps(catalog.mcps));
   const skills =
     opts.skills ?? (kindFlag || catalog.skills.length === 0 ? [] : await deps.prompter.selectSkills(catalog.skills));
-  if (mcps.length === 0 && skills.length === 0) {
-    deps.err('error: select at least one MCP or skill');
+  const scripts =
+    opts.scripts ??
+    (kindFlag || catalog.scripts.length === 0 ? [] : await deps.prompter.selectScripts(catalog.scripts));
+  if (mcps.length === 0 && skills.length === 0 && scripts.length === 0) {
+    deps.err('error: select at least one MCP, skill or script');
     return 1;
   }
   const scope = opts.scope ?? (await deps.prompter.selectScope());
   let force = opts.force === true;
-  let plan = await planInit(initDeps, { mcps, skills, scope, force });
+  let plan = await planInit(initDeps, { mcps, skills, scripts, scope, force });
 
   const conflicts = [
     ...plan.files
       .flatMap((f) => f.items.filter((i) => i.action === 'conflict'))
       .map((i) => ({ ...i, kind: 'mcp' as const })),
     ...plan.skills.filter((sk) => sk.action === 'conflict').map((sk) => ({ ...sk, kind: 'skill' as const })),
+    ...plan.scripts.filter((sc) => sc.action === 'conflict').map((sc) => ({ ...sc, kind: 'script' as const })),
   ];
   if (conflicts.length > 0) {
     if (nonInteractive) {
@@ -198,7 +216,7 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
       deps.err('error: unresolved conflicts; re-run with --force to overwrite them');
       return EXIT_CONFLICT;
     }
-    const keep = { mcp: new Set(mcps), skill: new Set(skills) };
+    const keep = { mcp: new Set(mcps), skill: new Set(skills), script: new Set(scripts) };
     for (const c of conflicts) {
       const choice = await deps.prompter.resolveConflict({
         kind: c.kind,
@@ -211,6 +229,7 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
     plan = await planInit(initDeps, {
       mcps: mcps.filter((m) => keep.mcp.has(m)),
       skills: skills.filter((sk) => keep.skill.has(sk)),
+      scripts: scripts.filter((sc) => keep.script.has(sc)),
       scope,
       force,
     });
@@ -256,7 +275,7 @@ async function runUndo(deps: CliDeps, opts: { id?: string; force?: boolean; dryR
 
 interface UninstallOptions {
   scope?: Scope;
-  kind?: 'mcp' | 'skill';
+  kind?: 'mcp' | 'skill' | 'script';
   dryRun?: boolean;
   force?: boolean;
 }
@@ -341,7 +360,14 @@ function printDiagnosis(deps: CliDeps, target: string, findings: Finding[]): voi
 
 async function runDoctor(deps: CliDeps, opts: { scope?: Scope; source?: string; json?: boolean }): Promise<number> {
   const report = await getDiagnosis(
-    { source: deps.makeSource(opts.source), fs: deps.fs, target: deps.target, paths: deps.paths, env: deps.env },
+    {
+      source: deps.makeSource(opts.source),
+      fs: deps.fs,
+      target: deps.target,
+      paths: deps.paths,
+      env: deps.env,
+      platform: deps.platform,
+    },
     { scope: opts.scope },
   );
   // Warnings go to stderr in both modes so `--json` keeps stdout parseable.
@@ -364,6 +390,37 @@ async function runDoctor(deps: CliDeps, opts: { scope?: Scope; source?: string; 
     );
   } else printDiagnosis(deps, report.target, report.findings);
   return problems === 0 ? 0 : EXIT_PROBLEMS;
+}
+
+async function runRun(deps: CliDeps, name: string | undefined, args: string[]): Promise<number> {
+  if (deps.processRunner === undefined || deps.execPath === undefined) {
+    deps.err('error: process runner is not configured');
+    return 1;
+  }
+  return runScript(
+    {
+      fs: deps.fs,
+      paths: deps.paths,
+      runner: deps.processRunner,
+      execPath: deps.execPath,
+      env: deps.env,
+      platform: deps.platform,
+      out: (line) => deps.out(line),
+      err: (line) => deps.err(line),
+    },
+    { name, args },
+  );
+}
+
+/** Everything after `run` is the optional script name plus passthrough args (including `--flags`). */
+function parseRunArgv(argv: string[]): { name?: string; args: string[] } {
+  const runIdx = argv.indexOf('run');
+  if (runIdx < 0) return { args: [] };
+  let rest = argv.slice(runIdx + 1);
+  if (rest[0] === '--') rest = rest.slice(1);
+  if (rest.length === 0) return { args: [] };
+  const [name, ...args] = rest;
+  return { name, args };
 }
 
 const csv = (value: string): string[] =>
@@ -430,14 +487,18 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
   program
     .command('init')
-    .description('Install MCP servers and skills for Claude Code')
+    .description('Install MCP servers, skills and scripts for Claude Code')
     .option('--mcps <names>', 'comma-separated MCP names', csv)
     .option('--skills <names>', 'comma-separated skill names', csv)
+    .option('--scripts <names>', 'comma-separated script names', csv)
     .addOption(new Option('--scope <scope>', 'where to install').choices(['project', 'user']))
     .option('--source <folder>', 'use a catalog folder instead of the bundled one (trusted: its commands run later)')
     .option('--dry-run', 'print the plan without writing anything')
-    .option('--yes', 'skip confirmation (requires --scope and --mcps and/or --skills)')
-    .option('--force', 'overwrite existing entries and skill directories that differ (skills are backed up first)')
+    .option('--yes', 'skip confirmation (requires --scope and --mcps, --skills and/or --scripts)')
+    .option(
+      '--force',
+      'overwrite existing entries and skill/script directories that differ (trees are backed up first)',
+    )
     .action(async (opts: InitOptions) => void (exitCode = await guarded(deps, () => runInit(deps, opts))));
 
   program
@@ -453,9 +514,15 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
   program
     .command('uninstall <name>')
-    .description('Remove one MCP server or skill that shitaku installed (undo reverts it)')
+    .description('Remove one MCP server, skill or script that shitaku installed (undo reverts it)')
     .addOption(new Option('--scope <scope>', 'scope to remove from (default: inferred)').choices(['project', 'user']))
-    .addOption(new Option('--kind <kind>', 'resolve a name that is both an MCP and a skill').choices(['mcp', 'skill']))
+    .addOption(
+      new Option('--kind <kind>', 'resolve a name that is an MCP, skill and/or script').choices([
+        'mcp',
+        'skill',
+        'script',
+      ]),
+    )
     .option('--dry-run', 'show what would be removed')
     .option('--force', 'remove even if the item changed since the install')
     .action(
@@ -476,7 +543,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
   program
     .command('list')
-    .description('List the MCPs, skills and profiles a catalog offers')
+    .description('List the MCPs, skills, profiles and scripts a catalog offers')
     .addArgument(new Argument('[kind]', 'only list this kind').choices(LIST_KINDS))
     .option('--search <text>', 'only items whose name or description contains this text (case-insensitive)')
     .option('--source <folder>', 'list a catalog folder instead of the bundled one')
@@ -496,6 +563,16 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       async (opts: { scope?: Scope; source?: string; json?: boolean }) =>
         void (exitCode = await guarded(deps, () => runDoctor(deps, opts))),
     );
+
+  program
+    .command('run')
+    .description('List installed scripts, or run one by name with argument passthrough')
+    .allowUnknownOption()
+    .allowExcessArguments()
+    .action(async () => {
+      const { name, args } = parseRunArgv(argv);
+      exitCode = await guarded(deps, () => runRun(deps, name, args));
+    });
 
   program.hook('preAction', (_thisCommand, actionCommand) => {
     printBannerIfNeeded(deps, actionCommand, argv);
@@ -535,6 +612,7 @@ async function guarded(deps: CliDeps, run: () => Promise<number>): Promise<numbe
     const known = [
       UnknownMcpError,
       UnknownSkillError,
+      UnknownScriptError,
       UnsafeTreeError,
       StaleFileError,
       LeakError,

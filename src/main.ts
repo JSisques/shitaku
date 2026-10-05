@@ -11,6 +11,7 @@ import { runCli } from './adapters/cli/program.js';
 import { claudeCodeTarget } from './adapters/claude-code/target.js';
 import { NodeFileSystem } from './adapters/fs/node-fs.js';
 import { NpmRegistryVersionSource } from './adapters/npm/registry-version-source.js';
+import { NodeProcessRunner } from './adapters/process/node-process-runner.js';
 import { detectInstallMethod } from './domain/install-method.js';
 
 const cwd = process.cwd();
@@ -48,6 +49,9 @@ process.exitCode = await runCli(process.argv, {
   out: (line) => console.log(line),
   err: (line) => console.error(line),
   cliVersion: version,
+  processRunner: new NodeProcessRunner(),
+  execPath: process.execPath,
+  platform: process.platform,
   terminal: {
     tty: Boolean(process.stdout.isTTY && process.stderr.isTTY),
     color: terminalSupportsColor(process.env, Boolean(process.stderr.isTTY)),

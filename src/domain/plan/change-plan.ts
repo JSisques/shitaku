@@ -2,6 +2,7 @@ import type { AgentTarget, McpServerEntry, Scope } from '@/ports/agent-target.js
 import type { Paths } from '@/ports/paths.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import { hashEntry, sha256 } from '@/domain/hash.js';
+import type { ScriptChange } from '@/domain/plan/script-plan.js';
 import type { SkillChange } from '@/domain/plan/skill-plan.js';
 import { mergeAtPath, readAtPath } from '@/domain/json-merge.js';
 
@@ -36,6 +37,8 @@ export interface ChangePlan {
   declaredEnv: string[];
   /** One entry per requested skill, in request order. */
   skills: SkillChange[];
+  /** One entry per requested script, in request order. */
+  scripts: ScriptChange[];
 }
 
 export interface BuildPlanInput {
@@ -130,5 +133,11 @@ export function buildPlan(input: BuildPlanInput): ChangePlan {
     items: planned,
   };
   const declaredEnv = [...new Set(items.filter((i) => target.supports(i)).flatMap((i) => i.env.map((e) => e.name)))];
-  return { files: [file], requiredEnv: [...required].map(([name, set]) => ({ name, set })), declaredEnv, skills: [] };
+  return {
+    files: [file],
+    requiredEnv: [...required].map(([name, set]) => ({ name, set })),
+    declaredEnv,
+    skills: [],
+    scripts: [],
+  };
 }

@@ -8,19 +8,20 @@ A read-only `shitaku list [kind]` command that shows the MCPs, skills, and profi
 
 ### Requirement: Kind filter
 
-`list` MUST accept an optional positional `kind` of `mcps`, `skills`, or `profiles` (plural only, no aliases). Without it, all three kinds MUST be listed. An invalid kind MUST be rejected by commander's choices validation.
+`list` MUST accept an optional positional `kind` of `mcps`, `skills`, `profiles`, or `scripts` (plural only, no aliases). Without it, all four kinds MUST be listed. An invalid kind MUST be rejected by commander's choices validation.
+(Previously: only mcps, skills, profiles)
 
 #### Scenario: No kind lists all
 
-- GIVEN a catalog with MCPs, skills, and profiles
+- GIVEN a catalog with MCPs, skills, profiles, and scripts
 - WHEN `shitaku list` runs
-- THEN items of all three kinds are listed
+- THEN items of all four kinds are listed
 
 #### Scenario: Single kind
 
-- GIVEN a catalog with MCPs, skills, and profiles
-- WHEN `shitaku list skills` runs
-- THEN only skills are listed
+- GIVEN a catalog with MCPs, skills, profiles, and scripts
+- WHEN `shitaku list skills` or `shitaku list scripts` runs
+- THEN only that kind is listed
 
 #### Scenario: Invalid kind
 
@@ -125,3 +126,13 @@ When nothing matches, `list` MUST exit 0. Text mode MUST print `no matching item
 - GIVEN `--source` points to a folder without a valid `catalog.json`
 - WHEN `list` runs
 - THEN the error line is printed to stderr and the exit code is 1
+
+### Requirement: Scripts list shape
+
+Text and JSON list output MUST include scripts using the same grouping and flat JSON rules as other kinds. JSON `kind` for a script MUST be the singular `script`.
+
+#### Scenario: JSON script kind
+
+- GIVEN catalog script `demo`
+- WHEN `list --json` runs
+- THEN an item exists with `"kind": "script"` and name `demo`

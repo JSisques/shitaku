@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ScriptNameSchema, type ScriptItem } from '@/domain/catalog/script.js';
 import { SkillNameSchema, type SkillItem } from '@/domain/catalog/skill.js';
 import { extractPlaceholders, hasPlaceholder } from '@/domain/placeholders.js';
 
@@ -62,6 +63,7 @@ export const ProfileSchema = z.object({
   extends: z.array(z.string()).default([]),
   mcps: z.array(z.string()).default([]),
   skills: z.array(z.string()).default([]),
+  scripts: z.array(z.string()).default([]),
 });
 
 export const CatalogIndexSchema = z.object({
@@ -70,6 +72,7 @@ export const CatalogIndexSchema = z.object({
     mcps: z.array(z.string()),
     profiles: z.array(z.string()).default([]),
     skills: z.array(SkillNameSchema).default([]),
+    scripts: z.array(ScriptNameSchema).default([]),
   }),
 });
 
@@ -80,5 +83,6 @@ export type CatalogIndex = z.infer<typeof CatalogIndexSchema>;
 export interface Catalog {
   mcps: McpItem[];
   skills: SkillItem[];
+  scripts: ScriptItem[];
   profiles: Profile[];
 }

@@ -8,6 +8,7 @@ import { runCli, type CliDeps } from '@/adapters/cli/program.js';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
 import { NodeFileSystem } from '@/adapters/fs/node-fs.js';
 import { PromptCancelled, type Prompter } from '@/ports/prompter.js';
+import type { ProcessRunner } from '@/ports/process-runner.js';
 import { parseDoc } from '@test/helpers/parse-doc.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
@@ -16,7 +17,9 @@ const TOKEN = 'abc123-secret-value';
 
 /** Scripted prompter; any call it was not scripted for fails the test. */
 function fakePrompter(
-  script: Partial<Record<'mcps' | 'skills' | 'scope' | 'confirm', unknown>> & { conflict?: 'overwrite' | 'skip' } = {},
+  script: Partial<Record<'mcps' | 'skills' | 'scripts' | 'scope' | 'confirm', unknown>> & {
+    conflict?: 'overwrite' | 'skip';
+  } = {},
 ) {
   const calls: string[] = [];
   const conflicts: { kind: string; name: string; reason: string }[] = [];
@@ -31,6 +34,10 @@ function fakePrompter(
     selectSkills: () => (
       calls.push('skills'),
       Promise.resolve((script.skills as string[] | undefined) ?? unscripted('skills'))
+    ),
+    selectScripts: () => (
+      calls.push('scripts'),
+      Promise.resolve((script.scripts as string[] | undefined) ?? unscripted('scripts'))
     ),
     selectScope: () => (
       calls.push('scope'),
@@ -61,6 +68,10 @@ describe('runCli', () => {
   let updates: CliDeps['updates'];
   let cliVersion: string | undefined;
   let terminal: CliDeps['terminal'];
+  let processRunner: ProcessRunner | undefined;
+  let execPath: string | undefined;
+  let spawnCalls: { command: string; args: readonly string[] }[];
+  let spawnExit: number;
   const mcpFile = () => join(tmp.cwd, '.mcp.json');
   const text = () => [...out, ...err].join('\n');
 
@@ -77,6 +88,9 @@ describe('runCli', () => {
       updates,
       cliVersion,
       terminal,
+      processRunner,
+      execPath,
+      platform: 'linux',
     };
     return runCli(['node', 'shitaku', ...args], deps);
   };
@@ -91,6 +105,15 @@ describe('runCli', () => {
     updates = undefined;
     cliVersion = undefined;
     terminal = undefined;
+    spawnCalls = [];
+    spawnExit = 0;
+    processRunner = {
+      run: (command, args) => {
+        spawnCalls.push({ command, args });
+        return Promise.resolve({ exitCode: spawnExit });
+      },
+    };
+    execPath = '/fake/node';
     usePrompter();
   });
   afterEach(() => tmp.cleanup());
@@ -99,6 +122,7 @@ describe('runCli', () => {
     expect(await run('--help')).toBe(0);
     expect(text()).toContain('init');
     expect(text()).toContain('undo');
+    expect(text()).toContain('run');
   });
 
   describe('version', () => {
@@ -213,6 +237,7 @@ describe('runCli', () => {
       expect(await run('init', '--yes', '--scope', 'project')).toBe(1);
       expect(text()).toContain('--mcps');
       expect(text()).toContain('--skills');
+      expect(text()).toContain('--scripts');
       expect(calls).toEqual([]);
       expect(await readdir(tmp.cwd)).toEqual([]);
     });
@@ -652,10 +677,10 @@ describe('runCli', () => {
     /** Writes a folder catalog; profiles have no skills or MCPs of their own, so they always resolve. */
     const writeCatalog = async (
       name: string,
-      items: { mcps?: Entry[]; skills?: Entry[]; profiles?: Entry[] },
+      items: { mcps?: Entry[]; skills?: Entry[]; scripts?: Entry[]; profiles?: Entry[] },
     ): Promise<string> => {
       const dir = join(tmp.root, name);
-      const { mcps = [], skills = [], profiles = [] } = items;
+      const { mcps = [], skills = [], scripts = [], profiles = [] } = items;
       await mkdir(join(dir, 'mcps'), { recursive: true });
       await mkdir(join(dir, 'profiles'), { recursive: true });
       await writeFile(
@@ -665,6 +690,7 @@ describe('runCli', () => {
           items: {
             mcps: mcps.map((m) => m.name),
             skills: skills.map((s) => s.name),
+            scripts: scripts.map((s) => s.name),
             profiles: profiles.map((p) => p.name),
           },
         }),
@@ -679,6 +705,14 @@ describe('runCli', () => {
           join(dir, 'skills', s.name, 'SKILL.md'),
           `---\nname: ${s.name}\ndescription: ${s.description ?? ''}\n---\n`,
         );
+      }
+      for (const s of scripts) {
+        await mkdir(join(dir, 'scripts', s.name), { recursive: true });
+        await writeFile(
+          join(dir, 'scripts', s.name, 'script.json'),
+          JSON.stringify({ name: s.name, description: s.description ?? '', tools: [] }),
+        );
+        await writeFile(join(dir, 'scripts', s.name, 'index.mjs'), 'export default {};\n');
       }
       for (const p of profiles) await writeFile(join(dir, 'profiles', `${p.name}.json`), JSON.stringify(p));
       return dir;
@@ -718,6 +752,34 @@ describe('runCli', () => {
       it('lists only the requested kind', async () => {
         expect(await run('list', 'skills', '--source', await fullCatalog())).toBe(0);
         expect(out).toEqual(['skills:', '  demo  Browser automation']);
+      });
+
+      it('lists only scripts when asked', async () => {
+        const dir = await writeCatalog('with-scripts', {
+          scripts: [{ name: 'lint', description: 'Run lint' }],
+        });
+        expect(await run('list', 'scripts', '--source', dir)).toBe(0);
+        expect(out).toEqual(['scripts:', '  lint  Run lint']);
+      });
+
+      it('includes scripts among all kinds', async () => {
+        const dir = await writeCatalog('all-kinds', {
+          mcps: [{ name: 'fs', description: 'Files' }],
+          skills: [{ name: 'demo', description: 'Skill' }],
+          scripts: [{ name: 'lint', description: 'Run lint' }],
+          profiles: [{ name: 'base' }],
+        });
+        expect(await run('list', '--source', dir)).toBe(0);
+        expect(out).toEqual([
+          'mcps:',
+          '  fs    Files',
+          'profiles:',
+          '  base',
+          'scripts:',
+          '  lint  Run lint',
+          'skills:',
+          '  demo  Skill',
+        ]);
       });
 
       it('lists only profiles when asked, printing a profile without description as its name', async () => {
@@ -777,6 +839,17 @@ describe('runCli', () => {
         expect(JSON.parse(out.join('\n'))).toEqual({
           version: 1,
           items: [{ kind: 'profile', name: 'web', description: 'Web setup' }],
+        });
+      });
+
+      it('prints scripts with singular JSON kind script', async () => {
+        const dir = await writeCatalog('json-scripts', {
+          scripts: [{ name: 'demo', description: 'Demo script' }],
+        });
+        expect(await run('list', '--json', '--source', dir)).toBe(0);
+        expect(JSON.parse(out.join('\n'))).toEqual({
+          version: 1,
+          items: [{ kind: 'script', name: 'demo', description: 'Demo script' }],
         });
       });
 
@@ -893,7 +966,7 @@ describe('runCli', () => {
     it('keeps the exit code of a failing command and still prints the notice', async () => {
       useUpdates('0.3.0');
       expect(await run('init', '--yes')).toBe(1);
-      expect(err).toEqual(['error: select at least one kind: pass --mcps and/or --skills', NOTICE]);
+      expect(err).toEqual(['error: select at least one kind: pass --mcps, --skills and/or --scripts', NOTICE]);
     });
 
     it('does not check without updates settings', async () => {
@@ -922,6 +995,58 @@ describe('runCli', () => {
       expect(await run('status')).toBe(0);
       expect(asked).toBe(1);
       expect(err).toEqual([NOTICE]);
+    });
+  });
+
+  describe('run', () => {
+    const writeScriptCatalog = async (name: string, description: string): Promise<string> => {
+      const dir = join(tmp.root, `run-cat-${name}`);
+      await mkdir(join(dir, 'mcps'), { recursive: true });
+      await mkdir(join(dir, 'profiles'), { recursive: true });
+      await mkdir(join(dir, 'scripts', name), { recursive: true });
+      await writeFile(
+        join(dir, 'catalog.json'),
+        JSON.stringify({ version: 1, items: { mcps: [], skills: [], scripts: [name], profiles: [] } }),
+      );
+      await writeFile(join(dir, 'scripts', name, 'script.json'), JSON.stringify({ name, description, tools: [] }));
+      await writeFile(join(dir, 'scripts', name, 'index.mjs'), 'export default 1;\n');
+      return dir;
+    };
+
+    it('lists installed scripts on bare run', async () => {
+      const dir = await writeScriptCatalog('lint', 'Run lint');
+      expect(await run('init', '--yes', '--scripts', 'lint', '--scope', 'project', '--source', dir)).toBe(0);
+      out = [];
+      err = [];
+      expect(await run('run')).toBe(0);
+      expect(spawnCalls).toEqual([]);
+      expect(out.join('\n')).toMatch(/lint/);
+      expect(out.join('\n')).toMatch(/project/);
+    });
+
+    it('rejects path-like names without spawning', async () => {
+      expect(await run('run', './lint')).toBe(1);
+      expect(spawnCalls).toEqual([]);
+      expect(err.join('\n')).toMatch(/path/i);
+    });
+
+    it('runs the project install and passes args and exit code', async () => {
+      const dir = await writeScriptCatalog('lint', 'Run lint');
+      expect(await run('init', '--yes', '--scripts', 'lint', '--scope', 'project', '--source', dir)).toBe(0);
+      out = [];
+      err = [];
+      spawnExit = 7;
+      expect(await run('run', 'lint', '--json')).toBe(7);
+      expect(spawnCalls).toHaveLength(1);
+      expect(spawnCalls[0]?.command).toBe('/fake/node');
+      expect(spawnCalls[0]?.args[0]).toMatch(/index\.mjs$/);
+      expect(spawnCalls[0]?.args.slice(1)).toEqual(['--json']);
+    });
+
+    it('suggests bare run for an unknown name', async () => {
+      expect(await run('run', 'ghost')).toBe(1);
+      expect(spawnCalls).toEqual([]);
+      expect(err.join('\n')).toMatch(/shitaku run/);
     });
   });
 

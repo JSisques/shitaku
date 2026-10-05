@@ -14,6 +14,10 @@ const mcp = (name: string): object => ({
 
 const skillMd = (name: string): string => `---\nname: ${name}\ndescription: ${name} skill\n---\n# ${name}\n`;
 
+const scriptMeta = (name: string, extra: Record<string, unknown> = {}): string =>
+  JSON.stringify({ name, description: `${name} script`, tools: [], ...extra });
+const scriptEntry = (): string => 'export default {};\n';
+
 let tmp: TmpPaths;
 let dir: string;
 
@@ -220,6 +224,90 @@ describe('FolderCatalogSource', () => {
     await put('skills/demo/SKILL.md', skillMd('demo'));
     await put('profiles/ok.json', { name: 'ok', skills: ['demo'] });
     await put('profiles/broken.json', { name: 'broken', skills: ['ghost'] });
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.profiles.map((p) => p.name)).toEqual(['ok']);
+    expect(catalog.issues[0]?.reason).toContain('ghost');
+  });
+
+  it('loads an empty scripts list when items.scripts is absent', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [] } });
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.scripts).toEqual([]);
+    expect(catalog.issues).toEqual([]);
+  });
+
+  it('loads a valid script with index.mjs and script.json', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], scripts: ['demo'] } });
+    await put('scripts/demo/script.json', scriptMeta('demo', { tools: ['eslint'] }));
+    await put('scripts/demo/index.mjs', scriptEntry());
+    await put('scripts/demo/lib/helper.mjs', 'export const x = 1;\n');
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.issues).toEqual([]);
+    expect(catalog.scripts).toHaveLength(1);
+    expect(catalog.scripts[0]).toMatchObject({ name: 'demo', description: 'demo script', tools: ['eslint'] });
+    expect(catalog.scripts[0]?.files.map((f) => f.path)).toEqual(['index.mjs', 'lib/helper.mjs', 'script.json']);
+  });
+
+  it('skips an invalid script, reports it, and keeps the valid ones', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], scripts: ['good', 'bad', 'mismatch'] } });
+    await put('scripts/good/script.json', scriptMeta('good'));
+    await put('scripts/good/index.mjs', scriptEntry());
+    await put('scripts/bad/script.json', JSON.stringify({ name: 'bad' }));
+    await put('scripts/bad/index.mjs', scriptEntry());
+    await put('scripts/mismatch/script.json', scriptMeta('other'));
+    await put('scripts/mismatch/index.mjs', scriptEntry());
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.scripts.map((s) => s.name)).toEqual(['good']);
+    expect(catalog.issues.map((i) => i.file)).toEqual(['scripts/bad/script.json', 'scripts/mismatch']);
+    expect(catalog.issues[1]?.reason).toContain("'other'");
+  });
+
+  it('flags a listed script with no directory', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], scripts: ['ghost'] } });
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.scripts).toEqual([]);
+    expect(catalog.issues[0]?.file).toBe('scripts/ghost');
+    expect(catalog.issues[0]?.reason).toContain('missing');
+  });
+
+  it('flags a script directory that is not listed in catalog.json', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], scripts: ['listed'] } });
+    await put('scripts/listed/script.json', scriptMeta('listed'));
+    await put('scripts/listed/index.mjs', scriptEntry());
+    await put('scripts/stray/script.json', scriptMeta('stray'));
+    await put('scripts/stray/index.mjs', scriptEntry());
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.scripts.map((s) => s.name)).toEqual(['listed']);
+    expect(catalog.issues[0]?.file).toBe('scripts/stray');
+    expect(catalog.issues[0]?.reason).toContain('not listed');
+  });
+
+  it('skips a script that contains a symlink', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], scripts: ['linked'] } });
+    await put('scripts/linked/script.json', scriptMeta('linked'));
+    await put('scripts/linked/index.mjs', scriptEntry());
+    await put('secret.txt', 'secret');
+    await symlink(join(dir, 'secret.txt'), join(dir, 'scripts', 'linked', 'leak.txt'));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.scripts).toEqual([]);
+    expect(catalog.issues[0]?.file).toBe('scripts/linked');
+    expect(catalog.issues[0]?.reason).toContain('leak.txt');
+  });
+
+  it('resolves profile scripts and drops profiles that reference unknown ones', async () => {
+    await put('catalog.json', {
+      version: 1,
+      items: { mcps: [], scripts: ['demo'], profiles: ['ok', 'broken'] },
+    });
+    await put('scripts/demo/script.json', scriptMeta('demo'));
+    await put('scripts/demo/index.mjs', scriptEntry());
+    await put('profiles/ok.json', { name: 'ok', scripts: ['demo'] });
+    await put('profiles/broken.json', { name: 'broken', scripts: ['ghost'] });
 
     const catalog = await new FolderCatalogSource(dir, 'folder').load();
     expect(catalog.profiles.map((p) => p.name)).toEqual(['ok']);

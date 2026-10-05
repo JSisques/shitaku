@@ -39,6 +39,28 @@ const skill = (name: string, state: StatusState = 'installed', scope: Scope = 'u
   state,
 });
 
+const script = (
+  name: string,
+  o: {
+    scope?: Scope;
+    state?: StatusState;
+    tools?: { tool: string; localBinPresent: boolean }[];
+  } = {},
+): ItemObservation => ({
+  item: {
+    kind: 'script',
+    scope: o.scope ?? 'project',
+    path: `/repo/.shitaku/scripts/${name}`,
+    name,
+    hash: 'h',
+    installId: 'i1',
+  },
+  config: 'present',
+  current: { kind: 'hash', hash: 'h' },
+  state: o.state ?? 'installed',
+  scriptTools: o.tools ?? [],
+});
+
 const run = (observations: ItemObservation[], env: Record<string, string | undefined> = {}) =>
   diagnose({ observations, env, projectConfigPath: PROJECT_FILE }).findings;
 
@@ -152,6 +174,33 @@ describe('diagnose: duplicate-mcp', () => {
     expect(run([mcp('fs'), mcp('git', { scope: 'project' })])).toEqual([]);
     const absent = run([mcp('fs'), mcp('fs', { scope: 'project', state: 'missing', entry: undefined })]);
     expect(absent.map((f) => f.code)).toEqual(['mcp-missing']);
+  });
+});
+
+describe('diagnose: script-tool-missing', () => {
+  it('reports missing local tools as info only', () => {
+    const findings = run([
+      script('lint', {
+        tools: [
+          { tool: 'knip', localBinPresent: false },
+          { tool: 'eslint', localBinPresent: true },
+        ],
+      }),
+    ]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      severity: 'info',
+      code: 'script-tool-missing',
+      kind: 'script',
+      name: 'lint',
+      tool: 'knip',
+    });
+    expect(findings[0]?.message).toContain('knip');
+    expect(findings[0]?.message).toContain('lint');
+  });
+
+  it('reports nothing when every required tool is present locally', () => {
+    expect(run([script('lint', { tools: [{ tool: 'knip', localBinPresent: true }] })])).toEqual([]);
   });
 });
 

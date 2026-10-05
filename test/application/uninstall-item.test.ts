@@ -11,6 +11,7 @@ import { undoInstall, UndoSelectionError } from '@/application/undo-install.js';
 import { uninstallItem, UninstallSelectionError, type UninstallRequest } from '@/application/uninstall-item.js';
 import { UnsafeTreeError, type FileSystem } from '@/ports/file-system.js';
 import { DEMO_V1, faultyFs, skillSource } from '@test/helpers/skills.js';
+import { SCRIPT_V1, scriptSource } from '@test/helpers/scripts.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
 const CATALOG = join(import.meta.dirname, '..', '..', 'catalog');
@@ -363,5 +364,80 @@ describe('uninstallItem', () => {
       const [first] = (await loadManifest(fs, tmp.homeDir)).installs;
       await expect(undoInstall(undoDeps(), { id: first!.id })).rejects.toThrow(UndoSelectionError);
     });
+  });
+});
+
+describe('uninstallItem (scripts)', () => {
+  let tmp: TmpPaths;
+  let fs: NodeFileSystem;
+  let scriptDeps: InitDeps;
+  const root = () => join(tmp.cwd, '.shitaku', 'scripts', 'lint');
+  const exists = (path: string) =>
+    access(path).then(
+      () => true,
+      () => false,
+    );
+  const uninstall = (req: UninstallRequest) =>
+    uninstallItem({ fs, target: claudeCodeTarget, paths: { homeDir: tmp.homeDir, cwd: tmp.cwd } }, req);
+
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    fs = new NodeFileSystem();
+    scriptDeps = {
+      fs,
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+      source: scriptSource([SCRIPT_V1, { ...SCRIPT_V1, name: 'demo' }]),
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('removes an unmodified script with --kind script', async () => {
+    await initMcps(scriptDeps, { mcps: [], scripts: ['lint'], scope: 'project' });
+    expect(await uninstall({ name: 'lint', kind: 'script' })).toMatchObject({
+      status: 'removed',
+      exitCode: 0,
+      item: { kind: 'script', name: 'lint' },
+    });
+    expect(await exists(root())).toBe(false);
+  });
+
+  it('requires --kind when the name is both a skill and a script', async () => {
+    const skillDeps: InitDeps = {
+      ...scriptDeps,
+      source: {
+        ref: () => ({ kind: 'bundled', location: '/catalog' }),
+        load: () =>
+          Promise.resolve({
+            mcps: [],
+            skills: [DEMO_V1],
+            scripts: [{ ...SCRIPT_V1, name: 'demo' }],
+            profiles: [],
+            issues: [],
+          }),
+      },
+    };
+    await initMcps(skillDeps, { mcps: [], skills: ['demo'], scope: 'project' });
+    await initMcps(skillDeps, { mcps: [], scripts: ['demo'], scope: 'project' });
+    await expect(uninstall({ name: 'demo' })).rejects.toThrow(UninstallSelectionError);
+    expect(await uninstall({ name: 'demo', kind: 'script' })).toMatchObject({ status: 'removed' });
+    expect(await exists(join(tmp.cwd, '.shitaku', 'scripts', 'demo'))).toBe(false);
+    expect(await exists(join(tmp.cwd, '.claude', 'skills', 'demo'))).toBe(true);
+  });
+
+  it('refuses a modified script without --force and keeps extras with --force', async () => {
+    await initMcps(scriptDeps, { mcps: [], scripts: ['lint'], scope: 'project' });
+    await writeFile(join(root(), 'index.mjs'), 'edited');
+    expect(await uninstall({ name: 'lint', kind: 'script' })).toMatchObject({ status: 'refused', exitCode: 3 });
+    expect(await exists(join(root(), 'index.mjs'))).toBe(true);
+
+    await writeFile(join(root(), 'extra.md'), 'mine');
+    expect(await uninstall({ name: 'lint', kind: 'script', force: true })).toMatchObject({
+      status: 'removed',
+      exitCode: 0,
+    });
+    expect(await exists(join(root(), 'extra.md'))).toBe(true);
+    expect(await exists(join(root(), 'index.mjs'))).toBe(false);
   });
 });

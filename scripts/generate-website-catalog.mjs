@@ -7,7 +7,7 @@ import * as prettier from 'prettier';
 const root = join(import.meta.dirname, '..');
 const catalogDir = join(root, 'catalog');
 const locales = ['en', 'es'];
-const generatedKinds = ['mcps', 'skills', 'profiles'];
+const generatedKinds = ['mcps', 'skills', 'profiles', 'scripts'];
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
@@ -119,11 +119,31 @@ This page is generated from \`catalog/skills/${name}/SKILL.md\`.
 `;
 }
 
+function renderScript(name) {
+  const meta = readJson(join(catalogDir, 'scripts', name, 'script.json'));
+  const description = meta.description;
+  const tools = Array.isArray(meta.tools) ? meta.tools : [];
+  const lines = [
+    frontmatter(name, description),
+    `# \`${name}\``,
+    '',
+    description,
+    '',
+    'This page is generated from `catalog/scripts/' + name + '/script.json`.',
+    '',
+  ];
+  if (tools.length > 0) {
+    lines.push('## Tools', '', ...tools.map((tool) => `- \`${tool}\``), '');
+  }
+  return `${lines.join('\n').trimEnd()}\n`;
+}
+
 function renderProfile(name) {
   const profile = readJson(join(catalogDir, 'profiles', `${name}.json`));
   const description = profile.description ?? name;
   const mcps = profile.mcps ?? [];
   const skills = profile.skills ?? [];
+  const scripts = profile.scripts ?? [];
   const extendsFrom = profile.extends ?? [];
 
   const lines = [
@@ -146,6 +166,9 @@ function renderProfile(name) {
   }
   if (skills.length > 0) {
     lines.push('## Skills', '', ...skills.map((item) => `- \`${item}\``), '');
+  }
+  if (scripts.length > 0) {
+    lines.push('## Scripts', '', ...scripts.map((item) => `- \`${item}\``), '');
   }
 
   return `${lines.join('\n').trimEnd()}\n`;
@@ -170,6 +193,10 @@ async function expectedFiles() {
     for (const name of items.skills ?? []) {
       const rel = join('website/src/content/docs', locale, 'catalog/skills', `${name}.md`);
       files.set(rel, await formatMarkdown(rel, renderSkill(name)));
+    }
+    for (const name of items.scripts ?? []) {
+      const rel = join('website/src/content/docs', locale, 'catalog/scripts', `${name}.md`);
+      files.set(rel, await formatMarkdown(rel, renderScript(name)));
     }
     for (const name of items.profiles ?? []) {
       const rel = join('website/src/content/docs', locale, 'catalog/profiles', `${name}.md`);

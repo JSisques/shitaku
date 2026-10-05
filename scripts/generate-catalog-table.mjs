@@ -7,7 +7,7 @@ const root = join(import.meta.dirname, '..');
 const catalogDir = join(root, 'catalog');
 const readmePath = join(root, 'README.md');
 
-const SECTIONS = ['mcps', 'skills'];
+const SECTIONS = ['mcps', 'skills', 'scripts'];
 
 const startMarker = (section) => `<!-- catalog:${section}:start -->`;
 const endMarker = (section) => `<!-- catalog:${section}:end -->`;
@@ -25,13 +25,25 @@ function skillDescription(name) {
     .replace(/^(['"])(.*)\1$/, '$2');
 }
 
+function scriptDescription(name) {
+  const meta = readJson(join(catalogDir, 'scripts', name, 'script.json'));
+  if (typeof meta.description !== 'string' || meta.description.length === 0) {
+    throw new Error(`scripts/${name}/script.json has no description`);
+  }
+  return meta.description;
+}
+
 function rows(section, items) {
   return [...items]
     .sort((a, b) => a.localeCompare(b))
     .map((name) => ({
       name,
       description:
-        section === 'mcps' ? readJson(join(catalogDir, 'mcps', `${name}.json`)).description : skillDescription(name),
+        section === 'mcps'
+          ? readJson(join(catalogDir, 'mcps', `${name}.json`)).description
+          : section === 'skills'
+            ? skillDescription(name)
+            : scriptDescription(name),
     }));
 }
 

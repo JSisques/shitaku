@@ -11,7 +11,8 @@ export type DoctorCode =
   | 'env-unset'
   | 'duplicate-mcp' // severity 'problem'
   | 'modified'
-  | 'out-of-date'; // severity 'info'
+  | 'out-of-date' // severity 'info'
+  | 'script-tool-missing'; // severity 'info'
 
 export interface Finding {
   severity: 'problem' | 'info';
@@ -23,6 +24,8 @@ export interface Finding {
   path: string;
   /** `env-unset` only: the variable NAME, never its value. */
   variable?: string;
+  /** `script-tool-missing` only: the required tool name. */
+  tool?: string;
   message: string;
   fix: string;
 }
@@ -35,6 +38,8 @@ export interface ItemObservation {
   /** The installed MCP entry, when present. */
   entry?: unknown;
   state: StatusState;
+  /** For scripts: required tools and whether each exists under local `node_modules/.bin`. */
+  scriptTools?: { tool: string; localBinPresent: boolean }[];
 }
 
 export interface DiagnoseInput {
@@ -119,6 +124,19 @@ function itemFindings(o: ItemObservation, env: DiagnoseInput['env']): Finding[] 
       fix: `export ${variable} before starting your agent`,
     });
   }
+  if (o.item.kind === 'script') {
+    for (const t of o.scriptTools ?? []) {
+      if (t.localBinPresent) continue;
+      found.push({
+        ...base,
+        severity: 'info',
+        code: 'script-tool-missing',
+        tool: t.tool,
+        message: `${label(o)}: tool '${t.tool}' is not in local node_modules/.bin (npx may still work)`,
+        fix: `install '${t.tool}' as a local dependency, or rely on npx when running the script`,
+      });
+    }
+  }
   if (o.state === 'modified' || o.state === 'out-of-date') {
     found.push({
       ...base,
@@ -152,7 +170,7 @@ function duplicateFindings(observations: ItemObservation[], projectConfigPath: s
 }
 
 function sortKey(f: Finding): string[] {
-  return [f.severity === 'problem' ? '0' : '1', f.scope, f.kind, f.name ?? '', f.code, f.variable ?? ''];
+  return [f.severity === 'problem' ? '0' : '1', f.scope, f.kind, f.name ?? '', f.code, f.variable ?? '', f.tool ?? ''];
 }
 
 const compareFindings = (a: Finding, b: Finding): number => {

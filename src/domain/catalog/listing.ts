@@ -1,9 +1,9 @@
 import type { Catalog } from '@/domain/catalog/schema.js';
 
 /** Plural kinds accepted by the `list` command. */
-export const LIST_KINDS = ['mcps', 'skills', 'profiles'] as const;
+export const LIST_KINDS = ['mcps', 'skills', 'profiles', 'scripts'] as const;
 export type ListKind = (typeof LIST_KINDS)[number];
-export type EntryKind = 'mcp' | 'profile' | 'skill';
+export type EntryKind = 'mcp' | 'profile' | 'skill' | 'script';
 
 export interface CatalogEntry {
   kind: EntryKind;
@@ -16,7 +16,12 @@ export interface ListRequest {
   search?: string;
 }
 
-const ENTRY_KIND: Record<ListKind, EntryKind> = { mcps: 'mcp', skills: 'skill', profiles: 'profile' };
+const ENTRY_KIND: Record<ListKind, EntryKind> = {
+  mcps: 'mcp',
+  skills: 'skill',
+  profiles: 'profile',
+  scripts: 'script',
+};
 
 const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -30,6 +35,7 @@ export function listEntries(catalog: Catalog, req: ListRequest): CatalogEntry[] 
   const all: CatalogEntry[] = [
     ...catalog.mcps.map((m) => ({ kind: ENTRY_KIND.mcps, name: m.name, description: m.description })),
     ...catalog.skills.map((s) => ({ kind: ENTRY_KIND.skills, name: s.name, description: s.description })),
+    ...catalog.scripts.map((s) => ({ kind: ENTRY_KIND.scripts, name: s.name, description: s.description })),
     ...catalog.profiles.map((p) => ({ kind: ENTRY_KIND.profiles, name: p.name, description: p.description ?? null })),
   ];
   const wanted = req.kind === undefined ? undefined : ENTRY_KIND[req.kind];

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
 import { NodeFileSystem } from '@/adapters/fs/node-fs.js';
 import { initMcps, type InitDeps } from '@/application/init-mcps.js';
-import { loadManifest, manifestPath, saveManifest } from '@/application/journal.js';
+import { loadManifest, manifestPath, saveManifest, stateDir } from '@/application/journal.js';
 import { getStatus } from '@/application/status.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
@@ -12,6 +12,7 @@ import { ManifestError } from '@/domain/manifest.js';
 import type { LoadedCatalog } from '@/ports/catalog-source.js';
 import type { FileSystem } from '@/ports/file-system.js';
 import { DEMO_V1, DEMO_V2 } from '@test/helpers/skills.js';
+import { SCRIPT_V1, SCRIPT_V2, scriptSource } from '@test/helpers/scripts.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
 const mcp = (name: string, url: string, extra: Partial<McpItem> = {}): McpItem => ({
@@ -34,7 +35,7 @@ describe('getStatus', () => {
     load: () => (catalog instanceof Error ? Promise.reject(catalog) : Promise.resolve(catalog)),
   };
   const setCatalog = (mcps: McpItem[], skills: SkillItem[] = []): void => {
-    catalog = { mcps, skills, profiles: [], issues: [] };
+    catalog = { mcps, skills, scripts: [], profiles: [], issues: [] };
   };
   const deps = (): InitDeps => ({
     source,
@@ -133,6 +134,7 @@ describe('getStatus', () => {
     catalog = {
       mcps: [GITHUB],
       skills: [DEMO_V1],
+      scripts: [],
       profiles: [],
       issues: [{ file: 'mcps/bad.json', reason: 'invalid' }],
     };
@@ -271,5 +273,101 @@ describe('getStatus', () => {
     const report = await getStatus(deps(), {});
     expect(report.items.map((i) => i.state)).toEqual(['installed', 'installed']);
     expect(attempts).toEqual([]);
+  });
+});
+
+describe('getStatus (scripts)', () => {
+  let tmp: TmpPaths;
+  let catalog: LoadedCatalog;
+  let fs: FileSystem;
+  const source = {
+    ref: () => ({ kind: 'folder' as const, location: '/catalog' }),
+    load: () => Promise.resolve(catalog),
+  };
+  const deps = (): InitDeps => ({
+    source,
+    fs,
+    target: claudeCodeTarget,
+    paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+    env: {},
+  });
+  const root = () => join(tmp.cwd, '.shitaku', 'scripts', 'lint');
+  const statesOf = async () =>
+    Object.fromEntries((await getStatus(deps(), {})).items.map((i) => [`${i.scope}/${i.kind}/${i.name}`, i.state]));
+
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    fs = new NodeFileSystem();
+    catalog = { mcps: [], skills: [], scripts: [SCRIPT_V1], profiles: [], issues: [] };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('reports installed, modified, missing and out-of-date for scripts under .shitaku/scripts', async () => {
+    await initMcps({ ...deps(), source: scriptSource([SCRIPT_V1]) }, { mcps: [], scripts: ['lint'], scope: 'project' });
+    expect(await statesOf()).toEqual({ 'project/script/lint': 'installed' });
+
+    await writeFile(join(root(), 'index.mjs'), 'edited');
+    expect(await statesOf()).toEqual({ 'project/script/lint': 'modified' });
+
+    await rm(root(), { recursive: true });
+    expect(await statesOf()).toEqual({ 'project/script/lint': 'missing' });
+
+    await initMcps({ ...deps(), source: scriptSource([SCRIPT_V1]) }, { mcps: [], scripts: ['lint'], scope: 'project' });
+    catalog = { mcps: [], skills: [], scripts: [SCRIPT_V2], profiles: [], issues: [] };
+    expect(await statesOf()).toEqual({ 'project/script/lint': 'out-of-date' });
+  });
+
+  it('reports a symlink inside a script tree as modified without aborting', async () => {
+    await initMcps({ ...deps(), source: scriptSource([SCRIPT_V1]) }, { mcps: [], scripts: ['lint'], scope: 'project' });
+    await rm(join(root(), 'index.mjs'));
+    await symlink(tmp.root, join(root(), 'index.mjs'));
+    expect(await statesOf()).toEqual({ 'project/script/lint': 'modified' });
+  });
+
+  it('lists the same script name once per scope when installed in project and user', async () => {
+    await initMcps({ ...deps(), source: scriptSource([SCRIPT_V1]) }, { mcps: [], scripts: ['lint'], scope: 'project' });
+    await initMcps({ ...deps(), source: scriptSource([SCRIPT_V1]) }, { mcps: [], scripts: ['lint'], scope: 'user' });
+    const report = await getStatus(deps(), {});
+    const lintItems = report.items.filter((i) => i.kind === 'script' && i.name === 'lint');
+    expect(lintItems).toHaveLength(2);
+    expect(lintItems.map((i) => i.scope).sort()).toEqual(['project', 'user']);
+    expect(lintItems.every((i) => i.state === 'installed')).toBe(true);
+    expect(lintItems.find((i) => i.scope === 'project')?.path).toBe(join(tmp.cwd, '.shitaku', 'scripts', 'lint'));
+    expect(lintItems.find((i) => i.scope === 'user')?.path).toBe(join(stateDir(tmp.homeDir), 'scripts', 'lint'));
+  });
+
+  it('reports mcp, skill and script together when all three are installed', async () => {
+    catalog = {
+      mcps: [GITHUB],
+      skills: [DEMO_V1],
+      scripts: [SCRIPT_V1],
+      profiles: [],
+      issues: [],
+    };
+    await initMcps(deps(), { mcps: ['github'], skills: ['demo'], scripts: ['lint'], scope: 'project' });
+    const report = await getStatus(deps(), {});
+    expect(report.items).toEqual([
+      expect.objectContaining({
+        scope: 'project',
+        kind: 'mcp',
+        name: 'github',
+        state: 'installed',
+        path: join(tmp.cwd, '.mcp.json'),
+      }),
+      expect.objectContaining({
+        scope: 'project',
+        kind: 'script',
+        name: 'lint',
+        state: 'installed',
+        path: join(tmp.cwd, '.shitaku', 'scripts', 'lint'),
+      }),
+      expect.objectContaining({
+        scope: 'project',
+        kind: 'skill',
+        name: 'demo',
+        state: 'installed',
+        path: join(tmp.cwd, '.claude', 'skills', 'demo'),
+      }),
+    ]);
   });
 });

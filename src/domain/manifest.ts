@@ -3,6 +3,15 @@ import type { Scope } from '@/ports/agent-target.js';
 
 export class ManifestError extends Error {}
 
+const TreeItemSchema = z.object({
+  name: z.string(),
+  action: z.enum(['create', 'update', 'remove']),
+  /** Tree hash of the item as installed. */
+  entryHash: z.string(),
+  /** Absolute path of the item directory. */
+  root: z.string(),
+});
+
 const ItemSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('mcp'),
@@ -10,15 +19,8 @@ const ItemSchema = z.discriminatedUnion('kind', [
     action: z.enum(['create', 'update', 'remove']),
     entryHash: z.string(),
   }),
-  z.object({
-    kind: z.literal('skill'),
-    name: z.string(),
-    action: z.enum(['create', 'update', 'remove']),
-    /** Tree hash of the skill as installed. */
-    entryHash: z.string(),
-    /** Absolute path of the skill directory. */
-    root: z.string(),
-  }),
+  TreeItemSchema.extend({ kind: z.literal('skill') }),
+  TreeItemSchema.extend({ kind: z.literal('script') }),
 ]);
 
 const FileSchema = z
@@ -28,12 +30,12 @@ const FileSchema = z
     /** Path relative to the shitaku state directory; null when the file did not exist before the install. */
     backup: z.string().nullable(),
     beforeHash: z.string().nullable(),
-    /** Null when the install deleted the file (a file of an older skill version that the new one drops). */
+    /** Null when the install deleted the file (a file of an older skill/script version that the new one drops). */
     afterHash: z.string().nullable(),
     items: z.array(ItemSchema),
   })
-  .refine((f) => f.afterHash !== null || f.items.every((i) => i.kind === 'skill'), {
-    message: 'afterHash may be null only for skill files',
+  .refine((f) => f.afterHash !== null || f.items.every((i) => i.kind === 'skill' || i.kind === 'script'), {
+    message: 'afterHash may be null only for skill or script files',
     path: ['afterHash'],
   });
 
@@ -87,13 +89,12 @@ export function deriveOwnership(manifest: Manifest): Ownership {
   return owned;
 }
 
-/** skill root directory -> tree hash of the skill shitaku last installed there. Undone installs do not count. */
-export function deriveSkillOwnership(manifest: Manifest): Record<string, string> {
+function deriveTreeOwnership(manifest: Manifest, kind: 'skill' | 'script'): Record<string, string> {
   const owned: Record<string, string> = {};
   for (const install of manifest.installs.filter((i) => i.undoneAt === null)) {
     for (const file of install.files) {
       for (const item of file.items) {
-        if (item.kind !== 'skill') continue;
+        if (item.kind !== kind) continue;
         if (item.action === 'remove') delete owned[item.root];
         else owned[item.root] = item.entryHash;
       }
@@ -102,11 +103,21 @@ export function deriveSkillOwnership(manifest: Manifest): Record<string, string>
   return owned;
 }
 
+/** skill root directory -> tree hash of the skill shitaku last installed there. Undone installs do not count. */
+export function deriveSkillOwnership(manifest: Manifest): Record<string, string> {
+  return deriveTreeOwnership(manifest, 'skill');
+}
+
+/** script root directory -> tree hash of the script shitaku last installed there. Undone installs do not count. */
+export function deriveScriptOwnership(manifest: Manifest): Record<string, string> {
+  return deriveTreeOwnership(manifest, 'script');
+}
+
 /** One item shitaku currently owns, with the hash it last wrote and the install that wrote it. */
 export interface OwnedItem {
-  kind: 'mcp' | 'skill';
+  kind: 'mcp' | 'skill' | 'script';
   scope: Scope;
-  /** Config file for an MCP, skill directory for a skill. */
+  /** Config file for an MCP, skill/script directory for those kinds. */
   path: string;
   name: string;
   hash: string;
@@ -119,7 +130,7 @@ export function deriveOwnedItems(manifest: Manifest): OwnedItem[] {
   for (const install of manifest.installs.filter((i) => i.undoneAt === null)) {
     for (const file of install.files) {
       for (const item of file.items) {
-        const path = item.kind === 'skill' ? item.root : file.path;
+        const path = item.kind === 'mcp' ? file.path : item.root;
         const key = JSON.stringify([file.scope, path, item.name]);
         if (item.action === 'remove') {
           owned.delete(key);

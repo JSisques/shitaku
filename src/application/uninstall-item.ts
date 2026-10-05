@@ -14,7 +14,7 @@ import {
   rollback,
   StaleFileError,
 } from './install-transaction.js';
-import { appendInstall, loadManifest, stateDir } from './journal.js';
+import { appendInstall, loadManifest, scriptsDir, stateDir } from './journal.js';
 import { readPresent } from './skill-tree.js';
 
 export interface UninstallDeps {
@@ -27,7 +27,7 @@ export interface UninstallDeps {
 
 export interface UninstallRequest {
   name: string;
-  kind?: 'mcp' | 'skill';
+  kind?: 'mcp' | 'skill' | 'script';
   scope?: Scope;
   force?: boolean;
   dryRun?: boolean;
@@ -37,7 +37,7 @@ export interface UninstallResult {
   status: 'removed' | 'already-absent' | 'dry-run' | 'refused';
   /** 3 when the item changed since install and `force` is not set, otherwise 0. */
   exitCode: 0 | 3;
-  item: { kind: 'mcp' | 'skill'; scope: Scope; name: string; path: string };
+  item: { kind: 'mcp' | 'skill' | 'script'; scope: Scope; name: string; path: string };
   /** Files that are (or would be) changed or deleted. */
   files: string[];
   /** The current hash differs from the one shitaku recorded. */
@@ -57,6 +57,7 @@ export class UninstallSelectionError extends Error {
 }
 
 const SKILL_ENTRY = 'SKILL.md';
+const SCRIPT_ENTRY = 'index.mjs';
 
 interface Plan {
   item: OwnedItem;
@@ -67,16 +68,17 @@ interface Plan {
   observed: string | null;
   /** MCP: the config text that was read. */
   text: string | null;
-  /** Skill: the files to delete, SKILL.md first. */
+  /** Skill/script: the files to delete, entry file first. */
   doomed: SkillFile[];
   files: string[];
 }
 
 /** Where the item must live for this target and working directory; a manifest path that differs never matches. */
-const expectedPath = (deps: UninstallDeps, item: OwnedItem): string =>
-  item.kind === 'mcp'
-    ? deps.target.configPath(item.scope, deps.paths)
-    : `${deps.target.skillsDir(item.scope, deps.paths)}/${item.name}`;
+const expectedPath = (deps: UninstallDeps, item: OwnedItem): string => {
+  if (item.kind === 'mcp') return deps.target.configPath(item.scope, deps.paths);
+  if (item.kind === 'skill') return `${deps.target.skillsDir(item.scope, deps.paths)}/${item.name}`;
+  return `${scriptsDir(item.scope, deps.paths)}/${item.name}`;
+};
 
 function resolve(deps: UninstallDeps, manifest: Manifest, req: UninstallRequest): OwnedItem {
   const matches = deriveOwnedItems(manifest).filter(
@@ -94,15 +96,20 @@ function resolve(deps: UninstallDeps, manifest: Manifest, req: UninstallRequest)
   return matches[0]!;
 }
 
-/** Recorded files of the owning install that exist now, SKILL.md first so a half-removed skill never loads. */
+/** Recorded files of the owning install that exist now, entry file first so a half-removed tree never loads. */
 function doomedFiles(install: Install, item: OwnedItem, present: SkillFile[]): SkillFile[] {
   const recorded = new Set(
     install.files
-      .filter((f) => f.afterHash !== null && f.items.some((i) => i.kind === 'skill' && i.root === item.path))
+      .filter(
+        (f) =>
+          f.afterHash !== null &&
+          f.items.some((i) => (i.kind === 'skill' || i.kind === 'script') && i.root === item.path),
+      )
       .map((f) => f.path),
   );
   const doomed = present.filter((f) => recorded.has(`${item.path}/${f.path}`));
-  return [...doomed.filter((f) => f.path === SKILL_ENTRY), ...doomed.filter((f) => f.path !== SKILL_ENTRY)];
+  const entry = item.kind === 'script' ? SCRIPT_ENTRY : SKILL_ENTRY;
+  return [...doomed.filter((f) => f.path === entry), ...doomed.filter((f) => f.path !== entry)];
 }
 
 async function planUninstall(deps: UninstallDeps, req: UninstallRequest): Promise<Plan> {
@@ -141,7 +148,7 @@ async function assertFresh(deps: UninstallDeps, plan: Plan): Promise<void> {
   if (!fresh) throw new StaleFileError(`${item.path} changed since planning, re-run`);
 }
 
-/** Directories inside the skill root that the deletions empty, deepest first. */
+/** Directories inside the tree root that the deletions empty, deepest first. */
 function emptiedDirs(root: string, paths: string[]): string[] {
   const dirs = new Set<string>();
   for (const path of paths) for (let dir = dirname(path); dir.length >= root.length; dir = dirname(dir)) dirs.add(dir);
@@ -192,7 +199,15 @@ async function applyUninstall(deps: UninstallDeps, plan: Plan): Promise<string> 
       backup,
       beforeHash: sha256(file.bytes),
       afterHash: null,
-      items: [{ kind: 'skill', name: item.name, action: 'remove', entryHash: plan.observed!, root: item.path }],
+      items: [
+        {
+          kind: item.kind,
+          name: item.name,
+          action: 'remove',
+          entryHash: plan.observed!,
+          root: item.path,
+        },
+      ],
     });
   }
   try {
@@ -221,7 +236,7 @@ const journal = (deps: UninstallDeps, id: string, now: Date, plan: Plan, files: 
   });
 
 /**
- * Removes one shitaku-owned MCP entry or skill and records the removal as an install, so `undo` reverts it.
+ * Removes one shitaku-owned MCP entry, skill or script and records the removal as an install, so `undo` reverts it.
  * Refuses (exit 3) an item that changed since install unless forced; never touches an item shitaku does not own.
  */
 export async function uninstallItem(deps: UninstallDeps, req: UninstallRequest): Promise<UninstallResult> {

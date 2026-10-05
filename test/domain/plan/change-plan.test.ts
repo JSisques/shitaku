@@ -64,4 +64,9 @@ describe('buildPlan', () => {
   it('aborts on a corrupt config', () => {
     expect(() => plan('{ nope')).toThrow(ConfigError);
   });
+
+  it('includes an empty scripts list alongside skills', () => {
+    expect(plan(null).scripts).toEqual([]);
+    expect(plan(null).skills).toEqual([]);
+  });
 });

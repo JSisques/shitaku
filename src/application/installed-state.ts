@@ -12,7 +12,7 @@ export interface InstalledDeps {
   target: AgentTarget;
 }
 
-/** What is on disk for one owned item. `config` describes the MCP config file; skills always report `present`. */
+/** What is on disk for one owned item. `config` describes the MCP config file; skills/scripts always report `present`. */
 export interface InstalledObservation {
   config: 'present' | 'missing' | 'unreadable';
   current: Observed;
@@ -70,7 +70,7 @@ export function observeInstalled(deps: InstalledDeps): (item: OwnedItem) => Prom
       : { config: 'present', current: { kind: 'hash', hash: hashEntry(entry) }, entry };
   };
 
-  const observeSkill = async (item: OwnedItem): Promise<InstalledObservation> => {
+  const observeTree = async (item: OwnedItem): Promise<InstalledObservation> => {
     try {
       const files = await readPresent(deps.fs, item.path);
       const hash = files === null ? null : treeHash(files);
@@ -81,7 +81,7 @@ export function observeInstalled(deps: InstalledDeps): (item: OwnedItem) => Prom
     }
   };
 
-  return (item) => (item.kind === 'mcp' ? observeMcp(item) : observeSkill(item));
+  return (item) => (item.kind === 'mcp' ? observeMcp(item) : observeTree(item));
 }
 
 /** What the catalog says the item should currently be, or `unavailable` when the catalog could not be loaded. */
@@ -92,6 +92,10 @@ export function desiredFor(catalog: LoadedCatalog | null, target: AgentTarget, i
     return mcp !== undefined && target.supports(mcp)
       ? { kind: 'hash', hash: hashEntry(target.toEntry(mcp)) }
       : { kind: 'absent' };
+  }
+  if (item.kind === 'script') {
+    const hash = treeHash(catalog.scripts.find((s) => s.name === item.name)?.files ?? []);
+    return hash === null ? { kind: 'absent' } : { kind: 'hash', hash };
   }
   const hash = treeHash(catalog.skills.find((s) => s.name === item.name)?.files ?? []);
   return hash === null ? { kind: 'absent' } : { kind: 'hash', hash };

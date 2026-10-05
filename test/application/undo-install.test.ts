@@ -9,6 +9,7 @@ import { appendInstall, loadManifest, manifestPath, stateDir } from '@/applicati
 import { sha256 } from '@/domain/hash.js';
 import { UndoSelectionError, UndoVerifyError, undoInstall } from '@/application/undo-install.js';
 import { DEMO_V1, DEMO_V2, skillSource } from '@test/helpers/skills.js';
+import { SCRIPT_V1, scriptSource } from '@test/helpers/scripts.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
 const CATALOG = join(import.meta.dirname, '..', '..', 'catalog');
@@ -360,5 +361,37 @@ describe('undoInstall (skills)', () => {
     expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'undone', exitCode: 0 });
     expect(await readFile(join(tmp.cwd, '.mcp.json'), 'utf8')).toBe(original);
     expect(await readdir(tmp.cwd)).toEqual(['.mcp.json']);
+  });
+});
+
+describe('undoInstall (scripts)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const root = () => join(tmp.cwd, '.shitaku', 'scripts', 'lint');
+  const undoDeps = () => ({ fs: deps.fs, paths: deps.paths });
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: scriptSource([SCRIPT_V1]),
+      fs: new NodeFileSystem(),
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('removes an unchanged script tree and refuses when the user added a file', async () => {
+    await initMcps(deps, { mcps: [], scripts: ['lint'], scope: 'project' });
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'undone', exitCode: 0 });
+    expect(await readdir(tmp.cwd)).toEqual([]);
+
+    await initMcps(deps, { mcps: [], scripts: ['lint'], scope: 'project' });
+    await writeFile(join(root(), 'extra.md'), 'mine');
+    const refused = await undoInstall(undoDeps(), {});
+    expect(refused).toMatchObject({ status: 'refused', exitCode: 3, changed: [join(root(), 'extra.md')] });
+    const active = (await loadManifest(deps.fs, tmp.homeDir)).installs.filter((i) => i.undoneAt === null);
+    expect(active).toHaveLength(1);
+    expect(active[0]?.undoneAt).toBeNull();
   });
 });

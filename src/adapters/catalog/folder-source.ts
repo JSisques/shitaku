@@ -6,6 +6,7 @@ import { resolveProfile } from '@/domain/catalog/profile.js';
 import { CatalogIndexSchema, McpItemSchema, ProfileSchema } from '@/domain/catalog/schema.js';
 import type { McpItem, Profile } from '@/domain/catalog/schema.js';
 import { parseSkill, type SkillItem } from '@/domain/catalog/skill.js';
+import { parseScript, type ScriptItem } from '@/domain/catalog/script.js';
 import type { CatalogIssue, CatalogSource, LoadedCatalog, SourceRef } from '@/ports/catalog-source.js';
 
 /** Reads a catalog folder. The bundled catalog is just a folder resolved by the composition root. */
@@ -51,11 +52,13 @@ export class FolderCatalogSource implements CatalogSource {
     const mcps: McpItem[] = await readEntries('mcps', index.items.mcps, McpItemSchema);
     const candidates: Profile[] = await readEntries('profiles', index.items.profiles, ProfileSchema);
     const skills = await this.loadSkills(index.items.skills, issues);
+    const scripts = await this.loadScripts(index.items.scripts, issues);
     const mcpNames = mcps.map((m) => m.name);
     const skillNames = skills.map((sk) => sk.name);
+    const scriptNames = scripts.map((sc) => sc.name);
     const profiles = candidates.filter((p) => {
       try {
-        resolveProfile(p.name, candidates, mcpNames, skillNames);
+        resolveProfile(p.name, candidates, mcpNames, skillNames, scriptNames);
         return true;
       } catch (e) {
         issues.push({ file: `profiles/${p.name}.json`, reason: e instanceof Error ? e.message : String(e) });
@@ -63,7 +66,7 @@ export class FolderCatalogSource implements CatalogSource {
       }
     });
 
-    return { mcps, skills, profiles, issues };
+    return { mcps, skills, scripts, profiles, issues };
   }
 
   /** Loads each listed skill as bytes. A bad skill is skipped with an issue; an unlisted directory is an issue too. */
@@ -91,6 +94,33 @@ export class FolderCatalogSource implements CatalogSource {
       if (!listed.includes(name)) issues.push({ file: `skills/${name}`, reason: 'not listed in catalog.json' });
     }
     return skills;
+  }
+
+  /** Loads each listed script as bytes. A bad script is skipped with an issue; an unlisted directory is an issue too. */
+  private async loadScripts(listed: readonly string[], issues: CatalogIssue[]): Promise<ScriptItem[]> {
+    const scripts: ScriptItem[] = [];
+    const scriptsRoot = join(await realpath(this.location), 'scripts');
+    for (const name of listed) {
+      const file = `scripts/${name}`;
+      try {
+        const files = await readTree(join(this.location, file), join(scriptsRoot, name));
+        const parsed =
+          files === null ? { issue: 'listed in catalog.json but the directory is missing' } : parseScript(name, files);
+        if ('issue' in parsed)
+          issues.push({ file: parsed.file ? `${file}/${parsed.file}` : file, reason: parsed.issue });
+        else scripts.push(parsed.script);
+      } catch (e) {
+        issues.push({ file, reason: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    const present = await readdir(join(this.location, 'scripts'), { withFileTypes: true }).catch(() => []);
+    for (const name of present
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort()) {
+      if (!listed.includes(name)) issues.push({ file: `scripts/${name}`, reason: 'not listed in catalog.json' });
+    }
+    return scripts;
   }
 
   private async readIndex(): Promise<ReturnType<typeof CatalogIndexSchema.parse>> {
