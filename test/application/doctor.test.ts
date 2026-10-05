@@ -10,6 +10,7 @@ import type { McpItem } from '@/domain/catalog/schema.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
 import type { LoadedCatalog } from '@/ports/catalog-source.js';
 import { DEMO_V1, DEMO_V2 } from '@test/helpers/skills.js';
+import { SCRIPT_V1 } from '@test/helpers/scripts.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
 const mcp = (name: string, url: string, extra: Partial<McpItem> = {}): McpItem => ({
@@ -161,5 +162,29 @@ describe('getDiagnosis', () => {
     await getDiagnosis(deps(), {});
     const after = [await readFile(projectFile(), 'utf8'), await readFile(join(projectSkill(), 'SKILL.md'), 'utf8')];
     expect(after).toEqual(before);
+  });
+
+  it('warns when an installed script tool is missing from local .bin and stays healthy', async () => {
+    const withTool = {
+      ...SCRIPT_V1,
+      tools: ['knip'],
+      files: SCRIPT_V1.files.map((f) =>
+        f.path === 'script.json'
+          ? { ...f, bytes: new TextEncoder().encode('{"name":"lint","description":"d","tools":["knip"]}') }
+          : f,
+      ),
+    };
+    catalog = { mcps: [], skills: [], scripts: [withTool], profiles: [], issues: [] };
+    await initMcps(deps(), { mcps: [], skills: [], scripts: ['lint'], scope: 'project' });
+    const report = await getDiagnosis(deps(), {});
+    expect(report.findings).toEqual([
+      expect.objectContaining({
+        severity: 'info',
+        code: 'script-tool-missing',
+        name: 'lint',
+        tool: 'knip',
+      }),
+    ]);
+    expect(report.findings.every((f) => f.severity === 'info')).toBe(true);
   });
 });
