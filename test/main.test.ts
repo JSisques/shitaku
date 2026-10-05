@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { localePrefersUtf8, terminalSupportsColor } from '@/adapters/cli/banner.js';
 import type { CliDeps } from '@/adapters/cli/program.js';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
@@ -50,6 +51,15 @@ describe('main (composition root)', () => {
     expect(deps.paths).toEqual({ homeDir: tmp.homeDir, cwd: tmp.cwd });
     expect(deps.target.id).toBe(claudeCodeTarget.id);
     expect(deps.env).toBe(process.env);
+  });
+
+  it('passes terminal facts for the banner', async () => {
+    const deps = await bootMain();
+    expect(deps.terminal).toEqual({
+      tty: Boolean(process.stdout.isTTY && process.stderr.isTTY),
+      color: terminalSupportsColor(process.env, Boolean(process.stderr.isTTY)),
+      unicode: localePrefersUtf8(process.env),
+    });
   });
 
   it('forwards cliVersion from package.json', async () => {

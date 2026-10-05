@@ -1,4 +1,6 @@
 import { Argument, Command, CommanderError, Option } from 'commander';
+import { renderBanner, shouldShowBanner } from '@/adapters/cli/banner.js';
+import type { TerminalSettings } from '@/adapters/cli/banner.js';
 import {
   planInit,
   applyPlan,
@@ -43,6 +45,8 @@ export interface CliDeps {
   cliVersion?: string;
   /** Enables the update notice; when absent, no check runs. */
   updates?: UpdateSettings;
+  /** Terminal facts for the startup banner. When absent, the banner is not shown. */
+  terminal?: TerminalSettings;
 }
 
 /** What the update check needs beyond the shared deps: where to ask, who we are, and whether to bother. */
@@ -131,9 +135,15 @@ function printPlan(deps: CliDeps, plan: ChangePlan): void {
     deps.out(v.set ? `env ${v.name}: set` : `warning: ${v.name} is not set; set it before using the server`);
 }
 
+/** `--yes`, or a kind flag together with `--scope`, means `init` will not prompt. */
+function initIsNonInteractive(opts: InitOptions): boolean {
+  const kindFlag = opts.mcps !== undefined || opts.skills !== undefined;
+  return opts.yes === true || (kindFlag && opts.scope !== undefined);
+}
+
 async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
   const kindFlag = opts.mcps !== undefined || opts.skills !== undefined;
-  const nonInteractive = opts.yes === true || (kindFlag && opts.scope !== undefined);
+  const nonInteractive = initIsNonInteractive(opts);
   if (nonInteractive && !kindFlag) {
     deps.err('error: select at least one kind: pass --mcps and/or --skills');
     return 1;
@@ -366,6 +376,28 @@ function isVersionInvocation(argv: string[]): boolean {
   return argv.slice(2).some((token) => token === 'version' || token === '-v' || token === '--version');
 }
 
+function printBannerIfNeeded(deps: CliDeps, action: Command, argv: string[]): void {
+  const opts = action.optsWithGlobals<InitOptions & { json?: boolean; banner?: boolean }>();
+  const prompts = action.name() === 'init' && !initIsNonInteractive(opts);
+  if (
+    !shouldShowBanner({
+      tty: deps.terminal?.tty === true,
+      prompts,
+      json: opts.json === true,
+      version: isVersionInvocation(argv),
+      noBanner: opts.banner === false,
+      env: deps.env,
+    })
+  )
+    return;
+  for (const line of renderBanner({
+    version: deps.cliVersion,
+    color: deps.terminal?.color === true,
+    unicode: deps.terminal?.unicode === true,
+  }))
+    deps.err(line);
+}
+
 export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
   if (isVersionInvocation(argv) && deps.cliVersion === undefined) {
     deps.err(UNREADABLE_VERSION);
@@ -378,7 +410,9 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     .name('shitaku')
     .description('Install curated AI agent configuration from a catalog.')
     .exitOverride()
-    .configureOutput({ writeOut: (s) => deps.out(strip(s)), writeErr: (s) => deps.err(strip(s)) });
+    .configureOutput({ writeOut: (s) => deps.out(strip(s)), writeErr: (s) => deps.err(strip(s)) })
+    .configureHelp({ showGlobalOptions: true })
+    .option('--no-banner', 'do not print the startup banner');
 
   const version = deps.cliVersion;
   if (version !== undefined) {
@@ -459,6 +493,10 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       async (opts: { scope?: Scope; source?: string; json?: boolean }) =>
         void (exitCode = await guarded(deps, () => runDoctor(deps, opts))),
     );
+
+  program.hook('preAction', (_thisCommand, actionCommand) => {
+    printBannerIfNeeded(deps, actionCommand, argv);
+  });
 
   // Started before dispatch so the lookup overlaps the command; checkForUpdate never rejects.
   // Version entry points skip the check entirely (no cache/network side effects).

@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FolderCatalogSource } from './adapters/catalog/folder-source.js';
+import { localePrefersUtf8, terminalSupportsColor } from './adapters/cli/banner.js';
 import { ClackPrompter } from './adapters/cli/clack-prompter.js';
 import { runCli } from './adapters/cli/program.js';
 import { claudeCodeTarget } from './adapters/claude-code/target.js';
@@ -40,6 +41,11 @@ process.exitCode = await runCli(process.argv, {
   out: (line) => console.log(line),
   err: (line) => console.error(line),
   cliVersion: version,
+  terminal: {
+    tty: Boolean(process.stdout.isTTY && process.stderr.isTTY),
+    color: terminalSupportsColor(process.env, Boolean(process.stderr.isTTY)),
+    unicode: localePrefersUtf8(process.env),
+  },
   updates:
     version === undefined
       ? undefined
