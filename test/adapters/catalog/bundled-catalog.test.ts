@@ -51,19 +51,30 @@ describe('bundled catalog', () => {
     });
   });
 
-  it('ships an empty scripts catalog structure with no concrete scripts', async () => {
+  it('ships complexity as a registered and loadable bundled script', async () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { scripts?: unknown };
     };
-    expect(index.items.scripts).toEqual([]);
+    expect(index.items.scripts).toEqual(['complexity']);
 
     const scriptsDir = join(catalogRoot, 'scripts');
     expect(statSync(scriptsDir).isDirectory()).toBe(true);
     const entries = readdirSync(scriptsDir).filter((name) => !name.startsWith('.'));
-    expect(entries).toEqual([]);
+    expect(entries).toEqual(['complexity']);
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
-    expect(catalog.scripts).toEqual([]);
+    expect(catalog.issues).toEqual([]);
+    expect(catalog.scripts).toHaveLength(1);
+    expect(catalog.scripts[0]).toMatchObject({
+      name: 'complexity',
+      tools: ['eslint', 'eslint-plugin-sonarjs', 'typescript-eslint', 'typescript', '@eslint/js'],
+    });
+    expect(catalog.scripts[0]?.files.map((f) => f.path).sort()).toEqual([
+      'eslint.config.mjs',
+      'index.mjs',
+      'package.json',
+      'script.json',
+    ]);
   });
 
   it('loads the bundled example skill with its frontmatter', async () => {
