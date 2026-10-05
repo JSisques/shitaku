@@ -33,7 +33,7 @@ jobs:
     env:
       HUSKY: '0'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
