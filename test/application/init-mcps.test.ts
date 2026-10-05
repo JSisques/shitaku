@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
 import { FolderCatalogSource } from '@/adapters/catalog/folder-source.js';
@@ -12,6 +12,7 @@ import {
   planInit,
   StaleFileError,
   UnknownMcpError,
+  UnknownScriptError,
   UnknownSkillError,
   type InitDeps,
 } from '@/application/init-mcps.js';
@@ -22,6 +23,7 @@ import type { CatalogSource } from '@/ports/catalog-source.js';
 import { UnsafeTreeError } from '@/ports/file-system.js';
 import { parseManifest, type Manifest } from '@/domain/manifest.js';
 import { DEMO_V1, DEMO_V2, faultyFs, skillSource } from '@test/helpers/skills.js';
+import { SCRIPT_V1, SCRIPT_V2, scriptSource } from '@test/helpers/scripts.js';
 import { parseDoc } from '@test/helpers/parse-doc.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
@@ -679,6 +681,177 @@ describe('applyPlan rollback (skills)', () => {
     };
     await expect(install({ mcps: ['github'] })).rejects.toThrow(/injected writeBytes failure.*rollback incomplete/);
     expect(await readdir(join(tmp.cwd, '.claude', 'skills')).catch(() => [])).toEqual([]);
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+});
+
+describe('planInit (scripts)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const projectRoot = () => join(tmp.cwd, '.shitaku', 'scripts', 'lint');
+  const userRoot = () => join(tmp.homeDir, '.claude', '.shitaku', 'scripts', 'lint');
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: scriptSource([SCRIPT_V1]),
+      fs: new NodeFileSystem(),
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('plans a create under ./.shitaku/scripts for project scope and never under agent skill dirs', async () => {
+    const plan = await planInit(deps, { mcps: [], scripts: ['lint'], scope: 'project' });
+    expect(plan.scripts).toHaveLength(1);
+    expect(plan.scripts[0]).toMatchObject({ name: 'lint', root: projectRoot(), action: 'create', presentHash: null });
+    expect(plan.scripts[0]?.root).not.toContain('.claude/skills');
+    expect(plan.skills).toEqual([]);
+  });
+
+  it('plans under stateDir/scripts for user scope', async () => {
+    const plan = await planInit(deps, { mcps: [], scripts: ['lint'], scope: 'user' });
+    expect(plan.scripts[0]?.root).toBe(userRoot());
+  });
+
+  it('rejects an unknown script name and writes nothing', async () => {
+    await expect(planInit(deps, { mcps: [], scripts: ['lint', 'ghost'], scope: 'project' })).rejects.toThrow(
+      UnknownScriptError,
+    );
+    await expect(planInit(deps, { mcps: [], scripts: ['ghost'], scope: 'project' })).rejects.toThrow(
+      'unknown script: ghost',
+    );
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('plans a conflict for an unowned tree and a forced update', async () => {
+    await mkdir(projectRoot(), { recursive: true });
+    await writeFile(join(projectRoot(), 'index.mjs'), 'mine');
+    expect((await planInit(deps, { mcps: [], scripts: ['lint'], scope: 'project' })).scripts[0]?.action).toBe(
+      'conflict',
+    );
+    const forced = await planInit(deps, { mcps: [], scripts: ['lint'], scope: 'project', force: true });
+    expect(forced.scripts[0]).toMatchObject({ action: 'update', reason: 'replaced by --force' });
+  });
+});
+
+describe('applyPlan (scripts)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const root = () => join(tmp.cwd, '.shitaku', 'scripts', 'lint');
+  const manifest = async (): Promise<Manifest> => parseManifest(await readFile(manifestPath(tmp.homeDir), 'utf8'));
+  const install = (scripts: string[], extra: { force?: boolean; dryRun?: boolean } = {}) =>
+    initMcps(deps, { mcps: [], scripts, scope: 'project', ...extra });
+  const put = async (files: Record<string, string>) => {
+    for (const [rel, text] of Object.entries(files)) {
+      await mkdir(join(root(), dirname(rel)), { recursive: true });
+      await writeFile(join(root(), rel), text);
+    }
+  };
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: scriptSource([SCRIPT_V1]),
+      fs: new NodeFileSystem(),
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('creates a script byte-identical under .shitaku/scripts with kind script in the manifest', async () => {
+    expect((await install(['lint'])).applied).toBe(true);
+    expect(await readFile(join(root(), 'index.mjs'), 'utf8')).toBe('export default 1;\n');
+    const file = (await manifest()).installs[0]!.files.find((f) => f.path.endsWith('index.mjs'))!;
+    expect(file.items[0]).toMatchObject({
+      kind: 'script',
+      name: 'lint',
+      action: 'create',
+      entryHash: treeHash(SCRIPT_V1.files),
+      root: root(),
+    });
+  });
+
+  it('writes nothing on dry-run conflict or skip', async () => {
+    await put({ 'index.mjs': 'mine' });
+    expect((await install(['lint'])).applied).toBe(false);
+    expect(await readFile(join(root(), 'index.mjs'), 'utf8')).toBe('mine');
+    expect((await install(['lint'], { force: true, dryRun: true })).applied).toBe(false);
+    expect(await readFile(join(root(), 'index.mjs'), 'utf8')).toBe('mine');
+    expect(await readdir(tmp.homeDir)).toEqual([]);
+  });
+
+  it('writes index.mjs last within a script', async () => {
+    const fs = faultyFs(new NodeFileSystem(), { method: 'remove', nth: 999 });
+    deps = { ...deps, fs };
+    await install(['lint']);
+    const writes = fs.calls.filter((c) => c.startsWith('writeBytes') && c.includes(root()));
+    expect(writes).toHaveLength(4);
+    expect(writes.at(-1)).toBe(`writeBytes ${join(root(), 'index.mjs')}`);
+  });
+
+  it('updates an owned script and records dropped files with null afterHash', async () => {
+    await install(['lint']);
+    deps = { ...deps, source: scriptSource([SCRIPT_V2]) };
+    expect((await install(['lint'])).applied).toBe(true);
+    expect(await readFile(join(root(), 'index.mjs'), 'utf8')).toBe('export default 2;\n');
+    const second = (await manifest()).installs[1]!;
+    const dropped = second.files.find((f) => f.path === join(root(), 'refs', 'a.md'))!;
+    expect(dropped).toMatchObject({ afterHash: null, beforeHash: sha256('a1') });
+  });
+});
+
+describe('applyPlan rollback (scripts)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const real = new NodeFileSystem();
+  const root = () => join(tmp.cwd, '.shitaku', 'scripts', 'lint');
+  const inRoot = (path: string) => path.startsWith(root());
+  const withFault = (fault: Parameters<typeof faultyFs>[1]) => {
+    const fs = faultyFs(real, fault);
+    deps = { ...deps, fs };
+    return fs;
+  };
+  const install = (extra: { force?: boolean } = {}) =>
+    initMcps(deps, { mcps: [], scripts: ['lint'], scope: 'project', force: extra.force });
+  const tree = async (dir: string): Promise<Record<string, string>> => {
+    const out: Record<string, string> = {};
+    for (const rel of (await real.listFiles(dir)) ?? [])
+      out[rel] = Buffer.from((await real.readBytes(join(dir, rel)))!).toString('hex');
+    return out;
+  };
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: scriptSource([SCRIPT_V1]),
+      fs: real,
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('removes what it wrote when a mid-script write fails, leaving no manifest row', async () => {
+    const fs = withFault({ method: 'writeBytes', nth: 3, match: inRoot });
+    await expect(install()).rejects.toThrow('injected writeBytes failure');
+    expect(fs.calls.filter((c) => c.startsWith('writeBytes') && c.includes(root())).length).toBe(3);
+    expect(await readdir(tmp.cwd)).toEqual([]);
+    expect(await readdir(tmp.homeDir)).toEqual([]);
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+
+  it('restores a forced replace byte-identical when a later write fails', async () => {
+    await mkdir(join(root(), 'sub'), { recursive: true });
+    await writeFile(join(root(), 'index.mjs'), 'mine');
+    await writeFile(join(root(), 'notes.txt'), 'keep me');
+    await writeFile(join(root(), 'sub', 'x.bin'), Buffer.from([0xff, 0xfe, 0x00]));
+    const original = await tree(root());
+    withFault({ method: 'writeBytes', nth: 4, match: inRoot });
+    await expect(install({ force: true })).rejects.toThrow('injected writeBytes failure');
+    expect(await tree(root())).toEqual(original);
     await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
   });
 });

@@ -16,7 +16,9 @@ const TOKEN = 'abc123-secret-value';
 
 /** Scripted prompter; any call it was not scripted for fails the test. */
 function fakePrompter(
-  script: Partial<Record<'mcps' | 'skills' | 'scope' | 'confirm', unknown>> & { conflict?: 'overwrite' | 'skip' } = {},
+  script: Partial<Record<'mcps' | 'skills' | 'scripts' | 'scope' | 'confirm', unknown>> & {
+    conflict?: 'overwrite' | 'skip';
+  } = {},
 ) {
   const calls: string[] = [];
   const conflicts: { kind: string; name: string; reason: string }[] = [];
@@ -31,6 +33,10 @@ function fakePrompter(
     selectSkills: () => (
       calls.push('skills'),
       Promise.resolve((script.skills as string[] | undefined) ?? unscripted('skills'))
+    ),
+    selectScripts: () => (
+      calls.push('scripts'),
+      Promise.resolve((script.scripts as string[] | undefined) ?? unscripted('scripts'))
     ),
     selectScope: () => (
       calls.push('scope'),
@@ -213,6 +219,7 @@ describe('runCli', () => {
       expect(await run('init', '--yes', '--scope', 'project')).toBe(1);
       expect(text()).toContain('--mcps');
       expect(text()).toContain('--skills');
+      expect(text()).toContain('--scripts');
       expect(calls).toEqual([]);
       expect(await readdir(tmp.cwd)).toEqual([]);
     });
@@ -941,7 +948,7 @@ describe('runCli', () => {
     it('keeps the exit code of a failing command and still prints the notice', async () => {
       useUpdates('0.3.0');
       expect(await run('init', '--yes')).toBe(1);
-      expect(err).toEqual(['error: select at least one kind: pass --mcps and/or --skills', NOTICE]);
+      expect(err).toEqual(['error: select at least one kind: pass --mcps, --skills and/or --scripts', NOTICE]);
     });
 
     it('does not check without updates settings', async () => {

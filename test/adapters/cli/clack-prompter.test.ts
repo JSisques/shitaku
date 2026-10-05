@@ -23,14 +23,15 @@ const select = vi.mocked(clack.select);
 const confirm = vi.mocked(clack.confirm);
 const info = vi.mocked(clack.log.info);
 
-// Only the lengths of `files` and `skills` matter to the prompter, so the plan is built from placeholders.
-const planOf = (files: number, skills: number, emptyFiles = 0): ChangePlan =>
+// Only the lengths of `files`, `skills` and `scripts` matter to the prompter, so the plan is built from placeholders.
+const planOf = (files: number, skills: number, emptyFiles = 0, scripts = 0): ChangePlan =>
   ({
     files: [
       ...Array.from({ length: files }, () => ({ items: [{}] })),
       ...Array.from({ length: emptyFiles }, () => ({ items: [] })),
     ],
     skills: Array.from({ length: skills }, () => ({})),
+    scripts: Array.from({ length: scripts }, () => ({})),
   }) as unknown as ChangePlan;
 
 const mcp = (name: string, description: string): McpItem => ({ name, description }) as McpItem;
@@ -151,6 +152,22 @@ describe('ClackPrompter', () => {
       );
     });
 
+    it('words a script conflict like a skill tree replace', async () => {
+      select.mockResolvedValueOnce('overwrite');
+
+      await prompter.resolveConflict({ kind: 'script', name: 'lint', reason: 'modified' });
+
+      expect(select).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "Script 'lint' already exists with different content (modified). What now?",
+          options: [
+            { value: 'skip', label: 'Keep the existing one' },
+            { value: 'overwrite', label: 'Replace the whole directory (backed up)' },
+          ],
+        }),
+      );
+    });
+
     it('throws PromptCancelled when the prompt is dismissed', async () => {
       select.mockResolvedValueOnce(CANCELLED);
 
@@ -162,13 +179,14 @@ describe('ClackPrompter', () => {
 
   describe('confirm', () => {
     it.each([
-      { files: 1, skills: 0, emptyFiles: 0, message: 'Apply the changes to 1 location?' },
-      { files: 2, skills: 1, emptyFiles: 0, message: 'Apply the changes to 3 locations?' },
-      { files: 1, skills: 0, emptyFiles: 2, message: 'Apply the changes to 1 location?' },
-    ])('counts $files file(s) and $skills skill(s), ignoring files without items', async (c) => {
+      { files: 1, skills: 0, scripts: 0, emptyFiles: 0, message: 'Apply the changes to 1 location?' },
+      { files: 2, skills: 1, scripts: 0, emptyFiles: 0, message: 'Apply the changes to 3 locations?' },
+      { files: 1, skills: 0, scripts: 2, emptyFiles: 0, message: 'Apply the changes to 3 locations?' },
+      { files: 1, skills: 0, scripts: 0, emptyFiles: 2, message: 'Apply the changes to 1 location?' },
+    ])('counts $files file(s), $skills skill(s) and $scripts script(s)', async (c) => {
       confirm.mockResolvedValueOnce(true);
 
-      const result = await prompter.confirm(planOf(c.files, c.skills, c.emptyFiles));
+      const result = await prompter.confirm(planOf(c.files, c.skills, c.emptyFiles, c.scripts));
 
       expect(result).toBe(true);
       expect(confirm).toHaveBeenCalledWith({ message: c.message });

@@ -2,7 +2,8 @@ import { dirname } from 'node:path';
 import { hashEntry, sha256 } from '@/domain/hash.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { Install, Manifest } from '@/domain/manifest.js';
-import { deriveOwnership, deriveSkillOwnership } from '@/domain/manifest.js';
+import { deriveOwnership, deriveScriptOwnership, deriveSkillOwnership } from '@/domain/manifest.js';
+import { buildScriptPlan, writesScript, type ScriptChange, type ScriptPlanEntry } from '@/domain/plan/script-plan.js';
 import { buildSkillPlan, writesSkill, type SkillChange, type SkillPlanEntry } from '@/domain/plan/skill-plan.js';
 import { buildPlan, replanFile, writesFile } from '@/domain/plan/change-plan.js';
 import type { ChangePlan, FileChange } from '@/domain/plan/change-plan.js';
@@ -18,7 +19,7 @@ import {
   rollback,
   StaleFileError,
 } from './install-transaction.js';
-import { appendInstall, loadManifest, stateDir } from './journal.js';
+import { appendInstall, loadManifest, scriptsDir, stateDir } from './journal.js';
 import { readPresent } from './skill-tree.js';
 
 export interface InitDeps {
@@ -36,6 +37,8 @@ export interface InitRequest {
   mcps: string[];
   /** Skill names to install; defaults to none. */
   skills?: string[];
+  /** Script names to install; defaults to none. */
+  scripts?: string[];
   scope: Scope;
   force?: boolean;
   dryRun?: boolean;
@@ -43,9 +46,12 @@ export interface InitRequest {
 
 export class UnknownMcpError extends Error {}
 export class UnknownSkillError extends Error {}
+export class UnknownScriptError extends Error {}
 export { StaleFileError };
 /** A resolved env value would be written to disk. */
 export class LeakError extends Error {}
+
+export { scriptsDir } from './journal.js';
 
 export async function planInit(deps: InitDeps, req: InitRequest): Promise<ChangePlan> {
   const catalog = await deps.source.load();
@@ -54,15 +60,29 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
   const skillNames = [...new Set(req.skills ?? [])];
   const unknownSkills = skillNames.filter((name) => !catalog.skills.some((sk) => sk.name === name));
   if (unknownSkills.length > 0) throw new UnknownSkillError(`unknown skill: ${unknownSkills.join(', ')}`);
+  const scriptNames = [...new Set(req.scripts ?? [])];
+  const unknownScripts = scriptNames.filter((name) => !catalog.scripts.some((sc) => sc.name === name));
+  if (unknownScripts.length > 0) throw new UnknownScriptError(`unknown script: ${unknownScripts.join(', ')}`);
 
   const manifest = await loadManifest(deps.fs, deps.paths.homeDir);
   const mcpPlan = await planMcps(deps, req, catalog.mcps, manifest);
   const skillsDir = deps.target.skillsDir(req.scope, deps.paths);
-  const entries: SkillPlanEntry[] = [];
+  const skillEntries: SkillPlanEntry[] = [];
   for (const name of skillNames) {
     const root = `${skillsDir}/${name}`;
-    entries.push({
+    skillEntries.push({
       skill: catalog.skills.find((sk) => sk.name === name)!,
+      root,
+      scope: req.scope,
+      present: await readPresent(deps.fs, root),
+    });
+  }
+  const scriptRootBase = scriptsDir(req.scope, deps.paths);
+  const scriptEntries: ScriptPlanEntry[] = [];
+  for (const name of scriptNames) {
+    const root = `${scriptRootBase}/${name}`;
+    scriptEntries.push({
+      script: catalog.scripts.find((sc) => sc.name === name)!,
       root,
       scope: req.scope,
       present: await readPresent(deps.fs, root),
@@ -70,8 +90,12 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
   }
   return {
     ...mcpPlan,
-    skills: buildSkillPlan({ skills: entries, owned: deriveSkillOwnership(manifest), force: req.force }),
-    scripts: [],
+    skills: buildSkillPlan({ skills: skillEntries, owned: deriveSkillOwnership(manifest), force: req.force }),
+    scripts: buildScriptPlan({
+      scripts: scriptEntries,
+      owned: deriveScriptOwnership(manifest),
+      force: req.force,
+    }),
   };
 }
 
@@ -122,7 +146,12 @@ function assertNoLeak(plan: ChangePlan, files: FileChange[], env: InitDeps['env'
 }
 
 /** Re-reads each writable skill directory; re-plans once if it changed, aborting when the action differs. */
-async function refreshSkill(deps: InitDeps, change: SkillChange, owned: Record<string, string>, force: boolean) {
+async function refreshSkill(
+  deps: InitDeps,
+  change: SkillChange,
+  owned: Record<string, string>,
+  force: boolean,
+): Promise<SkillChange> {
   const fresh = await readPresent(deps.fs, change.root);
   const [replanned] = buildSkillPlan({
     skills: [
@@ -140,30 +169,61 @@ async function refreshSkill(deps: InitDeps, change: SkillChange, owned: Record<s
   return replanned!;
 }
 
-/** One file write or removal of a skill, with the bytes needed to record and undo it. */
-interface SkillStep {
+/** Re-reads each writable script directory; re-plans once if it changed, aborting when the action differs. */
+async function refreshScript(
+  deps: InitDeps,
+  change: ScriptChange,
+  owned: Record<string, string>,
+  force: boolean,
+): Promise<ScriptChange> {
+  const fresh = await readPresent(deps.fs, change.root);
+  const [replanned] = buildScriptPlan({
+    scripts: [
+      {
+        script: { name: change.name, description: '', tools: [], files: change.files },
+        root: change.root,
+        scope: change.scope,
+        present: fresh,
+      },
+    ],
+    owned,
+    force,
+  });
+  if (replanned!.action !== change.action) throw new StaleFileError(`${change.root} changed since planning, re-run`);
+  return replanned!;
+}
+
+type TreeChange = SkillChange | ScriptChange;
+type TreeKind = 'skill' | 'script';
+
+/** One file write or removal of a skill/script, with the bytes needed to record and undo it. */
+interface TreeStep {
   path: string;
-  change: SkillChange;
+  change: TreeChange;
+  kind: TreeKind;
   /** Bytes the apply writes; null when the file is deleted. */
   after: Uint8Array | null;
   before: Uint8Array | null;
 }
 
 const SKILL_ENTRY = 'SKILL.md';
+const SCRIPT_ENTRY = 'index.mjs';
 
-/** Per skill: writes first, deletions next, SKILL.md last so a half-written skill never loads. */
-function skillSteps(change: SkillChange): SkillStep[] {
+/** Per tree: writes first, deletions next, entry file last so a half-written item never loads. */
+function treeSteps(change: TreeChange, kind: TreeKind): TreeStep[] {
+  const entry = kind === 'skill' ? SKILL_ENTRY : SCRIPT_ENTRY;
   const before = new Map(change.present.map((f) => [f.path, f.bytes]));
-  const step = (path: string, after: Uint8Array | null): SkillStep => ({
+  const step = (path: string, after: Uint8Array | null): TreeStep => ({
     path: `${change.root}/${path}`,
     change,
+    kind,
     after,
     before: before.get(path) ?? null,
   });
-  const writes = change.files.filter((f) => f.path !== SKILL_ENTRY).map((f) => step(f.path, f.bytes));
+  const writes = change.files.filter((f) => f.path !== entry).map((f) => step(f.path, f.bytes));
   const removals = change.removed.map((p) => step(p, null));
-  const entry = change.files.filter((f) => f.path === SKILL_ENTRY).map((f) => step(f.path, f.bytes));
-  return [...writes, ...removals, ...entry];
+  const entryWrites = change.files.filter((f) => f.path === entry).map((f) => step(f.path, f.bytes));
+  return [...writes, ...removals, ...entryWrites];
 }
 
 /** Directories that do not exist yet and that writing these paths will create, parents first. */
@@ -177,7 +237,7 @@ async function missingDirs(fs: FileSystem, paths: string[]): Promise<string[]> {
   return [...found];
 }
 
-/** Re-reads, scans for leaked values, backs up, writes atomically and journals every changed file and skill. */
+/** Re-reads, scans for leaked values, backs up, writes atomically and journals every changed file, skill and script. */
 export async function applyPlan(deps: InitDeps, plan: ChangePlan, opts: { force?: boolean } = {}): Promise<boolean> {
   const { homeDir } = deps.paths;
   const force = opts.force ?? false;
@@ -190,12 +250,16 @@ export async function applyPlan(deps: InitDeps, plan: ChangePlan, opts: { force?
   const skills: SkillChange[] = [];
   for (const change of plan.skills.filter(writesSkill))
     skills.push(await refreshSkill(deps, change, skillOwners, force));
-  if (files.length === 0 && skills.length === 0) return false;
+  const scriptOwners = deriveScriptOwnership(manifest);
+  const scripts: ScriptChange[] = [];
+  for (const change of plan.scripts.filter(writesScript))
+    scripts.push(await refreshScript(deps, change, scriptOwners, force));
+  if (files.length === 0 && skills.length === 0 && scripts.length === 0) return false;
   assertNoLeak(plan, files, deps.env);
 
   const now = (deps.now ?? (() => new Date()))();
   const id = newInstallId(now);
-  const steps = skills.flatMap(skillSteps);
+  const steps = [...skills.flatMap((c) => treeSteps(c, 'skill')), ...scripts.flatMap((c) => treeSteps(c, 'script'))];
   const createdDirs = await missingDirs(
     deps.fs,
     steps.filter((s) => s.after !== null).map((s) => s.path),
@@ -210,11 +274,11 @@ export async function applyPlan(deps: InitDeps, plan: ChangePlan, opts: { force?
     if (backup !== null) await deps.fs.writeAtomic(`${state}/${backup}`, file.before!);
     mcpBackups.set(file, backup);
   }
-  const skillBackups = new Map<SkillStep, string | null>();
+  const treeBackups = new Map<TreeStep, string | null>();
   for (const step of steps) {
     const backup = step.before === null ? null : backupPath(id, n++, step.path);
     if (backup !== null) await deps.fs.writeBytes(`${state}/${backup}`, step.before!);
-    skillBackups.set(step, backup);
+    treeBackups.set(step, backup);
   }
 
   const undo: (() => Promise<void>)[] = [];
@@ -244,12 +308,12 @@ export async function applyPlan(deps: InitDeps, plan: ChangePlan, opts: { force?
       installed.push({
         path: step.path,
         scope: step.change.scope,
-        backup: skillBackups.get(step)!,
+        backup: treeBackups.get(step)!,
         beforeHash: step.before === null ? null : sha256(step.before),
         afterHash: step.after === null ? null : sha256(step.after),
         items: [
           {
-            kind: 'skill',
+            kind: step.kind,
             name: step.change.name,
             action: step.change.action as 'create' | 'update',
             entryHash: step.change.desiredHash,
