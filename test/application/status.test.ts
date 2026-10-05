@@ -12,6 +12,7 @@ import { ManifestError } from '@/domain/manifest.js';
 import type { LoadedCatalog } from '@/ports/catalog-source.js';
 import type { FileSystem } from '@/ports/file-system.js';
 import { DEMO_V1, DEMO_V2 } from '@test/helpers/skills.js';
+import { SCRIPT_V1, SCRIPT_V2, scriptSource } from '@test/helpers/scripts.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
 const mcp = (name: string, url: string, extra: Partial<McpItem> = {}): McpItem => ({
@@ -272,5 +273,54 @@ describe('getStatus', () => {
     const report = await getStatus(deps(), {});
     expect(report.items.map((i) => i.state)).toEqual(['installed', 'installed']);
     expect(attempts).toEqual([]);
+  });
+});
+
+describe('getStatus (scripts)', () => {
+  let tmp: TmpPaths;
+  let catalog: LoadedCatalog;
+  let fs: FileSystem;
+  const source = {
+    ref: () => ({ kind: 'folder' as const, location: '/catalog' }),
+    load: () => Promise.resolve(catalog),
+  };
+  const deps = (): InitDeps => ({
+    source,
+    fs,
+    target: claudeCodeTarget,
+    paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+    env: {},
+  });
+  const root = () => join(tmp.cwd, '.shitaku', 'scripts', 'lint');
+  const statesOf = async () =>
+    Object.fromEntries((await getStatus(deps(), {})).items.map((i) => [`${i.scope}/${i.kind}/${i.name}`, i.state]));
+
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    fs = new NodeFileSystem();
+    catalog = { mcps: [], skills: [], scripts: [SCRIPT_V1], profiles: [], issues: [] };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('reports installed, modified, missing and out-of-date for scripts under .shitaku/scripts', async () => {
+    await initMcps({ ...deps(), source: scriptSource([SCRIPT_V1]) }, { mcps: [], scripts: ['lint'], scope: 'project' });
+    expect(await statesOf()).toEqual({ 'project/script/lint': 'installed' });
+
+    await writeFile(join(root(), 'index.mjs'), 'edited');
+    expect(await statesOf()).toEqual({ 'project/script/lint': 'modified' });
+
+    await rm(root(), { recursive: true });
+    expect(await statesOf()).toEqual({ 'project/script/lint': 'missing' });
+
+    await initMcps({ ...deps(), source: scriptSource([SCRIPT_V1]) }, { mcps: [], scripts: ['lint'], scope: 'project' });
+    catalog = { mcps: [], skills: [], scripts: [SCRIPT_V2], profiles: [], issues: [] };
+    expect(await statesOf()).toEqual({ 'project/script/lint': 'out-of-date' });
+  });
+
+  it('reports a symlink inside a script tree as modified without aborting', async () => {
+    await initMcps({ ...deps(), source: scriptSource([SCRIPT_V1]) }, { mcps: [], scripts: ['lint'], scope: 'project' });
+    await rm(join(root(), 'index.mjs'));
+    await symlink(tmp.root, join(root(), 'index.mjs'));
+    expect(await statesOf()).toEqual({ 'project/script/lint': 'modified' });
   });
 });
