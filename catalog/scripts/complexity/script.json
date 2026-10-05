@@ -1,0 +1,12 @@
+{
+  "name": "complexity",
+  "description": "Measure cyclomatic and cognitive complexity for JS/TS.",
+  "tools": ["eslint", "eslint-plugin-sonarjs", "typescript-eslint", "typescript", "@eslint/js"],
+  "args": ["[paths...]", "--max-cyclomatic <n>", "--max-cognitive <n>", "--format json|text"],
+  "output": "JSON envelope (default) or text table",
+  "exitCodes": {
+    "0": "all functions within thresholds",
+    "1": "one or more functions exceed thresholds",
+    "2": "tool, parse, config, or IO failure"
+  }
+}

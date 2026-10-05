@@ -440,4 +440,43 @@ describe('uninstallItem (scripts)', () => {
     expect(await exists(join(root(), 'extra.md'))).toBe(true);
     expect(await exists(join(root(), 'index.mjs'))).toBe(false);
   });
+
+  it('removes a runtime script-root node_modules tree on uninstall without treating it as a modification', async () => {
+    await initMcps(scriptDeps, { mcps: [], scripts: ['lint'], scope: 'project' });
+    const nmFile = join(root(), 'node_modules', 'eslint', 'bin', 'eslint.js');
+    await mkdir(join(root(), 'node_modules', 'eslint', 'bin'), { recursive: true });
+    await writeFile(nmFile, 'runtime');
+    expect(await uninstall({ name: 'lint', kind: 'script' })).toMatchObject({
+      status: 'removed',
+      exitCode: 0,
+      modified: false,
+    });
+    expect(await exists(root())).toBe(false);
+    expect(await exists(join(root(), 'node_modules'))).toBe(false);
+  });
+
+  it('removes script-root node_modules even when --force keeps an unrecorded sibling file', async () => {
+    await initMcps(scriptDeps, { mcps: [], scripts: ['lint'], scope: 'project' });
+    await writeFile(join(root(), 'extra.md'), 'mine');
+    await mkdir(join(root(), 'node_modules', 'pkg'), { recursive: true });
+    await writeFile(join(root(), 'node_modules', 'pkg', 'index.js'), 'dep');
+    expect(await uninstall({ name: 'lint', kind: 'script', force: true })).toMatchObject({
+      status: 'removed',
+      exitCode: 0,
+      modified: true,
+    });
+    expect(await exists(join(root(), 'extra.md'))).toBe(true);
+    expect(await exists(join(root(), 'node_modules'))).toBe(false);
+    expect(await exists(join(root(), 'index.mjs'))).toBe(false);
+  });
+
+  it('removes script-root node_modules when undoing the original script install', async () => {
+    await initMcps(scriptDeps, { mcps: [], scripts: ['lint'], scope: 'project' });
+    await mkdir(join(root(), 'node_modules', 'pkg'), { recursive: true });
+    await writeFile(join(root(), 'node_modules', 'pkg', 'index.js'), 'dep');
+    const undoDeps = { fs, paths: { homeDir: tmp.homeDir, cwd: tmp.cwd } };
+    expect(await undoInstall(undoDeps, {})).toMatchObject({ status: 'undone', exitCode: 0 });
+    expect(await exists(root())).toBe(false);
+    expect(await exists(join(root(), 'node_modules'))).toBe(false);
+  });
 });

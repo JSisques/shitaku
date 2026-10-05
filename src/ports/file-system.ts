@@ -11,6 +11,7 @@ export interface FileSystem {
   readText(path: string): Promise<string | null>;
   /** Writes via a temp file in the same directory and a rename; creates missing parent directories. */
   writeAtomic(path: string, data: string): Promise<void>;
+  /** Deletes a file or directory tree (recursive). Missing paths are ignored. */
   remove(path: string): Promise<void>;
   mkdirp(path: string): Promise<void>;
   /**

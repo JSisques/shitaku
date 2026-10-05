@@ -19,6 +19,6 @@
     ],
     "skills": ["example-skill"],
     "profiles": ["base", "web", "backend"],
-    "scripts": []
+    "scripts": ["complexity"]
   }
 }

@@ -42,12 +42,18 @@ Plan MUST classify by tree hash: create|skip|update|conflict. Conflicts MUST sho
 - WHEN init or undo runs
 - THEN non-zero naming ghost, or `demo/` removed and manifest cleared
 
-### Requirement: Empty structure
+### Requirement: Bundled complexity script
 
-Bundled catalog MUST allow empty `items.scripts` and MUST NOT ship concrete scripts in this change.
+Bundled catalog MUST list `complexity` in `items.scripts` and MUST ship `catalog/scripts/complexity/` with `index.mjs`, validated metadata, and shipped ESLint flat config. Concrete scripts MAY ship; the prior no-concrete-scripts constraint MUST NOT apply.
 
-#### Scenario: Empty scripts
+#### Scenario: Registered and loadable
 
 - GIVEN default catalog
 - WHEN loaded
-- THEN load succeeds with empty scripts list
+- THEN `complexity` is valid and selectable
+
+#### Scenario: Project install root
+
+- GIVEN init installs `complexity` with `--scope project`
+- WHEN apply completes
+- THEN tree is under `<cwd>/.shitaku/scripts/complexity/` including `index.mjs` and shipped config
