@@ -28,7 +28,8 @@ describe('bundled catalog', () => {
     ]);
     const mcpNames = catalog.mcps.map((m) => m.name);
     const skillNames = catalog.skills.map((sk) => sk.name);
-    expect(resolveProfile('web', catalog.profiles, mcpNames, skillNames)).toEqual({
+    const scriptNames = catalog.scripts.map((s) => s.name);
+    expect(resolveProfile('web', catalog.profiles, mcpNames, skillNames, scriptNames)).toEqual({
       mcps: [
         'context7',
         'github',
@@ -41,11 +42,21 @@ describe('bundled catalog', () => {
         'cloudflare-observability',
       ],
       skills: [],
+      scripts: [],
     });
-    expect(resolveProfile('backend', catalog.profiles, mcpNames, skillNames)).toEqual({
+    expect(resolveProfile('backend', catalog.profiles, mcpNames, skillNames, scriptNames)).toEqual({
       mcps: ['context7', 'github', 'docker', 'sqlite', 'supabase'],
       skills: [],
+      scripts: [],
     });
+  });
+
+  it('loads with an empty scripts list', async () => {
+    const catalog = await new FolderCatalogSource(
+      join(import.meta.dirname, '..', '..', '..', 'catalog'),
+      'bundled',
+    ).load();
+    expect(catalog.scripts).toEqual([]);
   });
 
   it('loads the bundled example skill with its frontmatter', async () => {
