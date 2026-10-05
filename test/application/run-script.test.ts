@@ -1,3 +1,4 @@
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
@@ -135,6 +136,20 @@ describe('runScript', () => {
       await runScript(deps(), { name: 'lint', args: [] });
       const pathEnv = calls[0]?.env?.['PATH'] ?? '';
       expect(pathEnv.startsWith(join(tmp.cwd, 'node_modules', '.bin'))).toBe(true);
+    });
+
+    it('does not modify package.json contents or mtime', async () => {
+      const pkgPath = join(tmp.cwd, 'package.json');
+      const original = `${JSON.stringify({ name: 'fixture', private: true }, null, 2)}\n`;
+      await writeFile(pkgPath, original);
+      const before = await stat(pkgPath);
+      await install([SCRIPT_V1], 'project');
+      expect(await runScript(deps(), { name: 'lint', args: ['--json'] })).toBe(0);
+      expect(calls).toHaveLength(1);
+      const after = await stat(pkgPath);
+      expect(await readFile(pkgPath, 'utf8')).toBe(original);
+      expect(after.mtimeMs).toBe(before.mtimeMs);
+      expect(after.size).toBe(before.size);
     });
   });
 
