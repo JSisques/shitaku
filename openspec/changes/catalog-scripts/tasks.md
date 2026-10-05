@@ -47,13 +47,13 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Run + ProcessRunner + doctor (PR3)
 
-- [ ] 3.1 RED (threat): reject path-like names; no spawn; never spawn metadata
-- [ ] 3.2 RED→GREEN: name/tool policy + Win path fixtures
-- [ ] 3.3 RED→GREEN: `process-runner.ts` + `node-process-runner.ts` — `shell:false`; exit passthrough; Win `.cmd`
-- [ ] 3.4 RED→GREEN: `run-script.ts` — bare list; project→user; args/exit; `.bin` then `npx`
-- [ ] 3.5 RED→GREEN: unknown name non-zero + suggest bare `run`
-- [ ] 3.6 RED→GREEN: `doctor-plan.ts`/`doctor.ts` — `info`/`script-tool-missing`; warn-only exit 0
-- [ ] 3.7 GREEN: CLI `run` + `main.ts` wire; architecture guard bans spawn in domain
+- [x] 3.1 RED (threat): reject path-like names; no spawn; never spawn metadata
+- [x] 3.2 RED→GREEN: name/tool policy + Win path fixtures
+- [x] 3.3 RED→GREEN: `process-runner.ts` + `node-process-runner.ts` — `shell:false`; exit passthrough; Win `.cmd`
+- [x] 3.4 RED→GREEN: `run-script.ts` — bare list; project→user; args/exit; `.bin` then `npx`
+- [x] 3.5 RED→GREEN: unknown name non-zero + suggest bare `run`
+- [x] 3.6 RED→GREEN: `doctor-plan.ts`/`doctor.ts` — `info`/`script-tool-missing`; warn-only exit 0
+- [x] 3.7 GREEN: CLI `run` + `main.ts` wire; architecture guard bans spawn in domain
 
 ## Phase 4: Catalog structure + docs (PR4)
 
