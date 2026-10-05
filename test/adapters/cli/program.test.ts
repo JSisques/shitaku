@@ -652,10 +652,10 @@ describe('runCli', () => {
     /** Writes a folder catalog; profiles have no skills or MCPs of their own, so they always resolve. */
     const writeCatalog = async (
       name: string,
-      items: { mcps?: Entry[]; skills?: Entry[]; profiles?: Entry[] },
+      items: { mcps?: Entry[]; skills?: Entry[]; scripts?: Entry[]; profiles?: Entry[] },
     ): Promise<string> => {
       const dir = join(tmp.root, name);
-      const { mcps = [], skills = [], profiles = [] } = items;
+      const { mcps = [], skills = [], scripts = [], profiles = [] } = items;
       await mkdir(join(dir, 'mcps'), { recursive: true });
       await mkdir(join(dir, 'profiles'), { recursive: true });
       await writeFile(
@@ -665,6 +665,7 @@ describe('runCli', () => {
           items: {
             mcps: mcps.map((m) => m.name),
             skills: skills.map((s) => s.name),
+            scripts: scripts.map((s) => s.name),
             profiles: profiles.map((p) => p.name),
           },
         }),
@@ -679,6 +680,14 @@ describe('runCli', () => {
           join(dir, 'skills', s.name, 'SKILL.md'),
           `---\nname: ${s.name}\ndescription: ${s.description ?? ''}\n---\n`,
         );
+      }
+      for (const s of scripts) {
+        await mkdir(join(dir, 'scripts', s.name), { recursive: true });
+        await writeFile(
+          join(dir, 'scripts', s.name, 'script.json'),
+          JSON.stringify({ name: s.name, description: s.description ?? '', tools: [] }),
+        );
+        await writeFile(join(dir, 'scripts', s.name, 'index.mjs'), 'export default {};\n');
       }
       for (const p of profiles) await writeFile(join(dir, 'profiles', `${p.name}.json`), JSON.stringify(p));
       return dir;
@@ -718,6 +727,34 @@ describe('runCli', () => {
       it('lists only the requested kind', async () => {
         expect(await run('list', 'skills', '--source', await fullCatalog())).toBe(0);
         expect(out).toEqual(['skills:', '  demo  Browser automation']);
+      });
+
+      it('lists only scripts when asked', async () => {
+        const dir = await writeCatalog('with-scripts', {
+          scripts: [{ name: 'lint', description: 'Run lint' }],
+        });
+        expect(await run('list', 'scripts', '--source', dir)).toBe(0);
+        expect(out).toEqual(['scripts:', '  lint  Run lint']);
+      });
+
+      it('includes scripts among all kinds', async () => {
+        const dir = await writeCatalog('all-kinds', {
+          mcps: [{ name: 'fs', description: 'Files' }],
+          skills: [{ name: 'demo', description: 'Skill' }],
+          scripts: [{ name: 'lint', description: 'Run lint' }],
+          profiles: [{ name: 'base' }],
+        });
+        expect(await run('list', '--source', dir)).toBe(0);
+        expect(out).toEqual([
+          'mcps:',
+          '  fs    Files',
+          'profiles:',
+          '  base',
+          'scripts:',
+          '  lint  Run lint',
+          'skills:',
+          '  demo  Skill',
+        ]);
       });
 
       it('lists only profiles when asked, printing a profile without description as its name', async () => {
@@ -777,6 +814,17 @@ describe('runCli', () => {
         expect(JSON.parse(out.join('\n'))).toEqual({
           version: 1,
           items: [{ kind: 'profile', name: 'web', description: 'Web setup' }],
+        });
+      });
+
+      it('prints scripts with singular JSON kind script', async () => {
+        const dir = await writeCatalog('json-scripts', {
+          scripts: [{ name: 'demo', description: 'Demo script' }],
+        });
+        expect(await run('list', '--json', '--source', dir)).toBe(0);
+        expect(JSON.parse(out.join('\n'))).toEqual({
+          version: 1,
+          items: [{ kind: 'script', name: 'demo', description: 'Demo script' }],
         });
       });
 
