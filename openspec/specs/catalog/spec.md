@@ -4,7 +4,8 @@
 
 ### Requirement: Catalog layout and schema
 
-The catalog MUST be a folder with `catalog.json` (`{ "version": 1, "items": { "mcps": [...], "skills": [...], "profiles": [...] } }`, listing item names; `skills` is optional and defaults to empty), `mcps/<name>.json`, `skills/<name>/SKILL.md` (plus optional resources, including binary files), and `profiles/<name>.json`. Each MCP item MUST have `name`, `description`, `server`, and optional `env` and `targets`. Env entries MUST carry `name` and `required`. Each skill's `SKILL.md` MUST have YAML frontmatter with non-empty `name` (equal to its directory name and listed in `items.skills`) and non-empty `description`. `instructions/` and `hooks/` are reserved and MUST be ignored.
+The catalog MUST be a folder with `catalog.json` (`{ "version": 1, "items": { "mcps": [...], "skills": [...], "profiles": [...], "scripts": [...] } }`, listing item names; `skills` and `scripts` are optional and default to empty), `mcps/<name>.json`, `skills/<name>/SKILL.md` (plus optional resources, including binary files), `scripts/<name>/index.mjs` plus validated metadata, and `profiles/<name>.json`. Each MCP item MUST have `name`, `description`, `server`, and optional `env` and `targets`. Env entries MUST carry `name` and `required`. Each skill's `SKILL.md` MUST have YAML frontmatter with non-empty `name` (equal to its directory name and listed in `items.skills`) and non-empty `description`. `instructions/` and `hooks/` are reserved and MUST be ignored.
+(Previously: no scripts kind in items or layout)
 
 #### Scenario: Valid MCP item
 
@@ -70,7 +71,8 @@ The loader MUST validate every item with the schema. An invalid item MUST be rep
 
 ### Requirement: Profile extends
 
-Profiles MAY `extends` other profiles and MAY list `skills` (default empty). Resolution MUST merge parents first, de-duplicate MCP names and skill names, and fail on cycles or unknown references (MCP or skill). Applying profiles in `init` is out of scope; resolution only.
+Profiles MAY `extends` other profiles and MAY list `skills` and `scripts` (each default empty). Resolution MUST merge parents first, de-duplicate MCP names, skill names, and script names, and fail on cycles or unknown references (MCP, skill, or script). Applying profiles in `init` is out of scope; resolution only.
+(Previously: profiles could not reference scripts)
 
 #### Scenario: Extends resolved
 
@@ -84,6 +86,12 @@ Profiles MAY `extends` other profiles and MAY list `skills` (default empty). Res
 - WHEN `web` is resolved
 - THEN `demo` appears once
 
+#### Scenario: Scripts resolved
+
+- GIVEN `base` lists script `lint` and `web` extends `base` and lists `lint`
+- WHEN `web` is resolved
+- THEN `lint` appears once
+
 #### Scenario: Cycle
 
 - GIVEN `a` extends `b` and `b` extends `a`
@@ -92,7 +100,7 @@ Profiles MAY `extends` other profiles and MAY list `skills` (default empty). Res
 
 #### Scenario: Unknown reference
 
-- GIVEN a profile lists MCP `ghost` or skill `ghost` that does not exist
+- GIVEN a profile lists MCP, skill, or script `ghost` that does not exist
 - WHEN resolved
 - THEN it fails naming `ghost`
 
@@ -127,3 +135,19 @@ The bundled catalog MUST include one minimal valid example skill listed in `item
 - GIVEN the default catalog
 - WHEN loaded
 - THEN at least one skill is available and valid
+
+### Requirement: Script catalog entries
+
+Catalog MUST support `scripts/<name>/` with `index.mjs` + validated metadata (`name`, `description`, args/usage, required tools, output format). `items.scripts` optional default empty. Invalid scripts MUST be reported (path+reason) and not installable. Source guards (traversal, symlink, size/count) MUST apply to script trees.
+
+#### Scenario: Valid script
+
+- GIVEN `scripts/demo/index.mjs` plus valid metadata and `items.scripts` lists `demo`
+- WHEN loaded
+- THEN script `demo` is available
+
+#### Scenario: Invalid or guarded
+
+- GIVEN missing fields, name mismatch, traversal, symlink, or over-limit script tree
+- WHEN loaded
+- THEN rejected naming path and reason; not selectable
