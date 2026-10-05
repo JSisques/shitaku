@@ -1,4 +1,5 @@
 import { stateDir } from '@/application/journal.js';
+import type { InstallMethod } from '@/domain/install-method.js';
 import { isNewer, isStale, isTruthyFlag, parseUpdateCache, updateNotice, type UpdateCache } from '@/domain/update.js';
 import type { FileSystem } from '@/ports/file-system.js';
 import type { Paths } from '@/ports/paths.js';
@@ -19,6 +20,8 @@ export interface UpdateCheckDeps {
 export interface UpdateCheckRequest {
   currentVersion: string;
   interactive: boolean;
+  /** How this CLI was installed; defaults to `unknown` (npm global upgrade hint). */
+  installMethod?: InstallMethod;
   timeoutMs?: number;
 }
 
@@ -58,7 +61,9 @@ export async function checkForUpdate(deps: UpdateCheckDeps, req: UpdateCheckRequ
     const latest = isStale(cache, now)
       ? await refresh(deps, cache, now, req.timeoutMs ?? DEFAULT_TIMEOUT_MS)
       : (cache?.latest ?? null);
-    return latest !== null && isNewer(req.currentVersion, latest) ? updateNotice(req.currentVersion, latest) : null;
+    return latest !== null && isNewer(req.currentVersion, latest)
+      ? updateNotice(req.currentVersion, latest, req.installMethod ?? 'unknown')
+      : null;
   } catch {
     return null;
   }

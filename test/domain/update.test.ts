@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isNewer, isStale, isTruthyFlag, parseUpdateCache, updateNotice, UPDATE_TTL_MS } from '@/domain/update.js';
+import type { InstallMethod } from '@/domain/install-method.js';
 
 describe('isNewer', () => {
   it.each([
@@ -76,9 +77,23 @@ describe('parseUpdateCache', () => {
 });
 
 describe('updateNotice', () => {
-  it('names both versions and the upgrade command on one line', () => {
-    const notice = updateNotice('0.2.0', '0.3.0');
-    expect(notice).toBe('Update available: shitaku 0.2.0 -> 0.3.0. Run: npm install -g @jsisques/shitaku');
-    expect(notice).not.toContain('\n');
+  it.each([
+    ['npx', 'npx @jsisques/shitaku@latest'],
+    ['npm-global', 'npm install -g @jsisques/shitaku'],
+    ['pnpm-global', 'pnpm add -g @jsisques/shitaku'],
+    ['unknown', 'npm install -g @jsisques/shitaku'],
+  ] as const satisfies ReadonlyArray<readonly [InstallMethod, string]>)(
+    'names both versions and the %s upgrade command on one line',
+    (method, command) => {
+      const notice = updateNotice('0.2.0', '0.3.0', method);
+      expect(notice).toBe(`Update available: shitaku 0.2.0 -> 0.3.0. Run: ${command}`);
+      expect(notice).not.toContain('\n');
+    },
+  );
+
+  it('falls back to the npm-global command when the method is omitted', () => {
+    expect(updateNotice('0.2.0', '0.3.0')).toBe(
+      'Update available: shitaku 0.2.0 -> 0.3.0. Run: npm install -g @jsisques/shitaku',
+    );
   });
 });

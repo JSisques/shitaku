@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { upgradeCommand, type InstallMethod } from '@/domain/install-method.js';
 
 export const UPDATE_TTL_MS = 86_400_000;
 
@@ -54,6 +55,6 @@ export function isTruthyFlag(value: string | undefined): boolean {
   return ['1', 'true', 'yes'].includes((value ?? '').trim().toLowerCase());
 }
 
-export function updateNotice(current: string, latest: string): string {
-  return `Update available: shitaku ${current} -> ${latest}. Run: npm install -g @jsisques/shitaku`;
+export function updateNotice(current: string, latest: string, method: InstallMethod = 'unknown'): string {
+  return `Update available: shitaku ${current} -> ${latest}. Run: ${upgradeCommand(method)}`;
 }

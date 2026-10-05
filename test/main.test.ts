@@ -68,6 +68,13 @@ describe('main (composition root)', () => {
     expect(deps.cliVersion).toBe(pkg.version);
   });
 
+  it('wires installMethod into updates from process signals', async () => {
+    vi.stubEnv('npm_command', 'exec');
+    vi.stubEnv('npm_execpath', '/usr/lib/node_modules/npm/bin/npx-cli.js');
+    const deps = await bootMain();
+    expect(deps.updates?.installMethod).toBe('npx');
+  });
+
   it('resolves --source relative to the working directory', async () => {
     const deps = await bootMain();
     expect(deps.makeSource('my-catalog').ref()).toEqual({
