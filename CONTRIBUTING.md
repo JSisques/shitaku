@@ -1,6 +1,6 @@
 # Contributing to shitaku
 
-Thanks for helping. This guide covers local setup, adding catalog items (MCPs, skills, profiles), commit conventions and what a pull request needs to pass.
+Thanks for helping. This guide covers local setup, adding catalog items (MCPs, skills, scripts, profiles), commit conventions and what a pull request needs to pass.
 
 ## Local setup
 
@@ -47,11 +47,13 @@ catalog/
   mcps/<name>.json
   profiles/<name>.json
   skills/<name>/SKILL.md
+  scripts/<name>/index.mjs
+  scripts/<name>/script.json
 ```
 
-Every item must be listed in `catalog/catalog.json` under `items.mcps`, `items.profiles` or `items.skills`. The loader (`src/adapters/catalog/folder-source.ts`) validates items with the zod schemas in `src/domain/catalog/`. An invalid or unlisted item is skipped with a warning.
+Every item must be listed in `catalog/catalog.json` under `items.mcps`, `items.profiles`, `items.skills` or `items.scripts`. The loader (`src/adapters/catalog/folder-source.ts`) validates items with the zod schemas in `src/domain/catalog/`. An invalid or unlisted item is skipped with a warning.
 
-After adding or changing an MCP or skill, run `pnpm run docs:catalog` to regenerate the catalog tables in `README.md`. CI fails (`pnpm run docs:catalog:check`) when they are out of date.
+After adding or changing an MCP, skill or script, run `pnpm run docs:catalog` to regenerate the catalog tables in `README.md`. CI fails (`pnpm run docs:catalog:check`) when they are out of date.
 
 When catalog items change, also refresh the docs site pages:
 
@@ -62,7 +64,7 @@ pnpm run docs:website-catalog:check
 
 That regenerates Markdown under `website/src/content/docs/{en,es}/catalog/` from `catalog/` (read-only). Profiles stay browse-only with a not-installable callout. The isolated `.github/workflows/website.yml` workflow runs the same emit step before the Astro build; root `ci.yml` / `cd.yml` do not.
 
-Names for MCPs and skills must match `^[a-z0-9][a-z0-9-]*$` (lowercase letters, digits and hyphens; no leading hyphen).
+Names for MCPs, skills and scripts must match `^[a-z0-9][a-z0-9-]*$` (lowercase letters, digits and hyphens; no leading hyphen).
 
 ### Add a skill
 
@@ -116,13 +118,38 @@ Names for MCPs and skills must match `^[a-z0-9][a-z0-9-]*$` (lowercase letters, 
 
 Examples: `catalog/mcps/github.json` (http with a secret header) and `catalog/mcps/context7.json` (stdio).
 
+### Add a script
+
+1. Create `catalog/scripts/<name>/` with:
+   - `index.mjs` — ESM entry point (Node `>=22.13`). shitaku runs it with `process.execPath` and `shell:false`.
+   - `script.json` — metadata. Required: `name` (must equal the directory name) and non-empty `description`. Optional: `tools` (binaries expected on PATH / `.bin`), `args`, `output`, `exitCodes`.
+2. Add the name to `items.scripts` in `catalog/catalog.json`:
+
+   ```json
+   "scripts": ["my-script"]
+   ```
+
+3. Update `test/adapters/catalog/bundled-catalog.test.ts` if the bundled empty-scripts assertion no longer holds (the shipped catalog currently keeps `items.scripts: []` on purpose).
+4. Verify:
+
+   ```sh
+   pnpm run build
+   node dist/main.js init --scripts my-script --scope project --dry-run
+   node dist/main.js run my-script
+   pnpm test
+   ```
+
+   The dry run prints `my-script: create` and writes nothing. After a real install, `shitaku run` lists it and `shitaku run my-script` executes `index.mjs`. Do not commit concrete scripts in this repository unless a follow-up change explicitly adds them.
+
+Install roots: project `./.shitaku/scripts/<name>/`, user `~/.claude/.shitaku/scripts/<name>/` — never agent skill directories.
+
 ### Add a profile
 
-A profile is a named bundle of MCPs and skills.
+A profile is a named bundle of MCPs, skills and scripts.
 
 1. Create `catalog/profiles/<name>.json`. The `name` field must equal the file name.
-2. Fields: `name` (required), `description`, `extends` (profile names, applied first), `mcps`, `skills` (names that exist in the catalog).
-3. Every referenced MCP, skill and parent profile must exist, and `extends` must not form a cycle. A profile that does not resolve is skipped with a warning.
+2. Fields: `name` (required), `description`, `extends` (profile names, applied first), `mcps`, `skills`, `scripts` (names that exist in the catalog).
+3. Every referenced MCP, skill, script and parent profile must exist, and `extends` must not form a cycle. A profile that does not resolve is skipped with a warning.
 4. Add the name to `items.profiles` in `catalog/catalog.json`, then update `test/adapters/catalog/bundled-catalog.test.ts` if needed.
 
 The CLI cannot select a profile yet; profiles are validated and resolved but not installable by name.

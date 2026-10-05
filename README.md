@@ -1,8 +1,8 @@
 # shitaku
 
-> Install a curated AI agent setup (MCP servers and skills) for Claude Code with one command.
+> Install a curated AI agent setup (MCP servers, skills, and scripts) for Claude Code with one command.
 
-> **shitaku** (支度, したく) is Japanese for "preparation" or "getting ready", like getting ready before you head out. shitaku gets your agent environment ready: MCP servers, skills and agents, installed in one go.
+> **shitaku** (支度, したく) is Japanese for "preparation" or "getting ready", like getting ready before you head out. shitaku gets your agent environment ready: MCP servers, skills, scripts and agents, installed in one go.
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@jsisques/shitaku"><img alt="npm version" src="https://img.shields.io/npm/v/@jsisques/shitaku" /></a>
@@ -58,10 +58,11 @@ After a global install the command is just `shitaku`. With `npx`, prefix every i
 
 Setting up an AI coding agent means hand-editing config files (`.mcp.json`, `~/.claude.json`, `~/.claude/skills/`) and repeating that on every machine and project. shitaku makes that setup portable and repeatable:
 
-- **One command** installs MCP servers and skills from a curated catalog, at project or user scope.
+- **One command** installs MCP servers, skills and scripts from a curated catalog, at project or user scope.
 - **Safe by default**: `--dry-run` previews the plan, conflicting entries are never overwritten silently, and secrets are written only as `${VAR}` placeholders, never as values.
 - **Reversible**: every change is backed up and recorded, so `shitaku undo` restores the previous state.
 - **Extensible**: point `--source` at your own catalog folder.
+- **Runnable scripts**: install catalog scripts under shitaku-owned roots, then execute them with `shitaku run`.
 
 ## Catalog
 
@@ -102,20 +103,32 @@ The tables below are generated from `catalog/` by `pnpm run docs:catalog`. Do no
 
 <!-- catalog:skills:end -->
 
+### Scripts
+
+Installable Node scripts live under `catalog/scripts/<name>/` (`index.mjs` + `script.json`). The bundled catalog ships none yet; the generated table stays empty until items are listed in `items.scripts`.
+
+<!-- catalog:scripts:start -->
+
+| Name | Description |
+| ---- | ----------- |
+
+<!-- catalog:scripts:end -->
+
 ## Usage
 
 Examples below use the global `shitaku` command. After a one-off run, substitute `npx @jsisques/shitaku` for `shitaku`.
 
 ```sh
-# Interactive: pick MCPs, skills and scope, review the plan, confirm
+# Interactive: pick MCPs, skills, scripts and scope, review the plan, confirm
 shitaku init
 
 # Non-interactive: no prompts
 shitaku init --mcps github,context7 --scope project
 
-# Skills only, or both kinds in one install (one --scope applies to both)
+# Skills only, or several kinds in one install (one --scope applies to all)
 shitaku init --skills example-skill --scope project
 shitaku init --mcps github --skills example-skill --scope project
+shitaku init --scripts my-script --scope project
 
 # Preview only: prints the plan, writes nothing (no backups, no manifest)
 shitaku init --mcps github --scope user --dry-run
@@ -124,10 +137,10 @@ shitaku init --mcps github --scope user --dry-run
 shitaku undo [--id <id>] [--force] [--dry-run]
 
 # Browse what a catalog offers (read-only)
-shitaku list [mcps|skills|profiles] [--search <text>] [--source <folder>] [--json]
+shitaku list [mcps|skills|profiles|scripts] [--search <text>] [--source <folder>] [--json]
 
-# Remove one installed MCP or skill (undo reverts it)
-shitaku uninstall <name> [--scope project|user] [--kind mcp|skill] [--force] [--dry-run]
+# Remove one installed MCP, skill or script (undo reverts it)
+shitaku uninstall <name> [--scope project|user] [--kind mcp|skill|script] [--force] [--dry-run]
 
 # Report what shitaku installed and whether it changed (read-only)
 shitaku status [--scope project|user] [--source <folder>] [--json]
@@ -135,15 +148,19 @@ shitaku status [--scope project|user] [--source <folder>] [--json]
 # Diagnose installed items and suggest fixes (read-only, exits 4 on problems)
 shitaku doctor [--scope project|user] [--source <folder>] [--json]
 
+# List installed scripts, or run one by name (args after the name are passed through)
+shitaku run
+shitaku run <name> [-- <args...>]
+
 # Print the installed package version (bare semver on stdout)
 shitaku version
 shitaku -v
 shitaku --version
 ```
 
-Scopes: `project` writes MCPs to `./.mcp.json` and skills to `./.claude/skills/`; `user` writes MCPs to `~/.claude.json` and skills to `~/.claude/skills/` (close Claude Code first when writing `~/.claude.json`).
+Scopes: `project` writes MCPs to `./.mcp.json`, skills to `./.claude/skills/`, and scripts to `./.shitaku/scripts/`; `user` writes MCPs to `~/.claude.json`, skills to `~/.claude/skills/`, and scripts to `~/.claude/.shitaku/scripts/` (close Claude Code first when writing `~/.claude.json`). Scripts never install into agent skill directories.
 
-Flags for `init`: `--mcps <a,b>`, `--skills <a,b>`, `--scope project|user`, `--source <folder>`, `--dry-run`, `--yes` (skip confirmation, needs `--scope` and at least one of `--mcps`/`--skills`), `--force` (overwrite entries and skill directories that differ). `--mcps` and `--skills` are independent and optional, but at least one kind must be selected. Interactively, the skills prompt appears only when the catalog has skills.
+Flags for `init`: `--mcps <a,b>`, `--skills <a,b>`, `--scripts <a,b>`, `--scope project|user`, `--source <folder>`, `--dry-run`, `--yes` (skip confirmation, needs `--scope` and at least one of `--mcps`/`--skills`/`--scripts`), `--force` (overwrite entries and skill/script directories that differ). `--mcps`, `--skills` and `--scripts` are independent and optional, but at least one kind must be selected. Interactively, the skills or scripts prompt appears only when the catalog has that kind.
 
 Exit codes: `0` ok, `1` error, `2` unresolved conflicts (an existing entry with the same name differs; re-run with `--force`), `3` undo or uninstall refused because a file or item changed since the install (use `--force`), `4` `doctor` found problems.
 
@@ -167,25 +184,53 @@ Before downgrading shitaku to a version without skills support, run `shitaku und
 
 Limits: skills are copied as plain files, so shitaku does not run, lint or sandbox them. There is no profile selection on the CLI yet.
 
+### Scripts
+
+A script is a directory `catalog/scripts/<name>/` with `index.mjs` (ESM entry, Node `>=22.13`) and `script.json` metadata. `script.json` requires `name` (equal to the directory name, matching `^[a-z0-9][a-z0-9-]*$`) and a non-empty `description`. Optional fields: `tools` (CLI binaries the script expects), `args`, `output`, and `exitCodes`. List the script under `items.scripts` in `catalog/catalog.json`. Unlisted or invalid scripts are skipped with a warning (path-escaping names fail the whole catalog).
+
+Install roots (never agent skill dirs):
+
+| Scope     | Root                                 |
+| --------- | ------------------------------------ |
+| `project` | `./.shitaku/scripts/<name>/`         |
+| `user`    | `~/.claude/.shitaku/scripts/<name>/` |
+
+Install behavior mirrors skills: the tree is copied under the scope root, recorded in the manifest with MCPs/skills from the same run, and `shitaku undo` reverts it. Conflicts, `--force`, mid-write rollback, and symlink/size guards work the same way.
+
+The bundled catalog currently ships **no** concrete scripts (`items.scripts` is `[]`). Add your own under `catalog/scripts/` or point `--source` at a trusted folder.
+
+### Run
+
+`shitaku run` lists or executes **installed** scripts (not the catalog browse list — use `shitaku list scripts` for that).
+
+```sh
+shitaku run                 # list installed scripts (project ∪ user; project wins on name clash)
+shitaku run demo            # run installed script `demo`
+shitaku run demo -- --json  # pass arguments through to index.mjs
+```
+
+Resolution: project scope first, then user. Names must be bare catalog names — path-like values (`../x`, `C:\…`, absolute paths) are rejected and never spawned. Execution uses `process.execPath` with `index.mjs` and `shell:false`. Required tools prefer `./node_modules/.bin`, then fall back to `npx`. The process exit code is passed through. Unknown names exit non-zero and suggest bare `shitaku run`.
+
 ### Uninstall
 
-`shitaku uninstall <name>` removes one MCP server or skill that shitaku installed. It never prompts, and it only touches items shitaku owns (see `shitaku status`): a name shitaku did not install exits `1` and nothing is written, even with `--force`.
+`shitaku uninstall <name>` removes one MCP server, skill or script that shitaku installed. It never prompts, and it only touches items shitaku owns (see `shitaku status`): a name shitaku did not install exits `1` and nothing is written, even with `--force`.
 
 ```sh
 shitaku uninstall github                      # scope inferred when the name is owned in one scope
 shitaku uninstall github --scope user         # narrow when it is owned in both
 shitaku uninstall demo --kind skill           # resolve a name that is both an MCP and a skill
+shitaku uninstall demo --kind script          # resolve a script when the name collides
 shitaku uninstall github --dry-run            # print the plan, write nothing
 shitaku uninstall github --force              # remove even if the item changed since the install
 ```
 
-Flags: `--scope project|user`, `--kind mcp|skill`, `--dry-run`, `--force`. If the name matches several owned items, the command exits `1` and lists the candidates (kind and scope).
+Flags: `--scope project|user`, `--kind mcp|skill|script`, `--dry-run`, `--force`. If the name matches several owned items, the command exits `1` and lists the candidates (kind and scope).
 
 Exit codes: `0` removed, already absent or dry run; `1` error (not installed, ambiguous, corrupt manifest); `3` refused because the item changed since the install. Refusal prints `changed since install: <path>` and a `--force` hint, writes nothing, and also applies to `--dry-run`, so a dry run reports exactly what a real run would do.
 
 Behavior:
 
-- An MCP is removed by deleting only its entry from the config file; other servers, key order and formatting are kept. A skill has its recorded files deleted (`SKILL.md` first) and its directory removed once empty. With `--force`, files you added to a skill directory are kept, and so is the directory.
+- An MCP is removed by deleting only its entry from the config file; other servers, key order and formatting are kept. A skill or script has its recorded files deleted (`SKILL.md` / `index.mjs` first when present) and its directory removed once empty. With `--force`, files you added under the tree are kept, and so is the directory.
 - Every file is backed up first, and the removal is recorded as an install, so `shitaku undo` restores the previous bytes and `shitaku status` lists the item again. Undo is last-in first-out: undo the uninstall before undoing the install it removed.
 - Undoing an MCP uninstall compares the whole config file, so `undo` refuses (exit `3`) if you edited that file after the uninstall; `--force` restores it anyway.
 - An item that is owned but already gone is reported as already absent and nothing is written.
@@ -193,7 +238,7 @@ Behavior:
 
 ### Status
 
-`shitaku status` lists every item shitaku installed and has not undone, in both scopes unless `--scope` is given, and never writes anything. The text output is grouped by scope, then by kind (`mcps`, `skills`), and each item shows its name, state and path:
+`shitaku status` lists every item shitaku installed and has not undone, in both scopes unless `--scope` is given, and never writes anything. The text output is grouped by scope, then by kind (`mcps`, `skills`, `scripts`), and each item shows its name, state and path:
 
 ```
 target: claude-code
@@ -202,18 +247,20 @@ project scope:
     github: installed  /work/app/.mcp.json
   skills:
     example-skill: modified  /work/app/.claude/skills/example-skill
+  scripts:
+    demo: installed  /work/app/.shitaku/scripts/demo
 ```
 
 In `--json` every item carries `kind` instead. For an MCP only its own entry is compared, so other changes to `~/.claude.json` do not matter.
 
-| State                  | Meaning                                                                              |
-| ---------------------- | ------------------------------------------------------------------------------------ |
-| `installed`            | on disk, as installed, and equal to the catalog                                      |
-| `modified`             | differs from what was installed; also an unreadable config file or a skill symlink   |
-| `out-of-date`          | untouched, but the catalog has a newer version                                       |
-| `missing`              | the MCP entry or skill directory is gone                                             |
-| `missing-from-catalog` | no longer offered by the catalog                                                     |
-| `unknown`              | the catalog failed to load, so `installed`, `out-of-date` and removal cannot be told |
+| State                  | Meaning                                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `installed`            | on disk, as installed, and equal to the catalog                                           |
+| `modified`             | differs from what was installed; also an unreadable config file or a skill/script symlink |
+| `out-of-date`          | untouched, but the catalog has a newer version                                            |
+| `missing`              | the MCP entry or skill/script directory is gone                                           |
+| `missing-from-catalog` | no longer offered by the catalog                                                          |
+| `unknown`              | the catalog failed to load, so `installed`, `out-of-date` and removal cannot be told      |
 
 `modified` wins over `out-of-date`, and `missing` wins over everything. When the catalog cannot be loaded, the header says `catalog unavailable` and local drift (`missing`, `modified`) is still reported.
 
@@ -225,9 +272,9 @@ Limitation: `status` compares against the bundled catalog unless you pass `--sou
 
 ### List
 
-`shitaku list` shows what a catalog offers and never writes anything. Pass one kind (`mcps`, `skills` or `profiles`, plural only) to narrow it; without one all three kinds are listed. `--search <text>` keeps items whose name or description contains the text, ignoring case, and combines with the kind. `--source <folder>` lists a custom catalog instead of the bundled one.
+`shitaku list` shows what a catalog offers and never writes anything. Pass one kind (`mcps`, `skills`, `profiles` or `scripts`, plural only) to narrow it; without one all four kinds are listed. `--search <text>` keeps items whose name or description contains the text, ignoring case, and combines with the kind. `--source <folder>` lists a custom catalog instead of the bundled one.
 
-The text output is grouped by kind (`mcps`, `profiles`, `skills`), sorted by name, with one aligned name column. Descriptions are collapsed onto one line, and a profile without a description prints its name only:
+The text output is grouped by kind (`mcps`, `profiles`, `scripts`, `skills`), sorted by name, with one aligned name column. Descriptions are collapsed onto one line, and a profile without a description prints its name only:
 
 ```
 mcps:
@@ -257,16 +304,16 @@ When nothing matches it prints `no matching items`.
 
 `--json` prints one document, `{ "version": 1, "items": [{ "kind", "name", "description" }] }`. Later changes to its shape are additive.
 
-| Field         | Type           | Notes                                                 |
-| ------------- | -------------- | ----------------------------------------------------- |
-| `version`     | number         | Always `1`                                            |
-| `kind`        | string         | `mcp`, `profile` or `skill` (singular, like `status`) |
-| `name`        | string         | Item name                                             |
-| `description` | string or null | Raw text; `null` for a profile without one            |
+| Field         | Type           | Notes                                                           |
+| ------------- | -------------- | --------------------------------------------------------------- |
+| `version`     | number         | Always `1`                                                      |
+| `kind`        | string         | `mcp`, `profile`, `script` or `skill` (singular, like `status`) |
+| `name`        | string         | Item name                                                       |
+| `description` | string or null | Raw text; `null` for a profile without one                      |
 
 `items` is flat and sorted by kind, then name; an empty result is `"items": []`. Whitespace in descriptions is collapsed only in text mode.
 
-Invalid skills, MCPs and profiles are skipped with a `warning: skipped <file>: <reason>` line on stderr (in both modes), so stdout stays valid JSON. Exit codes: `0` ok, including no matches; `1` for an invalid kind or a catalog that cannot be loaded (`error: cannot load catalog from <where>: <message>`).
+Invalid skills, MCPs, scripts and profiles are skipped with a `warning: skipped <file>: <reason>` line on stderr (in both modes), so stdout stays valid JSON. Exit codes: `0` ok, including no matches; `1` for an invalid kind or a catalog that cannot be loaded (`error: cannot load catalog from <where>: <message>`).
 
 ### Doctor
 
@@ -284,16 +331,17 @@ info:
 
 A healthy setup prints `no problems found`. Problems depend only on the manifest, the installed files and your environment, never on the catalog.
 
-| Code                | Severity | Meaning                                                                                            |
-| ------------------- | -------- | -------------------------------------------------------------------------------------------------- |
-| `config-missing`    | problem  | a config file shitaku wrote is gone (one finding per file)                                         |
-| `config-unreadable` | problem  | a config file exists but cannot be read or parsed (one finding per file)                           |
-| `mcp-missing`       | problem  | the config file is fine but the installed MCP entry is gone                                        |
-| `skill-missing`     | problem  | an installed skill directory is gone                                                               |
-| `env-unset`         | problem  | an installed entry needs `${VAR}` (no default) and `VAR` is unset or empty; only the name is shown |
-| `duplicate-mcp`     | problem  | the same MCP is in both user scope and the current project's `.mcp.json`                           |
-| `modified`          | info     | the item differs from what was installed                                                           |
-| `out-of-date`       | info     | untouched, but the catalog has a newer version                                                     |
+| Code                  | Severity | Meaning                                                                                            |
+| --------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `config-missing`      | problem  | a config file shitaku wrote is gone (one finding per file)                                         |
+| `config-unreadable`   | problem  | a config file exists but cannot be read or parsed (one finding per file)                           |
+| `mcp-missing`         | problem  | the config file is fine but the installed MCP entry is gone                                        |
+| `skill-missing`       | problem  | an installed skill directory is gone                                                               |
+| `env-unset`           | problem  | an installed entry needs `${VAR}` (no default) and `VAR` is unset or empty; only the name is shown |
+| `duplicate-mcp`       | problem  | the same MCP is in both user scope and the current project's `.mcp.json`                           |
+| `modified`            | info     | the item differs from what was installed                                                           |
+| `out-of-date`         | info     | untouched, but the catalog has a newer version                                                     |
+| `script-tool-missing` | info     | a required script tool is not present under local `node_modules/.bin` (npx may still work)         |
 
 `--json` prints one document, `{ "version": 1, "target", "healthy", "summary": { "problems", "info" }, "findings": [{ "severity", "code", "scope", "kind", "name", "path", "variable"?, "message", "fix" }] }`. `name` is `null` for `config-*` findings and `variable` appears only for `env-unset`. Later changes to its shape are additive.
 
@@ -315,7 +363,7 @@ Hide it with the global `--no-banner` flag, or set `SHITAKU_NO_BANNER` to `1`, `
 
 ### Custom catalogs and trust
 
-`--source <folder>` reads a catalog from a folder instead of the bundled one. Treat it as code you run: stdio entries in a catalog are written to your config and Claude Code executes their `command` later. Skills from a `--source` folder are copied into your skills directory, and Claude Code may follow their instructions or run their scripts. Only use folders you trust.
+`--source <folder>` reads a catalog from a folder instead of the bundled one. Treat it as code you run: stdio entries in a catalog are written to your config and Claude Code executes their `command` later. Skills from a `--source` folder are copied into your skills directory, and Claude Code may follow their instructions or run their scripts. Catalog scripts install under shitaku roots and are executed later by `shitaku run`. Only use folders you trust.
 
 ### Update notifications
 

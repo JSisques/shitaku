@@ -73,4 +73,13 @@ describe('bundled catalog', () => {
     expect(catalog.skills[0]?.description).toContain('example skill');
     expect(catalog.skills[0]?.files.map((f) => f.path)).toEqual(['SKILL.md']);
   });
+
+  it('documents scripts in README with generated markers and shitaku run', () => {
+    const readme = readFileSync(join(catalogRoot, '..', 'README.md'), 'utf8');
+    expect(readme).toContain('<!-- catalog:scripts:start -->');
+    expect(readme).toContain('<!-- catalog:scripts:end -->');
+    expect(readme).toMatch(/shitaku run(?:\s|$)/);
+    expect(readme).toContain('`./.shitaku/scripts/`');
+    expect(readme).toContain('script.json');
+  });
 });
