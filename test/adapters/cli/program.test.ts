@@ -8,6 +8,7 @@ import { runCli, type CliDeps } from '@/adapters/cli/program.js';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
 import { NodeFileSystem } from '@/adapters/fs/node-fs.js';
 import { PromptCancelled, type Prompter } from '@/ports/prompter.js';
+import type { ProcessRunner } from '@/ports/process-runner.js';
 import { parseDoc } from '@test/helpers/parse-doc.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
@@ -67,6 +68,10 @@ describe('runCli', () => {
   let updates: CliDeps['updates'];
   let cliVersion: string | undefined;
   let terminal: CliDeps['terminal'];
+  let processRunner: ProcessRunner | undefined;
+  let execPath: string | undefined;
+  let spawnCalls: { command: string; args: readonly string[] }[];
+  let spawnExit: number;
   const mcpFile = () => join(tmp.cwd, '.mcp.json');
   const text = () => [...out, ...err].join('\n');
 
@@ -83,6 +88,9 @@ describe('runCli', () => {
       updates,
       cliVersion,
       terminal,
+      processRunner,
+      execPath,
+      platform: 'linux',
     };
     return runCli(['node', 'shitaku', ...args], deps);
   };
@@ -97,6 +105,15 @@ describe('runCli', () => {
     updates = undefined;
     cliVersion = undefined;
     terminal = undefined;
+    spawnCalls = [];
+    spawnExit = 0;
+    processRunner = {
+      run: (command, args) => {
+        spawnCalls.push({ command, args });
+        return Promise.resolve({ exitCode: spawnExit });
+      },
+    };
+    execPath = '/fake/node';
     usePrompter();
   });
   afterEach(() => tmp.cleanup());
@@ -105,6 +122,7 @@ describe('runCli', () => {
     expect(await run('--help')).toBe(0);
     expect(text()).toContain('init');
     expect(text()).toContain('undo');
+    expect(text()).toContain('run');
   });
 
   describe('version', () => {
@@ -977,6 +995,58 @@ describe('runCli', () => {
       expect(await run('status')).toBe(0);
       expect(asked).toBe(1);
       expect(err).toEqual([NOTICE]);
+    });
+  });
+
+  describe('run', () => {
+    const writeScriptCatalog = async (name: string, description: string): Promise<string> => {
+      const dir = join(tmp.root, `run-cat-${name}`);
+      await mkdir(join(dir, 'mcps'), { recursive: true });
+      await mkdir(join(dir, 'profiles'), { recursive: true });
+      await mkdir(join(dir, 'scripts', name), { recursive: true });
+      await writeFile(
+        join(dir, 'catalog.json'),
+        JSON.stringify({ version: 1, items: { mcps: [], skills: [], scripts: [name], profiles: [] } }),
+      );
+      await writeFile(join(dir, 'scripts', name, 'script.json'), JSON.stringify({ name, description, tools: [] }));
+      await writeFile(join(dir, 'scripts', name, 'index.mjs'), 'export default 1;\n');
+      return dir;
+    };
+
+    it('lists installed scripts on bare run', async () => {
+      const dir = await writeScriptCatalog('lint', 'Run lint');
+      expect(await run('init', '--yes', '--scripts', 'lint', '--scope', 'project', '--source', dir)).toBe(0);
+      out = [];
+      err = [];
+      expect(await run('run')).toBe(0);
+      expect(spawnCalls).toEqual([]);
+      expect(out.join('\n')).toMatch(/lint/);
+      expect(out.join('\n')).toMatch(/project/);
+    });
+
+    it('rejects path-like names without spawning', async () => {
+      expect(await run('run', './lint')).toBe(1);
+      expect(spawnCalls).toEqual([]);
+      expect(err.join('\n')).toMatch(/path/i);
+    });
+
+    it('runs the project install and passes args and exit code', async () => {
+      const dir = await writeScriptCatalog('lint', 'Run lint');
+      expect(await run('init', '--yes', '--scripts', 'lint', '--scope', 'project', '--source', dir)).toBe(0);
+      out = [];
+      err = [];
+      spawnExit = 7;
+      expect(await run('run', 'lint', '--json')).toBe(7);
+      expect(spawnCalls).toHaveLength(1);
+      expect(spawnCalls[0]?.command).toBe('/fake/node');
+      expect(spawnCalls[0]?.args[0]).toMatch(/index\.mjs$/);
+      expect(spawnCalls[0]?.args.slice(1)).toEqual(['--json']);
+    });
+
+    it('suggests bare run for an unknown name', async () => {
+      expect(await run('run', 'ghost')).toBe(1);
+      expect(spawnCalls).toEqual([]);
+      expect(err.join('\n')).toMatch(/shitaku run/);
     });
   });
 

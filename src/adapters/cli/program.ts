@@ -14,6 +14,7 @@ import type { InitDeps } from '@/application/init-mcps.js';
 import { checkForUpdate } from '@/application/check-update.js';
 import { getDiagnosis } from '@/application/doctor.js';
 import { CatalogLoadError, listCatalog } from '@/application/list-catalog.js';
+import { runScript } from '@/application/run-script.js';
 import { getStatus, type StatusReport } from '@/application/status.js';
 import { undoInstall, UndoSelectionError, UndoVerifyError } from '@/application/undo-install.js';
 import { uninstallItem, UninstallSelectionError } from '@/application/uninstall-item.js';
@@ -27,6 +28,7 @@ import type { AgentTarget, Scope } from '@/ports/agent-target.js';
 import type { CatalogSource } from '@/ports/catalog-source.js';
 import { UnsafeTreeError, type FileSystem } from '@/ports/file-system.js';
 import type { Paths } from '@/ports/paths.js';
+import type { ProcessRunner } from '@/ports/process-runner.js';
 import { PromptCancelled } from '@/ports/prompter.js';
 import type { Prompter } from '@/ports/prompter.js';
 import type { LatestVersionSource } from '@/ports/version-source.js';
@@ -49,6 +51,12 @@ export interface CliDeps {
   updates?: UpdateSettings;
   /** Terminal facts for the startup banner. When absent, the banner is not shown. */
   terminal?: TerminalSettings;
+  /** Required to execute `shitaku run`; omitted only in tests that never invoke it. */
+  processRunner?: ProcessRunner;
+  /** Node binary for `shitaku run` (usually `process.execPath`). */
+  execPath?: string;
+  /** Host platform for PATH / `.bin` probing; defaults inside the use case. */
+  platform?: string;
 }
 
 /** What the update check needs beyond the shared deps: where to ask, who we are, and whether to bother. */
@@ -352,7 +360,14 @@ function printDiagnosis(deps: CliDeps, target: string, findings: Finding[]): voi
 
 async function runDoctor(deps: CliDeps, opts: { scope?: Scope; source?: string; json?: boolean }): Promise<number> {
   const report = await getDiagnosis(
-    { source: deps.makeSource(opts.source), fs: deps.fs, target: deps.target, paths: deps.paths, env: deps.env },
+    {
+      source: deps.makeSource(opts.source),
+      fs: deps.fs,
+      target: deps.target,
+      paths: deps.paths,
+      env: deps.env,
+      platform: deps.platform,
+    },
     { scope: opts.scope },
   );
   // Warnings go to stderr in both modes so `--json` keeps stdout parseable.
@@ -375,6 +390,37 @@ async function runDoctor(deps: CliDeps, opts: { scope?: Scope; source?: string; 
     );
   } else printDiagnosis(deps, report.target, report.findings);
   return problems === 0 ? 0 : EXIT_PROBLEMS;
+}
+
+async function runRun(deps: CliDeps, name: string | undefined, args: string[]): Promise<number> {
+  if (deps.processRunner === undefined || deps.execPath === undefined) {
+    deps.err('error: process runner is not configured');
+    return 1;
+  }
+  return runScript(
+    {
+      fs: deps.fs,
+      paths: deps.paths,
+      runner: deps.processRunner,
+      execPath: deps.execPath,
+      env: deps.env,
+      platform: deps.platform,
+      out: (line) => deps.out(line),
+      err: (line) => deps.err(line),
+    },
+    { name, args },
+  );
+}
+
+/** Everything after `run` is the optional script name plus passthrough args (including `--flags`). */
+function parseRunArgv(argv: string[]): { name?: string; args: string[] } {
+  const runIdx = argv.indexOf('run');
+  if (runIdx < 0) return { args: [] };
+  let rest = argv.slice(runIdx + 1);
+  if (rest[0] === '--') rest = rest.slice(1);
+  if (rest.length === 0) return { args: [] };
+  const [name, ...args] = rest;
+  return { name, args };
 }
 
 const csv = (value: string): string[] =>
@@ -517,6 +563,16 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       async (opts: { scope?: Scope; source?: string; json?: boolean }) =>
         void (exitCode = await guarded(deps, () => runDoctor(deps, opts))),
     );
+
+  program
+    .command('run')
+    .description('List installed scripts, or run one by name with argument passthrough')
+    .allowUnknownOption()
+    .allowExcessArguments()
+    .action(async () => {
+      const { name, args } = parseRunArgv(argv);
+      exitCode = await guarded(deps, () => runRun(deps, name, args));
+    });
 
   program.hook('preAction', (_thisCommand, actionCommand) => {
     printBannerIfNeeded(deps, actionCommand, argv);
