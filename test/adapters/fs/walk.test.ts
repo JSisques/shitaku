@@ -84,6 +84,19 @@ describe('listTree', () => {
     for (let i = 0; i < chunks; i++) await put(`c${i}.bin`, new Uint8Array(MAX_FILE_BYTES));
     await expect(listTree(root)).rejects.toThrow(/total size/);
   });
+
+  it('skips a top-level node_modules directory and still lists sibling files', async () => {
+    await put('index.mjs', 'export {};\n');
+    await put('script.json', '{"name":"x"}');
+    await put('node_modules/eslint/bin/eslint.js', 'ignored');
+    await put('node_modules/.bin/eslint', 'ignored');
+    expect(await listTree(root)).toEqual(['index.mjs', 'script.json']);
+  });
+
+  it('still walks nested node_modules paths that are not at the tree root', async () => {
+    await put('vendor/node_modules/pkg/index.js', 'nested');
+    expect(await listTree(root)).toEqual(['vendor/node_modules/pkg/index.js']);
+  });
 });
 
 describe('readTree', () => {

@@ -216,6 +216,8 @@ async function applyUninstall(deps: UninstallDeps, plan: Plan): Promise<string> 
       await deps.fs.remove(path);
       undo.push(() => restoreBytes(deps.fs, path, file.bytes));
     }
+    // ADR-2: runtime install-root deps are never owned; drop them so the script root can empty.
+    if (item.kind === 'script') await deps.fs.remove(`${item.path}/node_modules`);
     // Non-recursive: a directory that still holds a user file is skipped, never emptied.
     for (const dir of emptiedDirs(item.path, plan.files)) await deps.fs.removeDir(dir);
     await journal(deps, id, now, plan, files);

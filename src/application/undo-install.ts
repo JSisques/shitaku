@@ -47,6 +47,10 @@ const treeRoots = (install: Install): Set<string> =>
     install.files.flatMap((f) => f.items.flatMap((i) => (i.kind === 'skill' || i.kind === 'script' ? [i.root] : []))),
   );
 
+/** Script install roots only — ADR-2 cleans runtime `node_modules` here, not under skills. */
+const scriptRoots = (install: Install): Set<string> =>
+  new Set(install.files.flatMap((f) => f.items.flatMap((i) => (i.kind === 'script' ? [i.root] : []))));
+
 /** LIFO per file and per skill/script root: refuse while a newer non-undone install touched the same file or tree. */
 function assertNewestPerFile(manifest: Manifest, install: Install): void {
   const newer = manifest.installs.slice(manifest.installs.indexOf(install) + 1).filter((i) => i.undoneAt === null);
@@ -157,6 +161,8 @@ export async function undoInstall(deps: UndoDeps, req: UndoRequest = {}): Promis
 
   await assertBackupsPresent(deps, install);
   for (const file of install.files) await restore(deps, file);
+  // ADR-2: drop runtime script deps so pruned roots are not blocked by node_modules.
+  for (const root of scriptRoots(install)) await deps.fs.remove(`${root}/node_modules`);
   // Non-recursive and deepest first: a directory that still holds a user file is skipped, never emptied.
   for (const dir of prunableDirs(deps, install).reverse()) await deps.fs.removeDir(dir);
   const undoneAt = (deps.now ?? (() => new Date()))().toISOString();

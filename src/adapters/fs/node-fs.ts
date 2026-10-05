@@ -79,7 +79,7 @@ export class NodeFileSystem implements FileSystem {
   }
 
   async remove(path: string): Promise<void> {
-    await rm(path, { force: true });
+    await rm(path, { force: true, recursive: true });
   }
 
   async mkdirp(path: string): Promise<void> {

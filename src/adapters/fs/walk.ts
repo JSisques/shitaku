@@ -34,6 +34,8 @@ async function scan(root: string): Promise<Entry[] | null> {
   let total = 0;
   const visit = async (dir: string, prefix: string, depth: number): Promise<void> => {
     for (const name of (await readdir(dir)).sort()) {
+      // ADR-2: runtime deps under a script install root must not count toward ownership walks.
+      if (prefix === '' && name === 'node_modules') continue;
       const rel = prefix === '' ? name : `${prefix}/${name}`;
       assertSafeRelPath(rel);
       const abs = join(dir, name);
