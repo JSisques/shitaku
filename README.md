@@ -42,6 +42,7 @@ Requires Node `>=22.13`. After a global install the command is just `shitaku`.
 - [Catalog](#catalog)
 - [Usage](#usage)
 - [Version](#version)
+- [Banner](#banner)
 - [Custom catalogs and trust](#custom-catalogs-and-trust)
 - [Update notifications](#update-notifications)
 - [Known limitation](#known-limitation)
@@ -296,7 +297,15 @@ Exit codes: `0` no problems (info findings allowed), `4` at least one problem, `
 
 ### Version
 
-`shitaku version`, `shitaku -v`, and `shitaku --version` print the installed package version as bare semver on stdout (for example `0.2.0`) and exit `0`. There is no `-V` alias. If the version cannot be determined, they print `Unable to determine shitaku version.` on stderr and exit `1`. These entry points do not run the update check.
+`shitaku version`, `shitaku -v`, and `shitaku --version` print the installed package version as bare semver on stdout (for example `0.2.0`) and exit `0`. There is no `-V` alias. If the version cannot be determined, they print `Unable to determine shitaku version.` on stderr and exit `1`. These entry points do not run the update check and do not print the startup banner.
+
+### Banner
+
+Interactive `shitaku init` prints a small ASCII `shitaku` banner on stderr before the first prompt. When the installed version is known, a line under it shows that version and the tagline (`v0.2.0 · Get your agent environment ready`). stdout and the exit code stay unchanged.
+
+The banner is skipped when stdout or stderr is not a terminal, when `CI` is set to a non-empty value, when `init` will not prompt (`--yes`, or `--mcps` / `--skills` together with `--scope`), for `--json`, and for `version` / `-v` / `--version`.
+
+Hide it with the global `--no-banner` flag, or set `SHITAKU_NO_BANNER` to `1`, `true` or `yes` (case-insensitive; empty, `0`, `false` and `no` do not hide it). Color follows the terminal: `NO_COLOR` turns it off and `FORCE_COLOR` turns it on. When `LC_ALL`, `LC_CTYPE` or `LANG` names a UTF-8 locale, 支度 is shown beside the wordmark.
 
 ### Custom catalogs and trust
 

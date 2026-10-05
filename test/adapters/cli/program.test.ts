@@ -1,7 +1,9 @@
 import { mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FolderCatalogSource } from '@/adapters/catalog/folder-source.js';
+import { renderBanner } from '@/adapters/cli/banner.js';
 import { runCli, type CliDeps } from '@/adapters/cli/program.js';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
 import { NodeFileSystem } from '@/adapters/fs/node-fs.js';
@@ -58,6 +60,7 @@ describe('runCli', () => {
   let env: Record<string, string | undefined>;
   let updates: CliDeps['updates'];
   let cliVersion: string | undefined;
+  let terminal: CliDeps['terminal'];
   const mcpFile = () => join(tmp.cwd, '.mcp.json');
   const text = () => [...out, ...err].join('\n');
 
@@ -73,6 +76,7 @@ describe('runCli', () => {
       err: (l) => err.push(l),
       updates,
       cliVersion,
+      terminal,
     };
     return runCli(['node', 'shitaku', ...args], deps);
   };
@@ -86,6 +90,7 @@ describe('runCli', () => {
     env = { GITHUB_TOKEN: TOKEN };
     updates = undefined;
     cliVersion = undefined;
+    terminal = undefined;
     usePrompter();
   });
   afterEach(() => tmp.cleanup());
@@ -1056,6 +1061,171 @@ describe('runCli', () => {
       expect(await readFile(mcpFile(), 'utf8')).toBe(before);
       expect(await readFile(join(tmp.homeDir, '.claude', '.shitaku', 'manifest.json'), 'utf8')).toBe(manifest);
       await expect(readdir(skillDir())).rejects.toThrow();
+    });
+  });
+
+  describe('banner', () => {
+    const plain = (version?: string) =>
+      renderBanner({ version, color: false, unicode: false }).map((line) => stripVTControlCharacters(line));
+    const shown = () => stripVTControlCharacters(err.join('\n'));
+    const art = () => plain()[1] ?? '';
+
+    const interactive = () => {
+      usePrompter({ mcps: ['context7'], skills: [], scope: 'project', confirm: true });
+      terminal = { tty: true, color: false, unicode: false };
+      cliVersion = '0.2.0';
+    };
+
+    it('prints the banner on stderr before the first prompt and leaves stdout alone', async () => {
+      interactive();
+      const selectMcps = prompter.selectMcps.bind(prompter);
+      let atPrompt: string[] = [];
+      prompter.selectMcps = (mcps) => {
+        atPrompt = [...err];
+        return selectMcps(mcps);
+      };
+      expect(await run('init')).toBe(0);
+      expect(atPrompt).toEqual(plain('0.2.0'));
+      expect(out.join('\n')).not.toContain(art());
+    });
+
+    it('colors the banner only when color is enabled', async () => {
+      interactive();
+      terminal = { tty: true, color: true, unicode: false };
+      expect(await run('init')).toBe(0);
+      expect(err.join('\n')).toContain('\u001b[');
+      expect(shown()).toContain(art());
+
+      out = [];
+      err = [];
+      terminal = { tty: true, color: false, unicode: false };
+      expect(await run('init')).toBe(0);
+      expect(err.join('\n')).not.toContain('\u001b[');
+    });
+
+    it('adds the kanji mark only when unicode is enabled', async () => {
+      interactive();
+      terminal = { tty: true, color: false, unicode: true };
+      expect(await run('init')).toBe(0);
+      expect(err.join('\n')).toContain('支度');
+
+      out = [];
+      err = [];
+      terminal = { tty: true, color: false, unicode: false };
+      expect(await run('init')).toBe(0);
+      expect(err.join('\n')).not.toContain('支度');
+    });
+
+    it('omits the version line when the version is unreadable', async () => {
+      interactive();
+      cliVersion = undefined;
+      expect(await run('init')).toBe(0);
+      expect(err).toEqual(plain());
+      expect(err.join('\n')).not.toContain('Get your agent environment ready');
+    });
+
+    it.each([
+      ['not a tty', { tty: false, color: false, unicode: false }, {}],
+      ['CI', { tty: true, color: false, unicode: false }, { CI: 'true' }],
+      ['empty is not CI', { tty: true, color: false, unicode: false }, { CI: '' }],
+    ])('respects the terminal and CI (%s)', async (label, term, extra) => {
+      interactive();
+      terminal = term;
+      env = { ...env, ...extra };
+      expect(await run('init')).toBe(0);
+      if (label === 'empty is not CI') expect(shown()).toContain(art());
+      else expect(shown()).not.toContain(art());
+    });
+
+    it.each([
+      ['1', false],
+      ['true', false],
+      ['yes', false],
+      ['TRUE', false],
+      ['Yes', false],
+      ['', true],
+      ['0', true],
+      ['false', true],
+      ['no', true],
+    ])('SHITAKU_NO_BANNER=%s shows the banner: %s', async (value, shows) => {
+      interactive();
+      env = { ...env, SHITAKU_NO_BANNER: value };
+      expect(await run('init')).toBe(0);
+      if (shows) expect(shown()).toContain(art());
+      else expect(shown()).not.toContain(art());
+    });
+
+    it.each([
+      ['before the command', ['--no-banner', 'init']],
+      ['after the command', ['init', '--no-banner']],
+    ])('hides the banner with --no-banner %s', async (_label, args) => {
+      interactive();
+      expect(await run(...args)).toBe(0);
+      expect(calls).toEqual(['mcps', 'skills', 'scope', 'confirm']);
+      expect(shown()).not.toContain(art());
+    });
+
+    it.each([
+      ['--yes', ['init', '--yes', '--mcps', 'github', '--scope', 'project']],
+      ['kind and scope', ['init', '--mcps', 'github', '--scope', 'project']],
+    ])('skips the banner for non-interactive init (%s)', async (_label, args) => {
+      terminal = { tty: true, color: false, unicode: false };
+      cliVersion = '0.2.0';
+      expect(await run(...args)).toBe(0);
+      expect(calls).toEqual([]);
+      expect(shown()).not.toContain(art());
+    });
+
+    it('still prints the banner when init will prompt for the remaining answers', async () => {
+      usePrompter({ scope: 'project', confirm: true });
+      terminal = { tty: true, color: false, unicode: false };
+      cliVersion = '0.2.0';
+      expect(await run('init', '--mcps', 'github')).toBe(0);
+      expect(calls).toEqual(['scope', 'confirm']);
+      expect(shown()).toContain(art());
+    });
+
+    it.each([
+      ['status', ['status', '--json']],
+      ['list', ['list', '--json']],
+      ['doctor', ['doctor', '--json']],
+    ])('does not print the banner for %s --json', async (_name, args) => {
+      terminal = { tty: true, color: true, unicode: true };
+      cliVersion = '0.2.0';
+      expect(await run(...args)).toBe(0);
+      expect(shown()).not.toContain(art());
+      expect(out.join('\n')).not.toContain(art());
+      expect(JSON.parse(out.join('\n')) as unknown).toEqual(expect.any(Object));
+    });
+
+    it.each(['version', '-v', '--version'])('does not print the banner for %s', async (flag) => {
+      terminal = { tty: true, color: true, unicode: true };
+      cliVersion = '0.2.0';
+      expect(await run(flag)).toBe(0);
+      expect(out).toEqual(['0.2.0']);
+      expect(err).toEqual([]);
+    });
+
+    it('lists --no-banner in help and does not print the banner', async () => {
+      terminal = { tty: true, color: true, unicode: true };
+      cliVersion = '0.2.0';
+      expect(await run('--help')).toBe(0);
+      expect(text()).toContain('--no-banner');
+      expect(shown()).not.toContain(art());
+      out = [];
+      err = [];
+      expect(await run('init', '--help')).toBe(0);
+      expect(text()).toContain('--no-banner');
+      expect(shown()).not.toContain(art());
+    });
+
+    it('keeps the exit code when a prompt is cancelled', async () => {
+      terminal = { tty: true, color: false, unicode: false };
+      cliVersion = '0.2.0';
+      prompter.selectMcps = () => Promise.reject(new PromptCancelled());
+      expect(await run('init')).toBe(1);
+      expect(shown()).toContain(art());
+      expect(out.join('\n')).not.toContain(art());
     });
   });
 });
