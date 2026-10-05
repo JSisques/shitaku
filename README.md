@@ -22,18 +22,22 @@
 
 ## Quickstart
 
+Requires Node `>=22.13`.
+
 ```sh
-# 1. Pick MCPs and skills interactively and review the plan
+# One-off (no install)
 npx @jsisques/shitaku init
 
-# 2. Or install without prompts
-npx @jsisques/shitaku init --mcps github,context7 --scope project --yes
+# Global install — recommended for repeated use (status, doctor, undo, …)
+npm i -g @jsisques/shitaku
+# or: pnpm add -g @jsisques/shitaku
 
-# 3. Changed your mind? Restore the files changed by the last install
-npx @jsisques/shitaku undo
+shitaku init
+shitaku init --mcps github,context7 --scope project --yes
+shitaku undo
 ```
 
-Requires Node `>=22.13`. After a global install the command is just `shitaku`.
+After a global install the command is just `shitaku`. With `npx`, prefix every invocation with `npx @jsisques/shitaku`.
 
 ## Table of contents
 
@@ -100,9 +104,11 @@ The tables below are generated from `catalog/` by `pnpm run docs:catalog`. Do no
 
 ## Usage
 
+Examples below use the global `shitaku` command. After a one-off run, substitute `npx @jsisques/shitaku` for `shitaku`.
+
 ```sh
 # Interactive: pick MCPs, skills and scope, review the plan, confirm
-npx @jsisques/shitaku init
+shitaku init
 
 # Non-interactive: no prompts
 shitaku init --mcps github,context7 --scope project
@@ -313,10 +319,17 @@ Hide it with the global `--no-banner` flag, or set `SHITAKU_NO_BANNER` to `1`, `
 
 ### Update notifications
 
-After a command finishes, shitaku prints one line on stderr when a newer version is published on npm:
+After a command finishes, shitaku prints one line on stderr when a newer version is published on npm. The upgrade command matches how you installed shitaku:
 
 ```
+# Global npm (default / unknown)
 Update available: shitaku 0.2.0 -> 0.3.0. Run: npm install -g @jsisques/shitaku
+
+# Global pnpm
+Update available: shitaku 0.2.0 -> 0.3.0. Run: pnpm add -g @jsisques/shitaku
+
+# npx
+Update available: shitaku 0.2.0 -> 0.3.0. Run: npx @jsisques/shitaku@latest
 ```
 
 The registry is asked at most once every 24 hours (the answer is cached in `~/.claude/.shitaku/update-check.json`) and the lookup gives up after 1.5 seconds, so offline runs are never blocked. stdout is never touched, so `status --json` stays valid JSON, and the exit code does not change.

@@ -17,6 +17,7 @@ import { getStatus, type StatusReport } from '@/application/status.js';
 import { undoInstall, UndoSelectionError, UndoVerifyError } from '@/application/undo-install.js';
 import { uninstallItem, UninstallSelectionError } from '@/application/uninstall-item.js';
 import { collapseWhitespace, LIST_KINDS, type CatalogEntry, type ListKind } from '@/domain/catalog/listing.js';
+import type { InstallMethod } from '@/domain/install-method.js';
 import { ConfigError } from '@/domain/json-merge.js';
 import { ManifestError } from '@/domain/manifest.js';
 import type { ChangePlan } from '@/domain/plan/change-plan.js';
@@ -55,6 +56,8 @@ export interface UpdateSettings {
   currentVersion: string;
   /** True when stdout and stderr are both terminals. */
   interactive: boolean;
+  /** Detected in the composition root; omitted means the npm-global fallback hint. */
+  installMethod?: InstallMethod;
   timeoutMs?: number;
 }
 
@@ -507,6 +510,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
           {
             currentVersion: deps.updates.currentVersion,
             interactive: deps.updates.interactive,
+            installMethod: deps.updates.installMethod,
             timeoutMs: deps.updates.timeoutMs,
           },
         )

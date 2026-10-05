@@ -11,6 +11,7 @@ import { runCli } from './adapters/cli/program.js';
 import { claudeCodeTarget } from './adapters/claude-code/target.js';
 import { NodeFileSystem } from './adapters/fs/node-fs.js';
 import { NpmRegistryVersionSource } from './adapters/npm/registry-version-source.js';
+import { detectInstallMethod } from './domain/install-method.js';
 
 const cwd = process.cwd();
 const bundled = fileURLToPath(new URL('../catalog/', import.meta.url));
@@ -29,6 +30,12 @@ function readVersion(): string | undefined {
 }
 
 const version = readVersion();
+const installMethod = detectInstallMethod({
+  npmCommand: process.env['npm_command'],
+  npmExecPath: process.env['npm_execpath'],
+  npmConfigUserAgent: process.env['npm_config_user_agent'],
+  binPath: process.argv[1] ?? '',
+});
 
 process.exitCode = await runCli(process.argv, {
   makeSource: (folder) =>
@@ -53,5 +60,6 @@ process.exitCode = await runCli(process.argv, {
           source: new NpmRegistryVersionSource(PACKAGE_NAME),
           currentVersion: version,
           interactive: process.stdout.isTTY && process.stderr.isTTY,
+          installMethod,
         },
 });
