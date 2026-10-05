@@ -35,16 +35,16 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Behavior — strict TDD (PR2)
 
-- [ ] 2.1 RED: Add `test/fixtures/complexity/**` (JS/TS under + over 10/15) and spawn cases in `test/catalog/scripts/complexity.test.ts` for exit 0/1.
-- [ ] 2.2 GREEN: Implement D1A self-bootstrap + local eslint in `catalog/scripts/complexity/index.mjs`; ship `catalog/scripts/complexity/package-lock.json`.
-- [ ] 2.3 RED: Assert D4A JSON shape/sort/cognitive-zero, default JSON, `--format text`, unsupported format → exit 2.
-- [ ] 2.4 GREEN: Map ESLint JSON → envelope; enforce CLI thresholds/formats in `catalog/scripts/complexity/index.mjs`.
-- [ ] 2.5 RED: Ignore `.gitignore` + fixed `node_modules`/`.git`; conflicting consumer ESLint config ignored (shipped `-c`).
-- [ ] 2.6 GREEN: Wire D3A in `catalog/scripts/complexity/eslint.config.mjs` (`includeIgnoreFile` + fixed ignores).
-- [ ] 2.7 RED (threat): Tool/npm failure → exit 2; consumer `package.json` (read-only) unchanged.
-- [ ] 2.8 GREEN: Fail-closed `shell:false`; npm cwd = script install root only.
-- [ ] 2.9 RED: Doctor expects five tools; binless → `script-tool-missing` info (`test/application/doctor.test.ts`).
-- [ ] 2.10 GREEN: Finalize `catalog/scripts/complexity/script.json` tools: eslint, eslint-plugin-sonarjs, typescript-eslint, typescript, `@eslint/js`.
+- [x] 2.1 RED: Add `test/fixtures/complexity/**` (JS/TS under + over 10/15) and spawn cases in `test/catalog/scripts/complexity.test.ts` for exit 0/1.
+- [x] 2.2 GREEN: Implement D1A self-bootstrap + local eslint in `catalog/scripts/complexity/index.mjs`; ship `catalog/scripts/complexity/package-lock.json`.
+- [x] 2.3 RED: Assert D4A JSON shape/sort/cognitive-zero, default JSON, `--format text`, unsupported format → exit 2.
+- [x] 2.4 GREEN: Map ESLint JSON → envelope; enforce CLI thresholds/formats in `catalog/scripts/complexity/index.mjs`.
+- [x] 2.5 RED: Ignore `.gitignore` + fixed `node_modules`/`.git`; conflicting consumer ESLint config ignored (shipped `-c`).
+- [x] 2.6 GREEN: Wire D3A in `catalog/scripts/complexity/eslint.config.mjs` (`includeIgnoreFile` + fixed ignores).
+- [x] 2.7 RED (threat): Tool/npm failure → exit 2; consumer `package.json` (read-only) unchanged.
+- [x] 2.8 GREEN: Fail-closed `shell:false`; npm cwd = script install root only.
+- [x] 2.9 RED: Doctor expects five tools; binless → `script-tool-missing` info (`test/application/doctor.test.ts`).
+- [x] 2.10 GREEN: Finalize `catalog/scripts/complexity/script.json` tools: eslint, eslint-plugin-sonarjs, typescript-eslint, typescript, `@eslint/js`.
 
 ## Phase 3: Docs / regen (PR3)
 

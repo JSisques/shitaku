@@ -187,4 +187,27 @@ describe('getDiagnosis', () => {
     ]);
     expect(report.findings.every((f) => f.severity === 'info')).toBe(true);
   });
+
+  it('reports script-tool-missing info for each of complexity five D2A tools when binless', async () => {
+    const tools = ['eslint', 'eslint-plugin-sonarjs', 'typescript-eslint', 'typescript', '@eslint/js'];
+    const complexity = {
+      name: 'complexity',
+      description: 'd',
+      tools,
+      files: [
+        { path: 'index.mjs', bytes: new TextEncoder().encode('export default 1;\n') },
+        {
+          path: 'script.json',
+          bytes: new TextEncoder().encode(JSON.stringify({ name: 'complexity', description: 'd', tools })),
+        },
+      ],
+    };
+    catalog = { mcps: [], skills: [], scripts: [complexity], profiles: [], issues: [] };
+    await initMcps(deps(), { mcps: [], skills: [], scripts: ['complexity'], scope: 'project' });
+    const report = await getDiagnosis(deps(), {});
+    const missing = report.findings.filter((f) => f.code === 'script-tool-missing');
+    expect(missing).toHaveLength(5);
+    expect(missing.map((f) => f.tool).sort()).toEqual([...tools].sort());
+    expect(missing.every((f) => f.severity === 'info' && f.name === 'complexity')).toBe(true);
+  });
 });

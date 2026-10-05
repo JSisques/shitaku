@@ -1,6 +1,6 @@
 {
   "name": "complexity",
-  "description": "Measure cyclomatic and cognitive complexity for JS/TS (stub — behavior in follow-up).",
+  "description": "Measure cyclomatic and cognitive complexity for JS/TS.",
   "tools": ["eslint", "eslint-plugin-sonarjs", "typescript-eslint", "typescript", "@eslint/js"],
   "args": ["[paths...]", "--max-cyclomatic <n>", "--max-cognitive <n>", "--format json|text"],
   "output": "JSON envelope (default) or text table",

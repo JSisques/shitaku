@@ -70,8 +70,10 @@ describe('bundled catalog', () => {
       tools: ['eslint', 'eslint-plugin-sonarjs', 'typescript-eslint', 'typescript', '@eslint/js'],
     });
     expect(catalog.scripts[0]?.files.map((f) => f.path).sort()).toEqual([
-      'eslint.config.mjs',
+      'complexity.eslint.config.mjs',
+      'eslint.rules.mjs',
       'index.mjs',
+      'package-lock.json',
       'package.json',
       'script.json',
     ]);
