@@ -36,7 +36,7 @@ describe('getDiagnosis', () => {
     load: () => (catalog instanceof Error ? Promise.reject(catalog) : Promise.resolve(catalog)),
   };
   const setCatalog = (mcps: McpItem[], skills: SkillItem[] = []): void => {
-    catalog = { mcps, skills, profiles: [], issues: [] };
+    catalog = { mcps, skills, scripts: [], profiles: [], issues: [] };
   };
   const paths = () => ({ homeDir: tmp.homeDir, cwd: tmp.cwd });
   const deps = (): InitDeps => ({ source, fs, target: claudeCodeTarget, paths: paths(), env });

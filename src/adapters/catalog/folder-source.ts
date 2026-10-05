@@ -6,6 +6,7 @@ import { resolveProfile } from '@/domain/catalog/profile.js';
 import { CatalogIndexSchema, McpItemSchema, ProfileSchema } from '@/domain/catalog/schema.js';
 import type { McpItem, Profile } from '@/domain/catalog/schema.js';
 import { parseSkill, type SkillItem } from '@/domain/catalog/skill.js';
+import type { ScriptItem } from '@/domain/catalog/script.js';
 import type { CatalogIssue, CatalogSource, LoadedCatalog, SourceRef } from '@/ports/catalog-source.js';
 
 /** Reads a catalog folder. The bundled catalog is just a folder resolved by the composition root. */
@@ -51,11 +52,13 @@ export class FolderCatalogSource implements CatalogSource {
     const mcps: McpItem[] = await readEntries('mcps', index.items.mcps, McpItemSchema);
     const candidates: Profile[] = await readEntries('profiles', index.items.profiles, ProfileSchema);
     const skills = await this.loadSkills(index.items.skills, issues);
+    const scripts: ScriptItem[] = [];
     const mcpNames = mcps.map((m) => m.name);
     const skillNames = skills.map((sk) => sk.name);
+    const scriptNames = scripts.map((sc) => sc.name);
     const profiles = candidates.filter((p) => {
       try {
-        resolveProfile(p.name, candidates, mcpNames, skillNames);
+        resolveProfile(p.name, candidates, mcpNames, skillNames, scriptNames);
         return true;
       } catch (e) {
         issues.push({ file: `profiles/${p.name}.json`, reason: e instanceof Error ? e.message : String(e) });
@@ -63,7 +66,7 @@ export class FolderCatalogSource implements CatalogSource {
       }
     });
 
-    return { mcps, skills, profiles, issues };
+    return { mcps, skills, scripts, profiles, issues };
   }
 
   /** Loads each listed skill as bytes. A bad skill is skipped with an issue; an unlisted directory is an issue too. */

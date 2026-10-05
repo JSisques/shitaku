@@ -34,7 +34,7 @@ describe('getStatus', () => {
     load: () => (catalog instanceof Error ? Promise.reject(catalog) : Promise.resolve(catalog)),
   };
   const setCatalog = (mcps: McpItem[], skills: SkillItem[] = []): void => {
-    catalog = { mcps, skills, profiles: [], issues: [] };
+    catalog = { mcps, skills, scripts: [], profiles: [], issues: [] };
   };
   const deps = (): InitDeps => ({
     source,
@@ -133,6 +133,7 @@ describe('getStatus', () => {
     catalog = {
       mcps: [GITHUB],
       skills: [DEMO_V1],
+      scripts: [],
       profiles: [],
       issues: [{ file: 'mcps/bad.json', reason: 'invalid' }],
     };

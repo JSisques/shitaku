@@ -5,6 +5,7 @@ import type { CatalogSource, LoadedCatalog } from '@/ports/catalog-source.js';
 const loaded: LoadedCatalog = {
   mcps: [{ name: 'fs', description: 'Filesystem', server: { type: 'stdio', command: 'npx', args: [] }, env: [] }],
   skills: [{ name: 'demo', description: 'Browser automation', files: [] }],
+  scripts: [],
   profiles: [],
   issues: [{ file: 'skills/bad', reason: 'missing SKILL.md' }],
 };
