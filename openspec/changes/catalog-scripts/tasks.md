@@ -57,6 +57,6 @@ Chain strategy: stacked-to-main
 
 ## Phase 4: Catalog structure + docs (PR4)
 
-- [ ] 4.1 Empty `catalog/scripts/` + `items.scripts: []`; no concrete scripts
-- [ ] 4.2 README/CONTRIBUTING + generators for scripts / `shitaku run`
-- [ ] 4.3 Verify: `pnpm test`, typecheck, lint, format:check, build
+- [x] 4.1 Empty `catalog/scripts/` + `items.scripts: []`; no concrete scripts
+- [x] 4.2 README/CONTRIBUTING + generators for scripts / `shitaku run`
+- [x] 4.3 Verify: `pnpm test`, typecheck, lint, format:check, build

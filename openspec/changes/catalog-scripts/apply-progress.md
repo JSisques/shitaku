@@ -1,10 +1,10 @@
 # Apply Progress: catalog-scripts
 
 **Mode**: Strict TDD
-**Batch**: Phase 1–2 preserved + Phase 3 / PR3 (tasks 3.1–3.7)
-**Branch**: feat/catalog-scripts-run (stacked on feat/catalog-scripts-install / PR2)
+**Batch**: Phase 1–3 preserved + Phase 4 / PR4 (tasks 4.1–4.3)
+**Branch**: feat/catalog-scripts-docs (stacked on feat/catalog-scripts-run / PR3)
 **Chain strategy**: stacked-to-main
-**Status**: Phase 3 complete
+**Status**: Phase 4 complete — all tasks done
 **Date**: 2026-10-05
 
 ## Completed Tasks
@@ -20,7 +20,7 @@
 
 ### Phase 2 (prior batch — preserved)
 
-- [x] 2.1 RED→GREEN: `script-plan.ts` + `change-plan.ts` — create|skip|update|conflict; dry-run/force
+- [x] 2.1 RED→GREEN: `script-plan.ts` + `change-plan.ts` — create\|skip\|update\|conflict; dry-run/force
 - [x] 2.2 RED→GREEN: `manifest.ts` — `kind:'script'` tree hash + ownership
 - [x] 2.3 RED: init conflict exit 2 / dry-run no writes / unknown `--scripts`
 - [x] 2.4 GREEN: `init-mcps.ts`/`skill-tree.ts`/`prompter.ts` — Paths roots; `--scripts`; prompts
@@ -29,7 +29,7 @@
 - [x] 2.7 RED→GREEN: `undo-install.ts` — script undo; refuse drift
 - [x] 2.8 RED→GREEN: `uninstall-item.ts` — `--kind script`; collision; modified exit 3 / force keeps extras
 
-### Phase 3 (this batch)
+### Phase 3 (prior batch — preserved)
 
 - [x] 3.1 RED (threat): reject path-like names; no spawn; never spawn metadata
 - [x] 3.2 RED→GREEN: name/tool policy + Win path fixtures
@@ -39,64 +39,68 @@
 - [x] 3.6 RED→GREEN: `doctor-plan.ts`/`doctor.ts` — `info`/`script-tool-missing`; warn-only exit 0
 - [x] 3.7 GREEN: CLI `run` + `main.ts` wire; architecture guard bans spawn in domain
 
-## Remaining (out of this batch)
+### Phase 4 (this batch)
 
-- Phase 4 tasks still open (PR4)
+- [x] 4.1 Empty `catalog/scripts/` + `items.scripts: []`; no concrete scripts
+- [x] 4.2 README/CONTRIBUTING + generators for scripts / `shitaku run`
+- [x] 4.3 Verify: `pnpm test`, typecheck, lint, format:check, build
+
+## Remaining
+
+- None — all catalog-scripts tasks complete. Ready for sdd-verify / PR4 open (orchestrator).
 
 ## TDD Cycle Evidence
 
-### Phase 1–2 (preserved)
+### Phase 1–3 (preserved)
 
-See prior apply-progress revisions for full Phase 1–2 tables.
+See prior apply-progress revisions for full Phase 1–3 tables.
 
-### Phase 3
+### Phase 4
 
-| Task    | Test File                                                    | Layer       | Safety Net       | RED                            | GREEN           | TRIANGULATE                        | REFACTOR                 |
-| ------- | ------------------------------------------------------------ | ----------- | ---------------- | ------------------------------ | --------------- | ---------------------------------- | ------------------------ |
-| 3.1–3.2 | `test/domain/scripts-run.test.ts`                            | Unit        | N/A (new)        | ✅ Written (import miss)       | ✅ 11 passed    | ✅ POSIX/Win paths + bin/npx       | ➖ None needed           |
-| 3.3     | `test/adapters/process/node-process-runner.test.ts`          | Integration | N/A (new)        | ✅ Written (import miss)       | ✅ 4 passed     | ✅ exit 0/3 + Win .cmd via cmd.exe | ✅ Injectable spawn      |
-| 3.4–3.5 | `test/application/run-script.test.ts`                        | Integration | ✅ domain green  | ✅ Written (import miss)       | ✅ 8 passed     | ✅ list/resolve/path/unknown/PATH  | ✅ Shared install helper |
-| 3.6     | `test/domain/plan/doctor-plan.test.ts` + `doctor.test.ts`    | Unit+App    | ✅ 31/31         | ✅ Written (1 fail then green) | ✅ 34 passed    | ✅ missing tool info; present → [] | ✅ tool field on Finding |
-| 3.7     | `test/adapters/cli/program.test.ts` + `architecture.test.ts` | Integration | ✅ program suite | ✅ Written (run cases)         | ✅ 143 + 9 arch | ✅ bare/path/args/unknown + help   | ✅ raw argv parseRunArgv |
+| Task | Test File                                       | Layer       | Safety Net | RED                                   | GREEN         | TRIANGULATE                                           | REFACTOR       |
+| ---- | ----------------------------------------------- | ----------- | ---------- | ------------------------------------- | ------------- | ----------------------------------------------------- | -------------- |
+| 4.1  | `test/adapters/catalog/bundled-catalog.test.ts` | Integration | ✅ 3/3     | ✅ Written (`scripts` undefined fail) | ✅ 3 passed   | ✅ empty dir + loader `[]` + no concrete entries      | ✅ shared root |
+| 4.2  | `test/adapters/catalog/bundled-catalog.test.ts` | Integration | ✅ 3/3     | ✅ Written (README markers missing)   | ✅ 4 passed   | ✅ markers + `shitaku run` + roots + `script.json`    | ➖ docs-only   |
+| 4.3  | full suite + docs checks                        | Guard       | N/A        | ➖ verify gate                        | ✅ 835 passed | ✅ typecheck/lint/format/build/docs:catalog(:website) | ➖ None        |
+
+Triangulation skipped for pure docs prose beyond README contract assertions: structural/generator updates validated by `docs:catalog:check` + `docs:website-catalog:check`.
 
 ## Work Unit Evidence
 
-| Evidence                              | Value                                                                                                                                                                                                                                                                   |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Focused test command and exact result | `vitest run test/application/run-script.test.ts test/adapters/process test/domain/scripts-run.test.ts test/architecture.test.ts test/domain/plan/doctor-plan.test.ts test/application/doctor.test.ts` → **66 passed / 6 files**; CLI `program.test.ts` → **143 passed** |
-| Runtime harness                       | Fake ProcessRunner + temp FS install via `initMcps`; CLI `run` with injected runner; architecture bans `child_process`/`process.` in domain                                                                                                                             |
-| Rollback boundary                     | Revert commits `2cc9b0a..846d7dd` (+ openspec task/progress docs); removes Phase 3 run/ProcessRunner/doctor-tool without touching Phase 1–2                                                                                                                             |
+| Evidence                              | Value                                                                                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Focused test command and exact result | `vitest run test/adapters/catalog/bundled-catalog.test.ts` → **4 passed / 1 file**                                                   |
+| Runtime harness                       | `pnpm run docs:catalog:check` + `docs:website-catalog:check` → up to date; empty `list`/loader path via bundled catalog              |
+| Rollback boundary                     | Revert commits `fbfbc18..411a407` (+ openspec task/progress); removes empty scripts structure + docs without touching Phase 1–3 code |
 
 ## Verification (observed)
 
-- Focused Phase 3: 66 + 143 CLI passed
-- Full: `vitest run` → **834 passed / 43 files**
+- Full: `vitest run` → **835 passed / 43 files**
 - `tsc --noEmit`: pass
 - `eslint .`: pass
 - `prettier --check .`: pass
-- Architecture: domain still free of `fs`/`os`/`path`/`child_process`/`process.`
+- `pnpm run build`: pass (`check-dist-aliases: 48 files clean`)
+- `pnpm run docs:catalog:check`: pass
+- `pnpm run docs:website-catalog:check`: pass
 
-## Commits (Phase 3 on feat/catalog-scripts-run)
+## Commits (Phase 4 on feat/catalog-scripts-docs)
 
-1. `2cc9b0a` feat(run): reject path-like names and define tool bin policy
-2. `0e05ca1` feat(process): add ProcessRunner port with shell-false Node adapter
-3. `b70a0b2` feat(run): resolve and execute installed catalog scripts
-4. `b5b1ca2` feat(doctor): warn when script tools are missing from local bin
-5. `846d7dd` feat(cli): wire shitaku run through ProcessRunner
+1. `fbfbc18` feat(catalog): ship empty scripts catalog structure
+2. `411a407` docs(catalog): document scripts kind and shitaku run
 
 ## Workload / PR Boundary
 
-- Mode: stacked PR slice (PR3 → feat/catalog-scripts-install / PR2 tip)
-- Current work unit: Run + ProcessRunner + doctor
-- Boundary: tasks 3.1–3.7 only; Phase 4 not started
-- Authored Phase 3 lines vs PR2 tip (`bfce67c..HEAD`, excl. pending openspec): **+809 / -5 = 814** changed lines
-- **Budget note**: cohesive Phase 3 unit exceeds 400-line review budget; recommend `size:exception` for PR3 (same as PR1/PR2). Do not absorb Phase 4.
+- Mode: stacked PR slice (PR4 → feat/catalog-scripts-run / PR3 tip)
+- Current work unit: Empty catalog + docs
+- Boundary: tasks 4.1–4.3 only
+- Authored Phase 4 lines vs PR3 tip (`429ef18..HEAD`, excl. pending openspec): **+198 / -70 = 268** changed lines
+- **Budget note**: within 400-line review budget; no size:exception needed for PR4
+- PR4 may use `Closes #144` (final stacked slice)
 
 ## Deviations from Design
 
-- CLI `run` uses raw `argv` parsing (`parseRunArgv`) instead of Commander `passThroughOptions`, because enabling positional options on the root broke `init --no-banner`. Behavior matches the spec (`shitaku run demo --json` passthrough).
-- Doctor default `platform` is `'linux'` when unset (injected from `main` / tests); Windows `.cmd` probing is covered in domain + ProcessRunner tests.
+- None — empty `catalog/scripts/` + `items.scripts: []`, docs/generators cover scripts kind / `shitaku run` / scopes / metadata as designed. No concrete scripts shipped.
 
 ## Issues Found
 
-- Local `pnpm` packageManager self-switch store remains broken; commits used `.tmp-bin/pnpm` shim + `node_modules/.bin` on PATH so husky still ran lint-staged.
+- Local `pnpm` packageManager self-switch store remains broken on this worktree; commits used `.tmp-bin/pnpm` JS shim so husky still ran lint-staged.
