@@ -855,3 +855,39 @@ describe('applyPlan rollback (scripts)', () => {
     await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
   });
 });
+
+describe('initMcps (bundled complexity script)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const root = () => join(tmp.cwd, '.shitaku', 'scripts', 'complexity');
+
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: new FolderCatalogSource(CATALOG, 'bundled'),
+      fs: new NodeFileSystem(),
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('installs complexity under ./.shitaku/scripts with index.mjs and shipped eslint config', async () => {
+    const { applied } = await initMcps(deps, { mcps: [], scripts: ['complexity'], scope: 'project' });
+    expect(applied).toBe(true);
+    expect(await readdir(root())).toEqual(
+      expect.arrayContaining([
+        'index.mjs',
+        'script.json',
+        'complexity.eslint.config.mjs',
+        'eslint.rules.mjs',
+        'package.json',
+        'package-lock.json',
+      ]),
+    );
+    expect(await readFile(join(root(), 'index.mjs'), 'utf8')).toContain('complexity');
+    expect(await readFile(join(root(), 'complexity.eslint.config.mjs'), 'utf8')).toMatch(/includeIgnoreFile|eslint/);
+    expect(await readdir(join(tmp.cwd, '.claude', 'skills')).catch(() => [])).toEqual([]);
+  });
+});

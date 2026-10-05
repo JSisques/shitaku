@@ -151,4 +151,4 @@
 
 ## Status
 
-16/19 tasks complete (Phase 1 + Phase 2 done). Next: orchestrator opens chained PR2; then `sdd-apply` for PR3 docs or `sdd-verify` on PR2.
+19/19 tasks complete (PR1 + PR2 + PR3). Next: `sdd-verify` / archive after CI green on the stacked chain.
