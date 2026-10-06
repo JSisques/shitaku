@@ -19,6 +19,6 @@
     ],
     "skills": ["example-skill", "socratic-method"],
     "profiles": ["base", "web", "backend"],
-    "scripts": ["complexity", "dead-code"]
+    "scripts": ["complexity", "dead-code", "duplication"]
   }
 }

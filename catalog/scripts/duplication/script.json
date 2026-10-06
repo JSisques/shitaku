@@ -1,0 +1,12 @@
+{
+  "name": "duplication",
+  "description": "Report copy-paste clones via jscpd and fail above a duplication threshold.",
+  "tools": ["jscpd"],
+  "args": ["--threshold <n>", "--min-lines <n>", "--min-tokens <n>", "--format json|text"],
+  "output": "JSON envelope (default) or text summary",
+  "exitCodes": {
+    "0": "duplication percentage at or below threshold",
+    "1": "duplication percentage above threshold",
+    "2": "tool, parse, config, CLI, or IO failure"
+  }
+}

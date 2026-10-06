@@ -922,3 +922,34 @@ describe('initMcps (bundled dead-code script)', () => {
     expect(await readdir(join(tmp.cwd, '.claude', 'skills')).catch(() => [])).toEqual([]);
   });
 });
+
+describe('initMcps (bundled duplication script)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const root = () => join(tmp.cwd, '.shitaku', 'scripts', 'duplication');
+
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: new FolderCatalogSource(CATALOG, 'bundled'),
+      fs: new NodeFileSystem(),
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('installs duplication under ./.shitaku/scripts with index.mjs and no script-root npm bootstrap', async () => {
+    const { applied } = await initMcps(deps, { mcps: [], scripts: ['duplication'], scope: 'project' });
+    expect(applied).toBe(true);
+    const entries = (await readdir(root())).sort();
+    expect(entries).toEqual(['index.mjs', 'script.json']);
+    expect(entries).not.toContain('package.json');
+    expect(entries).not.toContain('package-lock.json');
+    expect(entries).not.toContain('node_modules');
+    expect(await readFile(join(root(), 'index.mjs'), 'utf8')).toContain('duplication');
+    expect(await readFile(join(root(), 'script.json'), 'utf8')).toMatch(/jscpd/);
+    expect(await readdir(join(tmp.cwd, '.claude', 'skills')).catch(() => [])).toEqual([]);
+  });
+});
