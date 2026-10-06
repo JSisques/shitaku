@@ -35,17 +35,17 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Behavior — strict TDD (PR2)
 
-- [ ] 2.1 RED: Add `test/fixtures/dead-code/**` (clean; unused export; unused file; unused prod+dev deps) with local knip in fixture `.bin` where needed.
-- [ ] 2.2 RED: Spawn cases in `test/catalog/scripts/dead-code.test.ts` — clean → exit 0; findings → exit 1.
-- [ ] 2.3 GREEN: Resolve knip (cwd `.bin` then `npx`); spawn `knip --reporter json` (`shell:false`) in `catalog/scripts/dead-code/index.mjs`.
-- [ ] 2.4 RED: Assert envelope `shitaku.catalog.dead-code/v1`, six keys always present, sort file/name/line; default JSON; `--format text`; bad `--format` → exit 2.
-- [ ] 2.5 GREEN: Map knip issues → envelope; text formatter; CLI format validation.
-- [ ] 2.6 RED: `--include exports` filters output/exit-1 count; unknown include → exit 2; split deps via `package.json` (lodash→`dependencies`, unused-dev→`devDependencies`); `unlisted` unchanged; ambiguous → `dependencies`.
-- [ ] 2.7 GREEN: Implement include filter + package.json classify (peer/optional → prod) in `catalog/scripts/dead-code/index.mjs`.
-- [ ] 2.8 RED: Consumer `knip.json` hides ignored export; fixture without config uses knip defaults.
-- [ ] 2.9 GREEN: Do not ship overriding knip config; rely on consumer/defaults.
-- [ ] 2.10 RED (threat): `--fix` → exit 2 + fixture tree/`package.json` unchanged; spawn/parse fail → exit 2; never forward `--fix`.
-- [ ] 2.11 GREEN: Reject `--fix` before spawn; map tool/parse/CLI/IO → exit 2; exit 0/1 by included findings only.
+- [x] 2.1 RED: Add `test/fixtures/dead-code/**` (clean; unused export; unused file; unused prod+dev deps) with local knip in fixture `.bin` where needed.
+- [x] 2.2 RED: Spawn cases in `test/catalog/scripts/dead-code.test.ts` — clean → exit 0; findings → exit 1.
+- [x] 2.3 GREEN: Resolve knip (cwd `.bin` then `npx`); spawn `knip --reporter json` (`shell:false`) in `catalog/scripts/dead-code/index.mjs`.
+- [x] 2.4 RED: Assert envelope `shitaku.catalog.dead-code/v1`, six keys always present, sort file/name/line; default JSON; `--format text`; bad `--format` → exit 2.
+- [x] 2.5 GREEN: Map knip issues → envelope; text formatter; CLI format validation.
+- [x] 2.6 RED: `--include exports` filters output/exit-1 count; unknown include → exit 2; split deps via `package.json` (lodash→`dependencies`, unused-dev→`devDependencies`); `unlisted` unchanged; ambiguous → `dependencies`.
+- [x] 2.7 GREEN: Implement include filter + package.json classify (peer/optional → prod) in `catalog/scripts/dead-code/index.mjs`.
+- [x] 2.8 RED: Consumer `knip.json` hides ignored export; fixture without config uses knip defaults.
+- [x] 2.9 GREEN: Do not ship overriding knip config; rely on consumer/defaults.
+- [x] 2.10 RED (threat): `--fix` → exit 2 + fixture tree/`package.json` unchanged; spawn/parse fail → exit 2; never forward `--fix`.
+- [x] 2.11 GREEN: Reject `--fix` before spawn; map tool/parse/CLI/IO → exit 2; exit 0/1 by included findings only.
 
 ## Phase 3: Docs / Regen (PR3)
 

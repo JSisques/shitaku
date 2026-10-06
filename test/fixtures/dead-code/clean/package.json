@@ -1,0 +1,6 @@
+{
+  "name": "dead-code-clean",
+  "private": true,
+  "type": "module",
+  "main": "index.js"
+}

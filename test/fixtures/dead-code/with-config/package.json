@@ -1,0 +1,6 @@
+{
+  "name": "dead-code-with-config",
+  "private": true,
+  "type": "module",
+  "main": "index.js"
+}
