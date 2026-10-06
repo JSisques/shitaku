@@ -46,6 +46,7 @@ After a global install the command is just `shitaku`. With `npx`, prefix every i
 - [Catalog](#catalog)
 - [Usage](#usage)
 - [Version](#version)
+- [Upgrade](#upgrade)
 - [Banner](#banner)
 - [Custom catalogs and trust](#custom-catalogs-and-trust)
 - [Update notifications](#update-notifications)
@@ -159,6 +160,9 @@ shitaku run <name> [-- <args...>]
 shitaku version
 shitaku -v
 shitaku --version
+
+# Upgrade the shitaku CLI package itself (not catalog items)
+shitaku upgrade
 ```
 
 Scopes: `project` writes MCPs to `./.mcp.json`, skills to `./.claude/skills/`, and scripts to `./.shitaku/scripts/`; `user` writes MCPs to `~/.claude.json`, skills to `~/.claude/skills/`, and scripts to `~/.claude/.shitaku/scripts/` (close Claude Code first when writing `~/.claude.json`). Scripts never install into agent skill directories.
@@ -356,6 +360,16 @@ Exit codes: `0` no problems (info findings allowed), `4` at least one problem, `
 
 `shitaku version`, `shitaku -v`, and `shitaku --version` print the installed package version as bare semver on stdout (for example `0.2.0`) and exit `0`. There is no `-V` alias. If the version cannot be determined, they print `Unable to determine shitaku version.` on stderr and exit `1`. These entry points do not run the update check and do not print the startup banner.
 
+### Upgrade
+
+`shitaku upgrade` upgrades the **CLI package** (`@jsisques/shitaku`), not catalog skills, MCPs, or profiles. It always fetches the latest version fresh (it does not rely only on the update-check cache).
+
+- When you are already on the latest version, it prints an already-up-to-date message and exits `0` without spawning a package manager.
+- When a newer version exists, it prints the current→target versions, then:
+  - **Global npm / pnpm**: runs the matching global install (`npm install -g @jsisques/shitaku` or `pnpm add -g @jsisques/shitaku`) without a shell.
+  - **npx or unknown installs**: prints the upgrade command to run yourself and does not spawn a package manager (npx cannot persist a self-upgrade).
+- If a spawned package manager exits non-zero, shitaku exits non-zero, leaves the install unchanged, and prints recovery guidance. There is no separate `update` command for self-upgrade.
+
 ### Banner
 
 Interactive `shitaku init` prints a small ASCII `shitaku` banner on stderr before the first prompt. When the installed version is known, a line under it shows that version and the tagline (`v0.2.0 · Get your agent environment ready`). stdout and the exit code stay unchanged.
@@ -385,7 +399,7 @@ Update available: shitaku 0.2.0 -> 0.3.0. Run: npx @jsisques/shitaku@latest
 
 The registry is asked at most once every 24 hours (the answer is cached in `~/.claude/.shitaku/update-check.json`) and the lookup gives up after 1.5 seconds, so offline runs are never blocked. stdout is never touched, so `status --json` stays valid JSON, and the exit code does not change.
 
-The check is skipped entirely when `CI` is set to a non-empty value, when stdout or stderr is not a terminal, when `SHITAKU_NO_UPDATE_CHECK` is `1`, `true` or `yes` (case-insensitive), or when the command is `version` / `-v` / `--version`. No request is made and nothing is written in those cases.
+The check is skipped entirely when `CI` is set to a non-empty value, when stdout or stderr is not a terminal, when `SHITAKU_NO_UPDATE_CHECK` is `1`, `true` or `yes` (case-insensitive), or when the command is `version` / `-v` / `--version` / `upgrade`. No request is made and nothing is written in those cases.
 
 ### Known limitation
 

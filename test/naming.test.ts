@@ -50,4 +50,14 @@ describe('product naming', () => {
     expect(readme).toContain('shitaku --version');
     expect(readme).toMatch(/bare semver/i);
   });
+
+  it('documents shitaku upgrade spawn vs print-only and CLI scope in README', () => {
+    const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
+    expect(readme).toContain('### Upgrade');
+    expect(readme).toContain('shitaku upgrade');
+    expect(readme).toMatch(/already-up-to-date|already on the latest/i);
+    expect(readme).toMatch(/without spawning|does not spawn|spawned package manager/i);
+    expect(readme).toMatch(/CLI package/i);
+    expect(readme).toMatch(/not catalog/i);
+  });
 });

@@ -18,6 +18,7 @@ import { runScript } from '@/application/run-script.js';
 import { getStatus, type StatusReport } from '@/application/status.js';
 import { undoInstall, UndoSelectionError, UndoVerifyError } from '@/application/undo-install.js';
 import { uninstallItem, UninstallSelectionError } from '@/application/uninstall-item.js';
+import { upgradeCli } from '@/application/upgrade-cli.js';
 import { collapseWhitespace, LIST_KINDS, type CatalogEntry, type ListKind } from '@/domain/catalog/listing.js';
 import type { InstallMethod } from '@/domain/install-method.js';
 import { ConfigError } from '@/domain/json-merge.js';
@@ -47,11 +48,13 @@ export interface CliDeps {
   now?: () => Date;
   /** Installed package semver; omit/undefined when unreadable. */
   cliVersion?: string;
+  /** Detected install method for `upgrade` (and as fallback for the update notice). */
+  installMethod?: InstallMethod;
   /** Enables the update notice; when absent, no check runs. */
   updates?: UpdateSettings;
   /** Terminal facts for the startup banner. When absent, the banner is not shown. */
   terminal?: TerminalSettings;
-  /** Required to execute `shitaku run`; omitted only in tests that never invoke it. */
+  /** Required to execute `shitaku run` / `upgrade`; omitted only in tests that never invoke them. */
   processRunner?: ProcessRunner;
   /** Node binary for `shitaku run` (usually `process.execPath`). */
   execPath?: string;
@@ -412,6 +415,31 @@ async function runRun(deps: CliDeps, name: string | undefined, args: string[]): 
   );
 }
 
+async function runUpgrade(deps: CliDeps): Promise<number> {
+  if (deps.cliVersion === undefined) {
+    deps.err(UNREADABLE_VERSION);
+    return 1;
+  }
+  if (deps.processRunner === undefined) {
+    deps.err('error: process runner is not configured');
+    return 1;
+  }
+  if (deps.updates === undefined) {
+    deps.err('error: update source is not configured');
+    return 1;
+  }
+  return upgradeCli({
+    source: deps.updates.source,
+    runner: deps.processRunner,
+    currentVersion: deps.cliVersion,
+    installMethod: deps.installMethod ?? 'unknown',
+    cwd: deps.paths.cwd,
+    env: deps.env,
+    out: (line) => deps.out(line),
+    err: (line) => deps.err(line),
+  });
+}
+
 /** Everything after `run` is the optional script name plus passthrough args (including `--flags`). */
 function parseRunArgv(argv: string[]): { name?: string; args: string[] } {
   const runIdx = argv.indexOf('run');
@@ -434,6 +462,11 @@ const UNREADABLE_VERSION = 'Unable to determine shitaku version.';
 /** True when argv (after node/script) asks for a top-level version report. */
 function isVersionInvocation(argv: string[]): boolean {
   return argv.slice(2).some((token) => token === 'version' || token === '-v' || token === '--version');
+}
+
+/** Version entry points and `upgrade` skip the background update check (no cache/network for the notice). */
+function skipsUpdateCheck(argv: string[]): boolean {
+  return isVersionInvocation(argv) || argv.slice(2).some((token) => token === 'upgrade');
 }
 
 function printBannerIfNeeded(deps: CliDeps, action: Command, argv: string[]): void {
@@ -574,20 +607,25 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       exitCode = await guarded(deps, () => runRun(deps, name, args));
     });
 
+  program
+    .command('upgrade')
+    .description('Upgrade the shitaku CLI package to the latest version')
+    .action(async () => void (exitCode = await guarded(deps, () => runUpgrade(deps))));
+
   program.hook('preAction', (_thisCommand, actionCommand) => {
     printBannerIfNeeded(deps, actionCommand, argv);
   });
 
   // Started before dispatch so the lookup overlaps the command; checkForUpdate never rejects.
-  // Version entry points skip the check entirely (no cache/network side effects).
+  // Version entry points and `upgrade` skip the check entirely (no cache/network side effects).
   const pending =
-    deps.updates && !isVersionInvocation(argv)
+    deps.updates && !skipsUpdateCheck(argv)
       ? checkForUpdate(
           { fs: deps.fs, paths: deps.paths, env: deps.env, source: deps.updates.source, now: deps.now },
           {
             currentVersion: deps.updates.currentVersion,
             interactive: deps.updates.interactive,
-            installMethod: deps.updates.installMethod,
+            installMethod: deps.updates.installMethod ?? deps.installMethod,
             timeoutMs: deps.updates.timeoutMs,
           },
         )

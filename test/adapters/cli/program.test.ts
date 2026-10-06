@@ -7,6 +7,7 @@ import { renderBanner } from '@/adapters/cli/banner.js';
 import { runCli, type CliDeps } from '@/adapters/cli/program.js';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
 import { NodeFileSystem } from '@/adapters/fs/node-fs.js';
+import type { InstallMethod } from '@/domain/install-method.js';
 import { PromptCancelled, type Prompter } from '@/ports/prompter.js';
 import type { ProcessRunner } from '@/ports/process-runner.js';
 import { parseDoc } from '@test/helpers/parse-doc.js';
@@ -67,6 +68,7 @@ describe('runCli', () => {
   let env: Record<string, string | undefined>;
   let updates: CliDeps['updates'];
   let cliVersion: string | undefined;
+  let installMethod: InstallMethod | undefined;
   let terminal: CliDeps['terminal'];
   let processRunner: ProcessRunner | undefined;
   let execPath: string | undefined;
@@ -87,6 +89,7 @@ describe('runCli', () => {
       err: (l) => err.push(l),
       updates,
       cliVersion,
+      installMethod,
       terminal,
       processRunner,
       execPath,
@@ -104,6 +107,7 @@ describe('runCli', () => {
     env = { GITHUB_TOKEN: TOKEN };
     updates = undefined;
     cliVersion = undefined;
+    installMethod = undefined;
     terminal = undefined;
     spawnCalls = [];
     spawnExit = 0;
@@ -148,6 +152,28 @@ describe('runCli', () => {
       expect(text()).toContain('version');
       expect(text()).toMatch(/-v,\s*--version/);
       expect(text()).not.toMatch(/(?:^|\s)-V(?:\s|,|$)/);
+    });
+  });
+
+  describe('upgrade', () => {
+    it('lists upgrade in help and does not register a self-update update command', async () => {
+      cliVersion = '0.2.0';
+      expect(await run('--help')).toBe(0);
+      expect(text()).toMatch(/^\s+upgrade\b/m);
+      expect(text()).not.toMatch(/^\s+update\b/m);
+    });
+
+    it('upgrades via the wired install method and process runner', async () => {
+      cliVersion = '0.2.0';
+      installMethod = 'npm-global';
+      updates = {
+        currentVersion: '0.2.0',
+        interactive: true,
+        source: { latest: () => Promise.resolve('0.3.0') },
+      };
+      expect(await run('upgrade')).toBe(0);
+      expect(out).toContain('Upgrading shitaku 0.2.0 → 0.3.0');
+      expect(spawnCalls).toEqual([{ command: 'npm', args: ['install', '-g', '@jsisques/shitaku'] }]);
     });
   });
 
@@ -1017,6 +1043,18 @@ describe('runCli', () => {
         expect(out).toEqual(['0.2.0']);
       },
     );
+
+    it('does not start the update check for upgrade even when updates are wired', async () => {
+      useUpdates('0.3.0');
+      cliVersion = '0.2.0';
+      installMethod = 'npx';
+      expect(await run('upgrade')).toBe(0);
+      // One call from upgradeCli's fresh fetch only — not checkForUpdate + upgradeCli.
+      expect(asked).toBe(1);
+      expect(err).toEqual([]);
+      expect(out).toContain('Upgrading shitaku 0.2.0 → 0.3.0');
+      expect(spawnCalls).toEqual([]);
+    });
 
     it('still notifies on non-version commands when an update is available', async () => {
       useUpdates('0.3.0');
