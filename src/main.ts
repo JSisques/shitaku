@@ -49,6 +49,7 @@ process.exitCode = await runCli(process.argv, {
   out: (line) => console.log(line),
   err: (line) => console.error(line),
   cliVersion: version,
+  installMethod,
   processRunner: new NodeProcessRunner(),
   execPath: process.execPath,
   platform: process.platform,
