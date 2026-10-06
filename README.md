@@ -109,9 +109,10 @@ Installable Node scripts live under `catalog/scripts/<name>/` (`index.mjs` + `sc
 
 <!-- catalog:scripts:start -->
 
-| Name         | Description                                            |
-| ------------ | ------------------------------------------------------ |
-| `complexity` | Measure cyclomatic and cognitive complexity for JS/TS. |
+| Name         | Description                                                   |
+| ------------ | ------------------------------------------------------------- |
+| `complexity` | Measure cyclomatic and cognitive complexity for JS/TS.        |
+| `dead-code`  | Find unused files, exports, types, and dependencies via knip. |
 
 <!-- catalog:scripts:end -->
 
