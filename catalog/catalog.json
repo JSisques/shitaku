@@ -17,7 +17,7 @@
       "cloudflare-bindings",
       "cloudflare-observability"
     ],
-    "skills": ["example-skill"],
+    "skills": ["example-skill", "socratic-method"],
     "profiles": ["base", "web", "backend"],
     "scripts": ["complexity", "dead-code"]
   }

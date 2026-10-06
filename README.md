@@ -97,9 +97,10 @@ The tables below are generated from `catalog/` by `pnpm run docs:catalog`. Do no
 
 <!-- catalog:skills:start -->
 
-| Name            | Description                                                |
-| --------------- | ---------------------------------------------------------- |
-| `example-skill` | Minimal example skill that shows the catalog skill layout. |
+| Name              | Description                                                                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `example-skill`   | Minimal example skill that shows the catalog skill layout.                                                                                   |
+| `socratic-method` | Trigger: socratic method, question assumptions, clarify gaps, challenge before coding. Coach via questions before implementing or rewriting. |
 
 <!-- catalog:skills:end -->
 

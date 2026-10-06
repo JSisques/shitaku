@@ -102,12 +102,31 @@ describe('bundled catalog', () => {
     expect(entries).not.toContain('node_modules');
   });
 
-  it('loads the bundled example skill with its frontmatter', async () => {
+  it('ships example-skill and socratic-method as registered loadable bundled skills', async () => {
+    const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
+      items: { skills?: unknown };
+    };
+    expect(index.items.skills).toEqual(['example-skill', 'socratic-method']);
+
+    const skillsDir = join(catalogRoot, 'skills');
+    expect(statSync(skillsDir).isDirectory()).toBe(true);
+    const entries = readdirSync(skillsDir)
+      .filter((name) => !name.startsWith('.'))
+      .sort();
+    expect(entries).toEqual(['example-skill', 'socratic-method']);
+
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
-    expect(catalog.skills).toHaveLength(1);
-    expect(catalog.skills[0]).toMatchObject({ name: 'example-skill' });
-    expect(catalog.skills[0]?.description).toContain('example skill');
-    expect(catalog.skills[0]?.files.map((f) => f.path)).toEqual(['SKILL.md']);
+    expect(catalog.issues).toEqual([]);
+    expect(catalog.skills).toHaveLength(2);
+
+    const byName = Object.fromEntries(catalog.skills.map((sk) => [sk.name, sk]));
+    expect(byName['example-skill']).toMatchObject({ name: 'example-skill' });
+    expect(byName['example-skill']?.description).toContain('example skill');
+    expect(byName['example-skill']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
+
+    expect(byName['socratic-method']).toMatchObject({ name: 'socratic-method' });
+    expect(byName['socratic-method']?.description.length).toBeGreaterThan(0);
+    expect(byName['socratic-method']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
   });
 
   it('documents scripts in README with generated markers and shitaku run', () => {
