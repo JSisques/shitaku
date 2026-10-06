@@ -51,22 +51,22 @@ describe('bundled catalog', () => {
     });
   });
 
-  it('ships complexity and dead-code as registered and loadable bundled scripts', async () => {
+  it('ships complexity, dead-code, and duplication as registered and loadable bundled scripts', async () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { scripts?: unknown };
     };
-    expect(index.items.scripts).toEqual(['complexity', 'dead-code']);
+    expect(index.items.scripts).toEqual(['complexity', 'dead-code', 'duplication']);
 
     const scriptsDir = join(catalogRoot, 'scripts');
     expect(statSync(scriptsDir).isDirectory()).toBe(true);
     const entries = readdirSync(scriptsDir)
       .filter((name) => !name.startsWith('.'))
       .sort();
-    expect(entries).toEqual(['complexity', 'dead-code']);
+    expect(entries).toEqual(['complexity', 'dead-code', 'duplication']);
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.scripts).toHaveLength(2);
+    expect(catalog.scripts).toHaveLength(3);
 
     const byName = Object.fromEntries(catalog.scripts.map((s) => [s.name, s]));
     expect(byName['complexity']).toMatchObject({
@@ -87,19 +87,27 @@ describe('bundled catalog', () => {
       tools: ['knip'],
     });
     expect(byName['dead-code']?.files.map((f) => f.path).sort()).toEqual(['index.mjs', 'script.json']);
+
+    expect(byName['duplication']).toMatchObject({
+      name: 'duplication',
+      tools: ['jscpd'],
+    });
+    expect(byName['duplication']?.files.map((f) => f.path).sort()).toEqual(['index.mjs', 'script.json']);
   });
 
-  it('ships dead-code without script-root npm bootstrap artifacts', () => {
-    const deadCodeDir = join(catalogRoot, 'scripts', 'dead-code');
-    expect(statSync(deadCodeDir).isDirectory()).toBe(true);
+  it('ships dead-code and duplication without script-root npm bootstrap artifacts', () => {
+    for (const scriptName of ['dead-code', 'duplication'] as const) {
+      const scriptDir = join(catalogRoot, 'scripts', scriptName);
+      expect(statSync(scriptDir).isDirectory()).toBe(true);
 
-    const entries = readdirSync(deadCodeDir)
-      .filter((name) => !name.startsWith('.'))
-      .sort();
-    expect(entries).toEqual(['index.mjs', 'script.json']);
-    expect(entries).not.toContain('package.json');
-    expect(entries).not.toContain('package-lock.json');
-    expect(entries).not.toContain('node_modules');
+      const entries = readdirSync(scriptDir)
+        .filter((name) => !name.startsWith('.'))
+        .sort();
+      expect(entries).toEqual(['index.mjs', 'script.json']);
+      expect(entries).not.toContain('package.json');
+      expect(entries).not.toContain('package-lock.json');
+      expect(entries).not.toContain('node_modules');
+    }
   });
 
   it('ships example-skill and socratic-method as registered loadable bundled skills', async () => {
