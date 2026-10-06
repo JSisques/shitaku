@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   detectInstallMethod,
+  isRunnableUpgrade,
+  upgradeArgv,
   upgradeCommand,
   type InstallMethod,
   type InstallMethodSignals,
@@ -14,6 +16,33 @@ describe('upgradeCommand', () => {
     ['unknown', 'npm install -g @jsisques/shitaku'],
   ] as const)('%s -> %s', (method, command) => {
     expect(upgradeCommand(method)).toBe(command);
+  });
+});
+
+describe('isRunnableUpgrade', () => {
+  it.each([
+    ['npm-global', true],
+    ['pnpm-global', true],
+    ['npx', false],
+    ['unknown', false],
+  ] as const)('%s -> %s', (method, runnable) => {
+    expect(isRunnableUpgrade(method)).toBe(runnable);
+  });
+});
+
+describe('upgradeArgv', () => {
+  it('returns npm global install tokens for npm-global', () => {
+    expect(upgradeArgv('npm-global')).toEqual({
+      command: 'npm',
+      args: ['install', '-g', '@jsisques/shitaku'],
+    });
+  });
+
+  it('returns pnpm global add tokens for pnpm-global', () => {
+    expect(upgradeArgv('pnpm-global')).toEqual({
+      command: 'pnpm',
+      args: ['add', '-g', '@jsisques/shitaku'],
+    });
   });
 });
 

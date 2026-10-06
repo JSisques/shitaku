@@ -10,6 +10,7 @@ website/node_modules/
 
 # Tests
 coverage/
+.vitest/
 *.tgz
 
 # macOS

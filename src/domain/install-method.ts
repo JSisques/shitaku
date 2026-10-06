@@ -25,6 +25,23 @@ export function upgradeCommand(method: InstallMethod): string {
   }
 }
 
+export type RunnableUpgradeMethod = 'npm-global' | 'pnpm-global';
+
+/** True only for install methods that can persist a global upgrade via ProcessRunner. */
+export function isRunnableUpgrade(method: InstallMethod): method is RunnableUpgradeMethod {
+  return method === 'npm-global' || method === 'pnpm-global';
+}
+
+/** Fixed argv tokens for a global package-manager upgrade (no shell parsing). */
+export function upgradeArgv(method: RunnableUpgradeMethod): { command: string; args: readonly string[] } {
+  switch (method) {
+    case 'npm-global':
+      return { command: 'npm', args: ['install', '-g', '@jsisques/shitaku'] };
+    case 'pnpm-global':
+      return { command: 'pnpm', args: ['add', '-g', '@jsisques/shitaku'] };
+  }
+}
+
 function normalizePath(value: string): string {
   return value.replace(/\\/g, '/').toLowerCase();
 }

@@ -3,6 +3,7 @@ node_modules
 .pnpm-store
 pnpm-lock.yaml
 coverage
+.vitest/
 .atl/
 openspec/changes/archive/
 CHANGELOG.md
