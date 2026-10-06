@@ -49,5 +49,5 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Docs / Regen (PR3)
 
-- [ ] 3.1 Regen README + website catalog tables for `dead-code`; verify `pnpm run docs:catalog:check` and `pnpm run docs:website-catalog:check`.
-- [ ] 3.2 Soften any complexity-only / single-script prose in `README.md` / `CONTRIBUTING.md` / `website/` if present.
+- [x] 3.1 Regen README + website catalog tables for `dead-code`; verify `pnpm run docs:catalog:check` and `pnpm run docs:website-catalog:check`.
+- [x] 3.2 Soften any complexity-only / single-script prose in `README.md` / `CONTRIBUTING.md` / `website/` if present.

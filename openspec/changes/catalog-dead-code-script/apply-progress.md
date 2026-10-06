@@ -1,7 +1,7 @@
 # Apply Progress: catalog-dead-code-script
 
-**Mode**: Strict TDD  
-**Slice**: Phase 2 tasks 2.1–2.11 (Behavior = PR2)  
+**Mode**: Strict TDD (docs slice uses Standard docs-check gate)  
+**Slice**: Phase 3 tasks 3.1–3.2 (Docs / Regen = PR3)  
 **Delivery**: auto-chain, stacked-to-main  
 **Updated**: 2026-10-06
 
@@ -14,7 +14,7 @@
 - [x] 1.3 RED: Assert dead-code tree has no script-root npm bootstrap
 - [x] 1.4 GREEN: Stub ships only `index.mjs` + `script.json`
 
-### Phase 2 (PR2) — this batch
+### Phase 2 (PR2) — prior batch
 
 - [x] 2.1 RED: Fixtures `test/fixtures/dead-code/**` (clean, unused-export, unused-file, unused-deps, with-config, defaults)
 - [x] 2.2 RED: Spawn clean → 0 / findings → 1
@@ -28,60 +28,56 @@
 - [x] 2.10 RED (threat): `--fix` → 2 + no mutation; spawn/parse fail → 2
 - [x] 2.11 GREEN: Reject `--fix` before spawn; exit 0/1 by included findings only
 
+### Phase 3 (PR3) — this batch
+
+- [x] 3.1 Regen README + website catalog tables for `dead-code`; verify `docs:catalog:check` and `docs:website-catalog:check` (both exit 0; no drift — tables already current from prior PR1 docs work)
+- [x] 3.2 Soften complexity-only prose in `README.md`, `CONTRIBUTING.md`, and website catalog overview (en/es). Generator does **not** overwrite `overview.md` (only kind pages under mcps/skills/profiles/scripts); hand-edited overview.
+
 ## Remaining Tasks
 
-- [ ] Phase 3 (3.1–3.2): Docs / regen
+None — all apply tasks 1.1–3.2 complete.
 
-## Files Changed (Phase 2)
+## Files Changed (Phase 3)
 
-| File                                                 | Action    | What Was Done                                                             |
-| ---------------------------------------------------- | --------- | ------------------------------------------------------------------------- |
-| `catalog/scripts/dead-code/index.mjs`                | Modified  | Full knip adapter: resolve, spawn, map, classify, include, formats, exits |
-| `catalog/scripts/dead-code/script.json`              | Unchanged | Still `tools:["knip"]` only                                               |
-| `test/catalog/scripts/dead-code.test.ts`             | Created   | Spawn suite (mock knip + real knip smoke + threat)                        |
-| `test/fixtures/dead-code/**`                         | Created   | clean, unused-export, unused-file, unused-deps, with-config, defaults     |
-| `openspec/changes/catalog-dead-code-script/tasks.md` | Modified  | Phase 2 tasks marked `[x]`                                                |
+| File                                                          | Action   | What Was Done                                                      |
+| ------------------------------------------------------------- | -------- | ------------------------------------------------------------------ |
+| `README.md`                                                   | Modified | Scripts intro + install prose mention `complexity` and `dead-code` |
+| `CONTRIBUTING.md`                                             | Modified | Bundled scripts list mentions both names                           |
+| `website/src/content/docs/en/catalog/overview.md`             | Modified | Ships both scripts                                                 |
+| `website/src/content/docs/es/catalog/overview.md`             | Modified | Ships both scripts                                                 |
+| `openspec/changes/catalog-dead-code-script/tasks.md`          | Modified | Phase 3 tasks marked `[x]`                                         |
+| `openspec/changes/catalog-dead-code-script/apply-progress.md` | Modified | Cumulative progress through Phase 3                                |
 
 ## TDD Cycle Evidence
 
-| Task | Test File                                   | Layer       | Safety Net                                    | RED                                     | GREEN                  | TRIANGULATE                                            | REFACTOR                 |
-| ---- | ------------------------------------------- | ----------- | --------------------------------------------- | --------------------------------------- | ---------------------- | ------------------------------------------------------ | ------------------------ |
-| 2.1  | fixtures under `test/fixtures/dead-code/**` | Integration | N/A (new)                                     | ✅ Written (fixture trees)              | ✅ Used by spawn tests | ✅ 6 fixture variants                                  | ➖ Structural            |
-| 2.2  | `test/catalog/scripts/dead-code.test.ts`    | Integration | ✅ stub RED (13 fail / 2 coincidental exit-2) | ✅ Written (exit 0/1)                   | ✅ Passed              | ✅ clean + unused export + unused file                 | ➖ None needed           |
-| 2.3  | same                                        | Integration | N/A (production)                              | ✅ Driven by 2.2                        | ✅ Passed              | ✅ local `.bin` + fake-npx PATH fallback               | ✅ resolve helpers       |
-| 2.4  | same                                        | Integration | via 2.2 net                                   | ✅ Written (envelope/format)            | ✅ Passed              | ✅ six keys + sort + text + bad format                 | ➖ None needed           |
-| 2.5  | same                                        | Integration | N/A (production)                              | ✅ Driven by 2.4                        | ✅ Passed              | ✅ JSON + text paths                                   | ✅ map/sort pure helpers |
-| 2.6  | same                                        | Integration | via suite                                     | ✅ Written (include/classify)           | ✅ Passed              | ✅ include empty→0; peer/optional; unlisted; ambiguous | ➖ None needed           |
-| 2.7  | same                                        | Integration | N/A (production)                              | ✅ Driven by 2.6                        | ✅ Passed              | ✅ peer + optional + ambiguous                         | ✅ classifyDependency    |
-| 2.8  | same                                        | Integration | via suite                                     | ✅ Written (config + defaults)          | ✅ Passed              | ✅ mock empty + real knip ignoreIssues                 | ➖ None needed           |
-| 2.9  | same                                        | Integration | N/A (production)                              | ✅ Driven by 2.8 (no catalog knip.json) | ✅ Passed              | ✅ assert script dir has no knip config                | ➖ None needed           |
-| 2.10 | same                                        | Integration | via suite                                     | ✅ Written (--fix/parse/spawn)          | ✅ Passed              | ✅ --fix no mutation + bad JSON + fatal shim           | ➖ None needed           |
-| 2.11 | same                                        | Integration | N/A (production)                              | ✅ Driven by 2.10                       | ✅ Passed              | ✅ reject before spawn                                 | ➖ None needed           |
+| Task | Test File                                                    | Layer     | Safety Net       | RED          | GREEN                       | TRIANGULATE                                                      | REFACTOR                              |
+| ---- | ------------------------------------------------------------ | --------- | ---------------- | ------------ | --------------------------- | ---------------------------------------------------------------- | ------------------------------------- |
+| 3.1  | `pnpm run docs:catalog:check` + `docs:website-catalog:check` | Docs gate | N/A (check mode) | ➖ N/A docs  | ✅ Both exit 0 (up to date) | ✅ README scripts table + website kind pages include `dead-code` | ➖ No regen needed                    |
+| 3.2  | same checks after prose edits                                | Docs gate | N/A              | ➖ N/A prose | ✅ Checks still pass        | ✅ Four prose sites softened                                     | ➖ Hand edit overview (not generator) |
 
 ## Work Unit Evidence
 
-| Evidence             | Result                                                                                                                                                                        |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Focused test command | `pnpm exec vitest run test/catalog/scripts/dead-code.test.ts test/adapters/catalog/bundled-catalog.test.ts` → **21 passed** (exit 0)                                          |
-| Runtime harness      | Spawn installed `dead-code` on fixtures: mock knip for unit-like control; real `knip@6.39.0` smoke on unused-export + with-config ignoreIssues                                |
-| Rollback boundary    | Revert `catalog/scripts/dead-code/index.mjs` to stub; delete `test/catalog/scripts/dead-code.test.ts` and `test/fixtures/dead-code/`; keep Phase 1 registration/`script.json` |
+| Evidence             | Result                                                                                                                             |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Focused test command | `pnpm run docs:catalog:check && pnpm run docs:website-catalog:check` → **exit 0** (tables up to date before and after prose edits) |
+| Runtime harness      | N/A — docs check only (tasks forecast)                                                                                             |
+| Rollback boundary    | Revert README/CONTRIBUTING/website overview prose + tasks/apply-progress checkboxes; catalog tables unchanged this slice           |
 
 ## Deviations from Design
 
-None — implementation matches design (cwd `.bin` then npx; no bootstrap; package.json classify; `--fix` → 2; six-key envelope).
+None — docs regen already present; prose softened to ship both scripts; generator template not required for overview.
 
 ## Issues Found
 
-- Knip does not report unused exports on entry files; unused-export/with-config/defaults fixtures use a non-entry `lib.js` imported from `index.js`.
-- Authored Phase 2 diff is large (~900+ lines with fixtures/tests) — expected for PR2 work unit under auto-chain; do not shrink by deleting tests.
+None.
 
 ## Workload / PR Boundary
 
-- Mode: chained/stacked PR slice (PR2)
-- Current work unit: Behavior (CLI/envelope/classify/exit/no-fix + fixtures/tests)
-- Boundary: replaces stub body; adds fixtures + spawn suite; stops before Phase 3 docs regen
-- Estimated review budget impact: High authored lines for this slice (honest work unit; chained as PR2)
+- Mode: chained/stacked PR slice (PR3)
+- Current work unit: Docs / regen + prose softening
+- Boundary: docs checks + complexity-only prose only; no script/runtime changes
+- Estimated review budget impact: Low authored lines (prose-only)
 
 ## Status
 
-Phase 1 + Phase 2 complete (15/15 apply tasks for PR1+PR2). Ready for orchestrator commit/PR2; Phase 3 docs next.
+17/17 apply tasks complete (Phases 1–3). Ready for orchestrator commit/PR3; next SDD phase: sdd-verify.

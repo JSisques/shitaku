@@ -105,7 +105,7 @@ The tables below are generated from `catalog/` by `pnpm run docs:catalog`. Do no
 
 ### Scripts
 
-Installable Node scripts live under `catalog/scripts/<name>/` (`index.mjs` + `script.json`). The bundled catalog ships `complexity` (cyclomatic/cognitive metrics for JS/TS); add more names under `items.scripts` to extend the table below.
+Installable Node scripts live under `catalog/scripts/<name>/` (`index.mjs` + `script.json`). The bundled catalog ships `complexity` (cyclomatic/cognitive metrics for JS/TS) and `dead-code` (unused files/exports/types/deps via knip); add more names under `items.scripts` to extend the table below.
 
 <!-- catalog:scripts:start -->
 
@@ -199,7 +199,7 @@ Install roots (never agent skill dirs):
 
 Install behavior mirrors skills: the tree is copied under the scope root, recorded in the manifest with MCPs/skills from the same run, and `shitaku undo` reverts it. Conflicts, `--force`, mid-write rollback, and symlink/size guards work the same way.
 
-The bundled catalog ships **`complexity`** today. Add more under `catalog/scripts/` and list them in `items.scripts`, or point `--source` at a trusted folder with your own scripts.
+The bundled catalog ships **`complexity`** and **`dead-code`** today. Add more under `catalog/scripts/` and list them in `items.scripts`, or point `--source` at a trusted folder with your own scripts.
 
 ### Run
 
