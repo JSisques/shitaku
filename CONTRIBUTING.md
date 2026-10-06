@@ -129,7 +129,7 @@ Examples: `catalog/mcps/github.json` (http with a secret header) and `catalog/mc
    "scripts": ["my-script"]
    ```
 
-3. Update `test/adapters/catalog/bundled-catalog.test.ts` when you add or change bundled scripts (the shipped catalog currently lists `complexity` in `items.scripts`).
+3. Update `test/adapters/catalog/bundled-catalog.test.ts` when you add or change bundled scripts (the shipped catalog currently lists `complexity` and `dead-code` in `items.scripts`).
 4. Verify:
 
    ```sh

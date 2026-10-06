@@ -1,0 +1,12 @@
+{
+  "name": "dead-code",
+  "description": "Find unused files, exports, types, and dependencies via knip.",
+  "tools": ["knip"],
+  "args": ["--include <kinds>", "--format json|text"],
+  "output": "JSON envelope (default) or text rows",
+  "exitCodes": {
+    "0": "no included unused findings",
+    "1": "one or more included unused findings",
+    "2": "tool, parse, config, CLI, or IO failure"
+  }
+}

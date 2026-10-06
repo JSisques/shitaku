@@ -42,18 +42,25 @@ Plan MUST classify by tree hash: create|skip|update|conflict. Conflicts MUST sho
 - WHEN init or undo runs
 - THEN non-zero naming ghost, or `demo/` removed and manifest cleared
 
-### Requirement: Bundled complexity script
+### Requirement: Bundled catalog scripts
 
-Bundled catalog MUST list `complexity` in `items.scripts` and MUST ship `catalog/scripts/complexity/` with `index.mjs`, validated metadata, and shipped ESLint flat config. Concrete scripts MAY ship; the prior no-concrete-scripts constraint MUST NOT apply.
+Bundled catalog MUST list `complexity` and `dead-code` in `items.scripts` and MUST ship `catalog/scripts/complexity/` (`index.mjs`, validated metadata, shipped ESLint flat config) and `catalog/scripts/dead-code/` (`index.mjs`, validated metadata, no shipped npm deps or script-root bootstrap). Concrete scripts MAY ship; the prior no-concrete-scripts constraint MUST NOT apply.
+(Previously: Only required `complexity` and its ESLint flat config tree.)
 
 #### Scenario: Registered and loadable
 
 - GIVEN default catalog
 - WHEN loaded
-- THEN `complexity` is valid and selectable
+- THEN `complexity` and `dead-code` are valid and selectable
 
-#### Scenario: Project install root
+#### Scenario: Project install root complexity
 
 - GIVEN init installs `complexity` with `--scope project`
 - WHEN apply completes
-- THEN tree is under `<cwd>/.shitaku/scripts/complexity/` including `index.mjs` and shipped config
+- THEN tree under `<cwd>/.shitaku/scripts/complexity/` includes `index.mjs` and shipped config
+
+#### Scenario: Project install root dead-code
+
+- GIVEN init installs `dead-code` with `--scope project`
+- WHEN apply completes
+- THEN tree under `<cwd>/.shitaku/scripts/dead-code/` includes `index.mjs` without script-root npm bootstrap

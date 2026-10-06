@@ -1,0 +1,6 @@
+{
+  "name": "dead-code-unused-file",
+  "private": true,
+  "type": "module",
+  "main": "index.js"
+}

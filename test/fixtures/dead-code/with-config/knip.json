@@ -1,0 +1,5 @@
+{
+  "ignoreIssues": {
+    "lib.js": ["exports"]
+  }
+}
