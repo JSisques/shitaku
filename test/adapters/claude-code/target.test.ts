@@ -51,4 +51,12 @@ describe('claude-code target', () => {
   it('puts skills under ./.claude/skills for project scope', () => {
     expect(target.skillsDir('project', paths)).toBe('/w/.claude/skills');
   });
+
+  it('puts commands under ~/.claude/commands for user scope', () => {
+    expect(target.commandsDir('user', paths)).toBe('/h/.claude/commands');
+  });
+
+  it('puts commands under ./.claude/commands for project scope', () => {
+    expect(target.commandsDir('project', paths)).toBe('/w/.claude/commands');
+  });
 });

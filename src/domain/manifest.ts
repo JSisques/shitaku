@@ -21,6 +21,8 @@ const ItemSchema = z.discriminatedUnion('kind', [
   }),
   TreeItemSchema.extend({ kind: z.literal('skill') }),
   TreeItemSchema.extend({ kind: z.literal('script') }),
+  /** A command is one file, so `root` is the file path itself. */
+  TreeItemSchema.extend({ kind: z.literal('command') }),
 ]);
 
 const FileSchema = z
@@ -34,8 +36,8 @@ const FileSchema = z
     afterHash: z.string().nullable(),
     items: z.array(ItemSchema),
   })
-  .refine((f) => f.afterHash !== null || f.items.every((i) => i.kind === 'skill' || i.kind === 'script'), {
-    message: 'afterHash may be null only for skill or script files',
+  .refine((f) => f.afterHash !== null || f.items.every((i) => i.kind !== 'mcp'), {
+    message: 'afterHash may be null only for skill, script or command files',
     path: ['afterHash'],
   });
 
@@ -89,7 +91,7 @@ export function deriveOwnership(manifest: Manifest): Ownership {
   return owned;
 }
 
-function deriveTreeOwnership(manifest: Manifest, kind: 'skill' | 'script'): Record<string, string> {
+function deriveTreeOwnership(manifest: Manifest, kind: 'skill' | 'script' | 'command'): Record<string, string> {
   const owned: Record<string, string> = {};
   for (const install of manifest.installs.filter((i) => i.undoneAt === null)) {
     for (const file of install.files) {
@@ -113,11 +115,16 @@ export function deriveScriptOwnership(manifest: Manifest): Record<string, string
   return deriveTreeOwnership(manifest, 'script');
 }
 
+/** command file path -> hash of the command shitaku last installed there. Undone installs do not count. */
+export function deriveCommandOwnership(manifest: Manifest): Record<string, string> {
+  return deriveTreeOwnership(manifest, 'command');
+}
+
 /** One item shitaku currently owns, with the hash it last wrote and the install that wrote it. */
 export interface OwnedItem {
-  kind: 'mcp' | 'skill' | 'script';
+  kind: 'mcp' | 'skill' | 'script' | 'command';
   scope: Scope;
-  /** Config file for an MCP, skill/script directory for those kinds. */
+  /** Config file for an MCP, directory for a skill/script, file for a command. */
   path: string;
   name: string;
   hash: string;

@@ -1,6 +1,7 @@
 import type { SkillFile, SkillItem } from '@/domain/catalog/skill.js';
 import { treeHash } from '@/domain/hash.js';
 import type { Action } from '@/domain/plan/change-plan.js';
+import { classifyOwned } from '@/domain/plan/classify.js';
 import type { Scope } from '@/ports/agent-target.js';
 
 export interface SkillChange {
@@ -40,21 +41,12 @@ export interface BuildSkillPlanInput {
 export const writesSkill = (change: SkillChange): boolean => change.action === 'create' || change.action === 'update';
 
 /** Decides what to do with one skill directory given its present tree hash (null when absent). */
-export function classifySkill(
+export const classifySkill = (
   present: string | null,
   desired: string,
   owned: string | undefined,
   force: boolean,
-): { action: Action; reason?: string } {
-  if (present === null) return { action: 'create' };
-  if (present === desired) return { action: 'skip', reason: 'already installed' };
-  if (force) return { action: 'update', reason: 'replaced by --force' };
-  if (owned === present) return { action: 'update', reason: 'installed by shitaku' };
-  return {
-    action: 'conflict',
-    reason: owned === undefined ? 'a different skill with this name exists' : 'modified since shitaku installed it',
-  };
-}
+): { action: Action; reason?: string } => classifyOwned(present, desired, owned, force, 'skill');
 
 export function buildSkillPlan({ skills, owned, force = false }: BuildSkillPlanInput): SkillChange[] {
   return skills.map(({ skill, root, scope, present }): SkillChange => {

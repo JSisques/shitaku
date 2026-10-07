@@ -14,4 +14,6 @@ export interface AgentTarget {
   toEntry(item: McpItem): McpServerEntry;
   /** Directory that holds one subdirectory per installed skill. */
   skillsDir(scope: Scope, paths: Paths): string;
+  /** Directory that holds one flat `.md` file per installed command. */
+  commandsDir(scope: Scope, paths: Paths): string;
 }

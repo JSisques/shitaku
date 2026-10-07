@@ -1,6 +1,7 @@
 import type { ScriptFile, ScriptItem } from '@/domain/catalog/script.js';
 import { treeHash } from '@/domain/hash.js';
 import type { Action } from '@/domain/plan/change-plan.js';
+import { classifyOwned } from '@/domain/plan/classify.js';
 import type { Scope } from '@/ports/agent-target.js';
 
 export interface ScriptChange {
@@ -40,21 +41,12 @@ export interface BuildScriptPlanInput {
 export const writesScript = (change: ScriptChange): boolean => change.action === 'create' || change.action === 'update';
 
 /** Decides what to do with one script directory given its present tree hash (null when absent). */
-export function classifyScript(
+export const classifyScript = (
   present: string | null,
   desired: string,
   owned: string | undefined,
   force: boolean,
-): { action: Action; reason?: string } {
-  if (present === null) return { action: 'create' };
-  if (present === desired) return { action: 'skip', reason: 'already installed' };
-  if (force) return { action: 'update', reason: 'replaced by --force' };
-  if (owned === present) return { action: 'update', reason: 'installed by shitaku' };
-  return {
-    action: 'conflict',
-    reason: owned === undefined ? 'a different script with this name exists' : 'modified since shitaku installed it',
-  };
-}
+): { action: Action; reason?: string } => classifyOwned(present, desired, owned, force, 'script');
 
 export function buildScriptPlan({ scripts, owned, force = false }: BuildScriptPlanInput): ScriptChange[] {
   return scripts.map(({ script, root, scope, present }): ScriptChange => {

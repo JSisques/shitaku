@@ -37,7 +37,7 @@ export interface UninstallResult {
   status: 'removed' | 'already-absent' | 'dry-run' | 'refused';
   /** 3 when the item changed since install and `force` is not set, otherwise 0. */
   exitCode: 0 | 3;
-  item: { kind: 'mcp' | 'skill' | 'script'; scope: Scope; name: string; path: string };
+  item: { kind: OwnedItem['kind']; scope: Scope; name: string; path: string };
   /** Files that are (or would be) changed or deleted. */
   files: string[];
   /** The current hash differs from the one shitaku recorded. */
@@ -77,6 +77,7 @@ interface Plan {
 const expectedPath = (deps: UninstallDeps, item: OwnedItem): string => {
   if (item.kind === 'mcp') return deps.target.configPath(item.scope, deps.paths);
   if (item.kind === 'skill') return `${deps.target.skillsDir(item.scope, deps.paths)}/${item.name}`;
+  if (item.kind === 'command') return `${deps.target.commandsDir(item.scope, deps.paths)}/${item.name}.md`;
   return `${scriptsDir(item.scope, deps.paths)}/${item.name}`;
 };
 
