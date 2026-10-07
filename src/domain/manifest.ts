@@ -36,10 +36,14 @@ const FileSchema = z
     afterHash: z.string().nullable(),
     items: z.array(ItemSchema),
   })
-  .refine((f) => f.afterHash !== null || f.items.every((i) => i.kind !== 'mcp'), {
-    message: 'afterHash may be null only for skill, script or command files',
-    path: ['afterHash'],
-  });
+  .refine(
+    (f) =>
+      f.afterHash !== null || f.items.every((i) => i.kind === 'skill' || i.kind === 'script' || i.kind === 'command'),
+    {
+      message: 'afterHash may be null only for skill, script or command files',
+      path: ['afterHash'],
+    },
+  );
 
 const InstallSchema = z.object({
   id: z.string(),
