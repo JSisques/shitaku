@@ -1,12 +1,15 @@
 import { confirm, isCancel, log, multiselect, select } from '@clack/prompts';
 import type { CommandItem } from '@/domain/catalog/command.js';
+import type { HookItem } from '@/domain/catalog/hook.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { ScriptItem } from '@/domain/catalog/script.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
 import type { ChangePlan } from '@/domain/plan/change-plan.js';
+import { writesHookFile } from '@/domain/plan/hook-plan.js';
+import { formatHookPreview } from '@/adapters/cli/hook-preview.js';
 import type { Scope } from '@/ports/agent-target.js';
 import { PromptCancelled } from '@/ports/prompter.js';
-import type { ConflictInfo, Prompter } from '@/ports/prompter.js';
+import type { ConflictInfo, HookPreview, Prompter } from '@/ports/prompter.js';
 
 /** Unwraps a clack answer, turning a dismissed prompt into PromptCancelled. */
 function answer<T>(value: T | symbol): T {
@@ -62,6 +65,16 @@ export class ClackPrompter implements Prompter {
     );
   }
 
+  async selectHooks(options: HookItem[]): Promise<string[]> {
+    return answer<string[]>(
+      await multiselect({
+        message: 'Which hooks do you want to install? (hooks run commands with your permissions)',
+        options: options.map((h) => ({ value: h.name, label: h.name, hint: h.description })),
+        required: false,
+      }),
+    );
+  }
+
   async selectScope(): Promise<Scope> {
     return answer<Scope>(
       await select<Scope>({
@@ -95,9 +108,19 @@ export class ClackPrompter implements Prompter {
       plan.files.filter((f) => f.items.length > 0).length +
       plan.skills.length +
       plan.scripts.length +
-      plan.commands.length;
+      plan.commands.length +
+      plan.hooks.filter(writesHookFile).length;
     return answer<boolean>(
       await confirm({ message: `Apply the changes to ${targets} location${targets === 1 ? '' : 's'}?` }),
+    );
+  }
+
+  async confirmHooks(previews: HookPreview[]): Promise<boolean> {
+    log.info(previews.flatMap(formatHookPreview).join('\n'));
+    return answer<boolean>(
+      await confirm({
+        message: `These hooks run commands with your permissions. Install ${previews.length} hook${previews.length === 1 ? '' : 's'}?`,
+      }),
     );
   }
 

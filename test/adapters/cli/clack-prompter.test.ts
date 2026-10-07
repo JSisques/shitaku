@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as clack from '@clack/prompts';
 import { ClackPrompter } from '@/adapters/cli/clack-prompter.js';
 import type { CommandItem } from '@/domain/catalog/command.js';
+import type { HookItem } from '@/domain/catalog/hook.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
 import type { ChangePlan } from '@/domain/plan/change-plan.js';
-import { PromptCancelled } from '@/ports/prompter.js';
+import { PromptCancelled, type HookPreview } from '@/ports/prompter.js';
 
 const CANCEL = Symbol('clack:cancel');
 // Clack types its cancel symbol privately; `never` lets the mocks resolve with it.
@@ -24,8 +25,8 @@ const select = vi.mocked(clack.select);
 const confirm = vi.mocked(clack.confirm);
 const info = vi.mocked(clack.log.info);
 
-// Only the lengths of `files`, `skills`, `scripts` and `commands` matter to the prompter, so the plan is built from placeholders.
-const planOf = (files: number, skills: number, emptyFiles = 0, scripts = 0, commands = 0): ChangePlan =>
+// Only the lengths of `files`, `skills`, `scripts`, `commands` and the writing `hooks` matter to the prompter, so the plan is built from placeholders.
+const planOf = (files: number, skills: number, emptyFiles = 0, scripts = 0, commands = 0, hooks = 0): ChangePlan =>
   ({
     files: [
       ...Array.from({ length: files }, () => ({ items: [{}] })),
@@ -34,10 +35,15 @@ const planOf = (files: number, skills: number, emptyFiles = 0, scripts = 0, comm
     skills: Array.from({ length: skills }, () => ({})),
     scripts: Array.from({ length: scripts }, () => ({})),
     commands: Array.from({ length: commands }, () => ({})),
+    hooks: [
+      ...Array.from({ length: hooks }, () => ({ items: [{ action: 'create' }] })),
+      { items: [{ action: 'skip' }] },
+    ],
   }) as unknown as ChangePlan;
 
 const mcp = (name: string, description: string): McpItem => ({ name, description }) as McpItem;
 const command = (name: string, description: string): CommandItem => ({ name, description }) as CommandItem;
+const hook = (name: string, description: string): HookItem => ({ name, description }) as HookItem;
 const skill = (name: string, description: string): SkillItem => ({ name, description }) as SkillItem;
 
 describe('ClackPrompter', () => {
@@ -124,6 +130,32 @@ describe('ClackPrompter', () => {
       multiselect.mockResolvedValueOnce(CANCELLED);
 
       await expect(prompter.selectCommands([])).rejects.toBeInstanceOf(PromptCancelled);
+    });
+  });
+
+  describe('selectHooks', () => {
+    it('offers each hook with its description as a hint and warns that hooks run code', async () => {
+      multiselect.mockResolvedValueOnce(['fmt']);
+
+      const result = await prompter.selectHooks([hook('fmt', 'Format after edits'), hook('guard', 'Stop guard')]);
+
+      expect(result).toEqual(['fmt']);
+      expect(multiselect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'Which hooks do you want to install? (hooks run commands with your permissions)',
+          options: [
+            { value: 'fmt', label: 'fmt', hint: 'Format after edits' },
+            { value: 'guard', label: 'guard', hint: 'Stop guard' },
+          ],
+          required: false,
+        }),
+      );
+    });
+
+    it('throws PromptCancelled when the prompt is dismissed', async () => {
+      multiselect.mockResolvedValueOnce(CANCELLED);
+
+      await expect(prompter.selectHooks([])).rejects.toBeInstanceOf(PromptCancelled);
     });
   });
 
@@ -229,14 +261,19 @@ describe('ClackPrompter', () => {
       { files: 1, skills: 0, scripts: 2, emptyFiles: 0, message: 'Apply the changes to 3 locations?' },
       { files: 1, skills: 0, scripts: 0, emptyFiles: 2, message: 'Apply the changes to 1 location?' },
       { files: 0, skills: 0, scripts: 0, commands: 2, emptyFiles: 0, message: 'Apply the changes to 2 locations?' },
-    ])('counts $files file(s), $skills skill(s), $scripts script(s) and $commands command(s)', async (c) => {
-      confirm.mockResolvedValueOnce(true);
+      { files: 1, skills: 0, scripts: 0, hooks: 1, emptyFiles: 0, message: 'Apply the changes to 2 locations?' },
+      { files: 0, skills: 0, scripts: 0, hooks: 0, emptyFiles: 1, message: 'Apply the changes to 0 locations?' },
+    ])(
+      'counts $files file(s), $skills skill(s), $scripts script(s), $commands command(s), $hooks hook file(s)',
+      async (c) => {
+        confirm.mockResolvedValueOnce(true);
 
-      const result = await prompter.confirm(planOf(c.files, c.skills, c.emptyFiles, c.scripts, c.commands));
+        const result = await prompter.confirm(planOf(c.files, c.skills, c.emptyFiles, c.scripts, c.commands, c.hooks));
 
-      expect(result).toBe(true);
-      expect(confirm).toHaveBeenCalledWith({ message: c.message });
-    });
+        expect(result).toBe(true);
+        expect(confirm).toHaveBeenCalledWith({ message: c.message });
+      },
+    );
 
     it('returns false when the user declines', async () => {
       confirm.mockResolvedValueOnce(false);
@@ -248,6 +285,66 @@ describe('ClackPrompter', () => {
       confirm.mockResolvedValueOnce(CANCELLED);
 
       await expect(prompter.confirm(planOf(1, 0))).rejects.toBeInstanceOf(PromptCancelled);
+    });
+  });
+
+  describe('confirmHooks', () => {
+    const previews: HookPreview[] = [
+      {
+        name: 'fmt',
+        scope: 'project',
+        path: '/p/.claude/settings.json',
+        event: 'PostToolUse',
+        matcher: 'Edit|Write',
+        command: 'prettier -w .',
+        timeout: 30,
+      },
+      {
+        name: 'guard',
+        scope: 'user',
+        path: '/h/.claude/settings.json',
+        event: 'Stop',
+        matcher: null,
+        command: './g.sh',
+      },
+    ];
+
+    it('shows the exact event, matcher and command of every hook, then asks', async () => {
+      confirm.mockResolvedValueOnce(true);
+
+      await expect(prompter.confirmHooks(previews)).resolves.toBe(true);
+
+      expect(info).toHaveBeenCalledWith(
+        [
+          "hook 'fmt' (project scope)",
+          '  event: PostToolUse',
+          '  matcher: Edit|Write',
+          '  command: prettier -w .',
+          '  timeout: 30s',
+          "hook 'guard' (user scope)",
+          '  event: Stop',
+          '  matcher: (none)',
+          '  command: ./g.sh',
+        ].join('\n'),
+      );
+      expect(confirm).toHaveBeenCalledWith({
+        message: 'These hooks run commands with your permissions. Install 2 hooks?',
+      });
+    });
+
+    it('returns false when the user declines and singularizes the message', async () => {
+      confirm.mockResolvedValueOnce(false);
+
+      await expect(prompter.confirmHooks(previews.slice(0, 1))).resolves.toBe(false);
+      expect(confirm).toHaveBeenCalledWith({
+        message: 'These hooks run commands with your permissions. Install 1 hook?',
+      });
+    });
+
+    it('throws PromptCancelled when the prompt is dismissed', async () => {
+      confirm.mockResolvedValueOnce(CANCELLED);
+
+      await expect(prompter.confirmHooks(previews)).rejects.toBeInstanceOf(PromptCancelled);
     });
   });
 
