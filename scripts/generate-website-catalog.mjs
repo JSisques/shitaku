@@ -7,20 +7,26 @@ import * as prettier from 'prettier';
 const root = join(import.meta.dirname, '..');
 const catalogDir = join(root, 'catalog');
 const locales = ['en', 'es'];
-const generatedKinds = ['mcps', 'skills', 'profiles', 'scripts'];
+const generatedKinds = ['mcps', 'skills', 'profiles', 'scripts', 'commands'];
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
-function skillDescription(name) {
-  const text = readFileSync(join(catalogDir, 'skills', name, 'SKILL.md'), 'utf8');
+function frontmatterDescription(path, label) {
+  const text = readFileSync(path, 'utf8');
   const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? '';
   const line = frontmatter.split(/\r?\n/).find((l) => l.startsWith('description:'));
-  if (!line) throw new Error(`skills/${name}/SKILL.md has no single-line description`);
+  if (!line) throw new Error(`${label} has no single-line description`);
   return line
     .slice('description:'.length)
     .trim()
     .replace(/^(['"])(.*)\1$/, '$2');
 }
+
+const skillDescription = (name) =>
+  frontmatterDescription(join(catalogDir, 'skills', name, 'SKILL.md'), `skills/${name}/SKILL.md`);
+
+const commandDescription = (name) =>
+  frontmatterDescription(join(catalogDir, 'commands', `${name}.md`), `commands/${name}.md`);
 
 function yamlEscape(value) {
   return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
@@ -119,6 +125,25 @@ This page is generated from \`catalog/skills/${name}/SKILL.md\`.
 `;
 }
 
+const COMMAND_USAGE = {
+  en: (name) =>
+    `A slash command: installing it writes \`${name}.md\` into the Claude Code commands directory, and you run it as \`/${name}\`.`,
+  es: (name) =>
+    `Un comando slash: al instalarlo se escribe \`${name}.md\` en el directorio de comandos de Claude Code y se ejecuta como \`/${name}\`.`,
+};
+
+function renderCommand(name, locale) {
+  const description = commandDescription(name);
+  return `${frontmatter(name, description)}# \`${name}\`
+
+${description}
+
+${COMMAND_USAGE[locale](name)}
+
+This page is generated from \`catalog/commands/${name}.md\`.
+`;
+}
+
 function renderScript(name) {
   const meta = readJson(join(catalogDir, 'scripts', name, 'script.json'));
   const description = meta.description;
@@ -144,6 +169,7 @@ function renderProfile(name) {
   const mcps = profile.mcps ?? [];
   const skills = profile.skills ?? [];
   const scripts = profile.scripts ?? [];
+  const commands = profile.commands ?? [];
   const extendsFrom = profile.extends ?? [];
 
   const lines = [
@@ -170,6 +196,9 @@ function renderProfile(name) {
   if (scripts.length > 0) {
     lines.push('## Scripts', '', ...scripts.map((item) => `- \`${item}\``), '');
   }
+  if (commands.length > 0) {
+    lines.push('## Slash commands', '', ...commands.map((item) => `- \`${item}\``), '');
+  }
 
   return `${lines.join('\n').trimEnd()}\n`;
 }
@@ -193,6 +222,10 @@ async function expectedFiles() {
     for (const name of items.skills ?? []) {
       const rel = join('website/src/content/docs', locale, 'catalog/skills', `${name}.md`);
       files.set(rel, await formatMarkdown(rel, renderSkill(name)));
+    }
+    for (const name of items.commands ?? []) {
+      const rel = join('website/src/content/docs', locale, 'catalog/commands', `${name}.md`);
+      files.set(rel, await formatMarkdown(rel, renderCommand(name, locale)));
     }
     for (const name of items.scripts ?? []) {
       const rel = join('website/src/content/docs', locale, 'catalog/scripts', `${name}.md`);

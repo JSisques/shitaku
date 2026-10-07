@@ -7,23 +7,29 @@ const root = join(import.meta.dirname, '..');
 const catalogDir = join(root, 'catalog');
 const readmePath = join(root, 'README.md');
 
-const SECTIONS = ['mcps', 'skills', 'scripts'];
+const SECTIONS = ['mcps', 'skills', 'scripts', 'commands'];
 
 const startMarker = (section) => `<!-- catalog:${section}:start -->`;
 const endMarker = (section) => `<!-- catalog:${section}:end -->`;
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
-function skillDescription(name) {
-  const text = readFileSync(join(catalogDir, 'skills', name, 'SKILL.md'), 'utf8');
+function frontmatterDescription(path, label) {
+  const text = readFileSync(path, 'utf8');
   const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? '';
   const line = frontmatter.split(/\r?\n/).find((l) => l.startsWith('description:'));
-  if (!line) throw new Error(`skills/${name}/SKILL.md has no single-line description`);
+  if (!line) throw new Error(`${label} has no single-line description`);
   return line
     .slice('description:'.length)
     .trim()
     .replace(/^(['"])(.*)\1$/, '$2');
 }
+
+const skillDescription = (name) =>
+  frontmatterDescription(join(catalogDir, 'skills', name, 'SKILL.md'), `skills/${name}/SKILL.md`);
+
+const commandDescription = (name) =>
+  frontmatterDescription(join(catalogDir, 'commands', `${name}.md`), `commands/${name}.md`);
 
 function scriptDescription(name) {
   const meta = readJson(join(catalogDir, 'scripts', name, 'script.json'));
@@ -33,21 +39,21 @@ function scriptDescription(name) {
   return meta.description;
 }
 
+const NOUN = { mcps: 'MCP servers', skills: 'skills', scripts: 'scripts', commands: 'slash commands' };
+
+const DESCRIBE = {
+  mcps: (name) => readJson(join(catalogDir, 'mcps', `${name}.json`)).description,
+  skills: skillDescription,
+  scripts: scriptDescription,
+  commands: commandDescription,
+};
+
 function rows(section, items) {
-  return [...items]
-    .sort((a, b) => a.localeCompare(b))
-    .map((name) => ({
-      name,
-      description:
-        section === 'mcps'
-          ? readJson(join(catalogDir, 'mcps', `${name}.json`)).description
-          : section === 'skills'
-            ? skillDescription(name)
-            : scriptDescription(name),
-    }));
+  return [...items].sort((a, b) => a.localeCompare(b)).map((name) => ({ name, description: DESCRIBE[section](name) }));
 }
 
-function table(entries) {
+function table(entries, section) {
+  if (entries.length === 0) return `_No ${NOUN[section]} in the bundled catalog yet._`;
   const cell = (value) => String(value ?? '').replaceAll('|', '\\|');
   return [
     '| Name | Description |',
@@ -71,7 +77,7 @@ async function render() {
   const items = readJson(join(catalogDir, 'catalog.json')).items ?? {};
   let readme = readFileSync(readmePath, 'utf8');
   for (const section of SECTIONS) {
-    readme = replaceBetweenMarkers(readme, section, table(rows(section, items[section] ?? [])));
+    readme = replaceBetweenMarkers(readme, section, table(rows(section, items[section] ?? []), section));
   }
   const options = (await prettier.resolveConfig(readmePath)) ?? {};
   return prettier.format(readme, { ...options, filepath: readmePath });
