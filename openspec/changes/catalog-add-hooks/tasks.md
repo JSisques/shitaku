@@ -80,9 +80,9 @@ Every PR: RED test first, then GREEN, then REFACTOR; tests and docs stay with co
 
 ## PR 8: Docs
 
-- [ ] 8.1 RED: generator drift tests for hook section (`test/tooling.test.ts`)
-- [ ] 8.2 GREEN: `scripts/generate-catalog-table.mjs`, `scripts/generate-website-catalog.mjs`
-- [ ] 8.3 Docs: README, CONTRIBUTING, security page en/es, flags, `/config` note
+- [x] 8.1 RED: generator drift tests for hook section (`test/tooling.test.ts`)
+- [x] 8.2 GREEN: `scripts/generate-catalog-table.mjs`, `scripts/generate-website-catalog.mjs`
+- [x] 8.3 Docs: README, CONTRIBUTING, security page en/es, flags, `/config` note
 
 ## Key Learnings
 

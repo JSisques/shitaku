@@ -260,3 +260,35 @@ Branch `feat/hooks-7-cli-gate` (stacked on #220, not pushed). Commits: `feat(pro
 - The existing "select at least one kind" error and the init/uninstall/list help text now mention hooks; one existing test string was updated.
 - Help warns that hooks run code (`--hooks`, `--allow-hooks`, `--source`).
 - No application-layer changes were needed.
+
+## PR 8: Docs and generators (tasks 8.1-8.3)
+
+Branch `feat/hooks-8-docs` (stacked on #221, not pushed). Last PR of the stack. Commits: `e440df8` feat(docs) generators, `9d961f1` docs README and CONTRIBUTING, `5bbf479` docs(website) en and es, plus this `docs(openspec)` commit. Strict TDD for the generator code.
+
+### TDD Cycle Evidence (PR 8)
+
+| Task    | Test file                 | RED                                                                                                | GREEN                       | Triangulate                                                                                                                                                                                              | Refactor |
+| ------- | ------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| 8.1/8.2 | `test/generators.test.ts` | 9 failed of 18 (hook table, hook pages, drift, missing, unexpected, empty, profile hooks, markers) | 18 passed (full suite 1251) | README table with escaped pipe, drift, empty and unlisted catalog, missing markers; en/es pages, omitted matcher/timeout, command with backticks and pipes, drift/missing/unexpected, profile `## Hooks` | none     |
+
+The task named `test/tooling.test.ts`, but the generator drift tests live in `test/generators.test.ts` (the commands precedent), so the hook cases were added there.
+
+### Work Unit Evidence (PR 8)
+
+| Evidence          | Value                                                                                                                                                                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Focused test      | `pnpm vitest run test/generators.test.ts`: 18 passed; full `pnpm run test`: 55 files, 1251 passed                                                                                                                                                                  |
+| Runtime harness   | `docs:catalog:check` and `docs:website-catalog:check` exit 0; a temporary bundled hook rendered en/es pages (then removed); built CLI: `init --hooks` without `--allow-hooks` exits 1, with it installs, `status`, `doctor`, `list hooks` checked against the docs |
+| Rollback boundary | revert `e440df8` (generators, README markers, tests); the prose commits `9d961f1` and `5bbf479` are independent docs                                                                                                                                               |
+
+### Validation
+
+`pnpm run typecheck`, `lint`, `format:check`, `test`, `build`, `docs:catalog:check`, `docs:website-catalog:check` all exit 0. Budget (`git diff --shortstat bb43bcb...HEAD`, before this openspec commit): 437 added / 62 deleted = 499 hand-written, over 400, no `size:exception`. Split by commit set: generators 223/5 = 228; README and CONTRIBUTING 111/24 = 135; website en and es 103/33 = 136 (prose total 271). No generated output changed because the bundled catalog ships no hook.
+
+### Notes and Deviations
+
+- README gained a `### Hooks` section with the `catalog:hooks` markers (needed by the table generator) and a `### Hooks (install)` reference section.
+- Hook pages use a caution block, a field table (event, matcher, timeout) and the command in a fence longer than any backtick run in it. An omitted matcher reads `all`, an omitted timeout `not set`.
+- Facts documented were checked against the built CLI (help text, gate, status, doctor, list) and research.md (strict JSON, live reload, `/config` writes, precedence, full user permissions). Timeout unit is shown only as the plain number on pages; the CLI preview prints `Ns`.
+- Not documented: unknown handler keys behavior and Claude Code's own write mechanism (research gaps).
+- No design deviation. The edited-hook uninstall refusal (spec) stays unreachable by design (see PR 6); docs state it reports already absent.
