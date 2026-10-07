@@ -1011,7 +1011,7 @@ describe('initMcps (commands)', () => {
     ]);
   });
 
-  it('writes through writeBytes (temp then rename) and leaves a neighbor command untouched', async () => {
+  it('writes through writeBytes and leaves a neighbor command untouched', async () => {
     await mkdir(dir(), { recursive: true });
     await writeFile(join(dir(), 'mine.md'), 'mine');
     const fs = withFault({ method: 'remove', nth: 99 });
