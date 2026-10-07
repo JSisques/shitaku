@@ -274,6 +274,13 @@ describe('file fidelity of an edit', () => {
     expect(addHook(json({ a: 1 }), FILE, spec).text).not.toContain('\r');
   });
 
+  it('writes LF when the file mixes LF and CRLF, since only a consistently CRLF file keeps CRLF', () => {
+    const mixed = '{\r\n  "a": 1,\n  "b": 2\r\n}\r\n';
+    const out = addHook(mixed, FILE, spec).text;
+    expect(out).not.toContain('\r');
+    expect(out.endsWith('}\n')).toBe(true);
+  });
+
   it('refuses a byte order mark with a ConfigError naming the file', () => {
     const attempt = () => addHook(`${BOM}${json({ a: 1 })}`, FILE, spec);
     expect(attempt).toThrow(ConfigError);

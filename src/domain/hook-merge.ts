@@ -66,8 +66,11 @@ function readGroups(hooks: JsonObject, event: string, file: string): JsonObject[
 
 const matcherOf = (group: JsonObject): string | null => (typeof group.matcher === 'string' ? group.matcher : null);
 
+/** A file keeps CRLF only when every newline is CRLF; a mix of LF and CRLF is written as LF. */
+const isAllCrlf = (text: string): boolean => text.includes('\r\n') && !/(?<!\r)\n/.test(text);
+
 /**
- * Re-serializes the document with the indentation, line endings (LF or CRLF) and trailing newline of the
+ * Re-serializes the document with the indentation, line endings (LF, or CRLF when every newline is CRLF) and trailing newline of the
  * original. JSON.stringify emits only structural newlines, so switching them to CRLF cannot touch a string.
  */
 function serialize(root: JsonObject, original: string | null, file: string): string {
@@ -78,7 +81,7 @@ function serialize(root: JsonObject, original: string | null, file: string): str
     return fail(file, `config cannot be re-serialized: ${e instanceof Error ? e.message : String(e)}`);
   }
   const text = body + (original === null || original.endsWith('\n') ? '\n' : '');
-  return original?.includes('\r\n') ? text.replaceAll('\n', '\r\n') : text;
+  return original !== null && isAllCrlf(original) ? text.replaceAll('\n', '\r\n') : text;
 }
 
 /** Appends the handler to the first group with an equal matcher. A deep-equal handler is a no-op `skip`. */
