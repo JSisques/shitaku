@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -226,6 +227,23 @@ describe('getStatus (commands)', () => {
       ['review', 'modified'],
     ]);
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'reports a named pipe at the path as modified without blocking on it',
+    async () => {
+      await install();
+      await rm(join(dir(), 'review.md'));
+      execFileSync('mkfifo', [join(dir(), 'review.md')]);
+      const timeout = new Promise<string>((resolve) => {
+        setTimeout(() => resolve('blocked'), 1000).unref();
+      });
+      const outcome = await Promise.race([status().then((s) => s.items.map((i) => [i.name, i.state])), timeout]);
+      expect(outcome).toEqual([
+        ['other', 'installed'],
+        ['review', 'modified'],
+      ]);
+    },
+  );
 
   it('ignores an unlisted user command, keeps scopes distinct and writes nothing', async () => {
     await install('project');

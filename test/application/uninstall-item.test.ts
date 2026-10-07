@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { access, lstat, mkdir, readFile, readdir, readlink, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -591,6 +592,20 @@ describe('uninstallItem (commands)', () => {
     await expect(uninstall({ force: true })).rejects.toThrow(UnsafeTreeError);
     expect((await lstat(file())).isSymbolicLink()).toBe(true);
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses with UnsafeTreeError without blocking when a named pipe replaced the file',
+    async () => {
+      await install();
+      await rm(file());
+      execFileSync('mkfifo', [file()]);
+      const timeout = new Promise<string>((resolve) => {
+        setTimeout(() => resolve('blocked'), 1000).unref();
+      });
+      const outcome = await Promise.race([uninstall({ force: true }).then(String, (e: unknown) => e), timeout]);
+      expect(outcome).toBeInstanceOf(UnsafeTreeError);
+    },
+  );
 
   it('aborts with StaleFileError and changes nothing when the file changed after planning', async () => {
     await install();
