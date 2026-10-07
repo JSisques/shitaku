@@ -227,3 +227,36 @@ Branch `feat/hooks-6-uninstall-status` (stacked on #219, not pushed). Commits: `
 - Doctor with a deleted settings file reports `config-missing` for the file (like MCP), not `hook-missing` per hook.
 - `--kind hook` on the CLI (`uninstall` choices, `UninstallOptions.kind`) is deliberately left to PR 7 (task 7.2); the use case already accepts it. Status/doctor text and JSON need no CLI change.
 - Task paths: `doctor-plan.ts` lives in `src/domain/plan/`.
+
+## PR 7: CLI gate (tasks 7.1-7.3)
+
+Branch `feat/hooks-7-cli-gate` (stacked on #220, not pushed). Commits: `feat(prompter)` (`33deb53`, port + clack, nothing calls it yet), `feat(init)` (`15750a8`, flag + gate together), plus this `docs(openspec)` commit. Strict TDD. The flag never lands without the gate: the prompter commit exposes no CLI surface.
+
+### TDD Cycle Evidence (PR 7)
+
+| Task    | Test file                                  | RED                                                                                                                  | GREEN                                       | Triangulate                                                                                                                                                                                                                                                                                                         | Refactor                                                                                         |
+| ------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 7.1/7.2 | `test/adapters/cli/program.test.ts`        | 15 failed of 178 (14 new hook cases plus the updated "select at least one kind" message); safety net 163 passed      | 178 passed (`test/adapters` 374; full 1241) | `--yes` refused (exit 1, nothing written, exact command on stderr), non-`--yes` with `--hooks --scope`, other kinds not written either, `--allow-hooks` project/user, dry-run without flag, re-run all-skip not gated, unknown hook, interactive confirm/skip/decline (with and without other kinds), hidden prompt | decline emptiness check uses the replanned `plan` instead of re-counting request arrays          |
+| 7.3     | `test/adapters/cli/clack-prompter.test.ts` | 6 failed of 29 (`selectHooks` / `confirmHooks` not functions, hook file count missing from `confirm`); safety net 23 | 29 passed                                   | selection with hints and warning, cancel x2, preview text for two hooks (matcher null, timeout absent), singular/plural, decline, confirm count with and without writing hook files                                                                                                                                 | `formatHookPreview` shared by `program.ts` (stderr/dry-run) and `clack-prompter.ts` (`log.info`) |
+
+### Work Unit Evidence (PR 7)
+
+| Evidence          | Value                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused test      | `pnpm vitest run test/adapters/cli`: pass (`test/adapters` 10 files, 374 passed); full `pnpm run test`: 55 files, 1241 passed                                                                                                                                                                                                                                                                              |
+| Runtime harness   | Built `node dist/main.js` in a temp HOME/cwd with a fixture catalog: `init --yes --hooks fmt --scope project` exits 1, prints the exact event/matcher/command/timeout, writes nothing; `--dry-run` exits 0 with plan + commands, nothing written; `--yes --allow-hooks` exits 0 and writes `.claude/settings.json`; `uninstall fmt --kind hook` exits 0; `undo` restores; second `undo` empties `.claude/` |
+| Rollback boundary | revert `15750a8` (`program.ts`, its tests) and `33deb53` (`prompter.ts`, `clack-prompter.ts`, `hook-preview.ts`, tests); reverting only `15750a8` leaves an unused port                                                                                                                                                                                                                                    |
+
+### Validation
+
+`pnpm run typecheck`, `lint`, `format:check`, `test`, `build` all exit 0. Budget (`0b43973...HEAD -- src test`, measured before this docs commit): 450 added / 32 deleted = 482, over the 400 budget (production about 153 changed lines, tests about 329). No `size:exception` approved; not trimmed because flag and gate must ship together.
+
+### Notes and Deviations
+
+- Gate placement: after conflict resolution and before `printPlan`. Only hooks whose action is `create` or `update` are gated; an all-`skip` re-run needs neither the flag nor a prompt. A refused non-interactive run writes nothing of any kind and exits 1.
+- Decline replans with `hooks: []`; if the replanned plan has no files, skills, scripts or commands, the run prints `aborted: nothing was written` and exits 0 without the general confirm.
+- `--allow-hooks` also skips `confirmHooks` in an interactive run; `--yes` never does. `--dry-run` skips the gate and prints the previews on stdout.
+- Profiles: `init` has no `--profile` option today (profiles are catalog data only); the gate applies to every hook the plan writes, whatever selected it, so profile or `--source` hooks cannot bypass it.
+- The existing "select at least one kind" error and the init/uninstall/list help text now mention hooks; one existing test string was updated.
+- Help warns that hooks run code (`--hooks`, `--allow-hooks`, `--source`).
+- No application-layer changes were needed.

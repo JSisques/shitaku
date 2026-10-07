@@ -74,9 +74,9 @@ Every PR: RED test first, then GREEN, then REFACTOR; tests and docs stay with co
 
 ## PR 7: CLI gate (flag and gate together)
 
-- [ ] 7.1 RED: `--yes` without `--allow-hooks` exits 1, writes nothing; `--allow-hooks`, dry-run, decline, `--source` (`test/adapters/cli/program.test.ts`)
-- [ ] 7.2 GREEN: `src/adapters/cli/program.ts` `--hooks`, `--allow-hooks`, `--kind hook`; `src/ports/prompter.ts` `confirmHooks`
-- [ ] 7.3 GREEN: `src/adapters/cli/clack-prompter.ts` hooks selection and confirm; hidden when empty
+- [x] 7.1 RED: `--yes` without `--allow-hooks` exits 1, writes nothing; `--allow-hooks`, dry-run, decline, `--source` (`test/adapters/cli/program.test.ts`)
+- [x] 7.2 GREEN: `src/adapters/cli/program.ts` `--hooks`, `--allow-hooks`, `--kind hook`; `src/ports/prompter.ts` `confirmHooks`
+- [x] 7.3 GREEN: `src/adapters/cli/clack-prompter.ts` hooks selection and confirm; hidden when empty
 
 ## PR 8: Docs
 
