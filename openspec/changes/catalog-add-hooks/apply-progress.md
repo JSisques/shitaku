@@ -193,3 +193,37 @@ Branch `feat/hooks-5-undo` (stacked on #218, not pushed). Commits: `feat(undo)` 
 - The `itemRoots` hook exclusion from PR 3 is NOT removed: it is a type-level necessity (hook items have no `root`), not a temporary measure. LIFO per file path already covers hooks.
 - Uninstall, status and doctor are untouched (PR 6).
 - Deviation: none from design.
+
+## PR 6: Uninstall, status, doctor (tasks 6.1-6.4)
+
+Branch `feat/hooks-6-uninstall-status` (stacked on #219, not pushed). Commits: `feat(uninstall)` (6.1/6.2, `7f35ab9`), `feat(status)` (6.3/6.4, `a428586`), plus this `docs(openspec)` commit. Strict TDD.
+
+### TDD Cycle Evidence (PR 6)
+
+| Task    | Test file                                                                                | RED                                                                                                      | GREEN                                            | Triangulate                                                                                                                                                                                                                                                                  | Refactor                                                                        |
+| ------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| 6.1/6.2 | `test/application/uninstall-item.test.ts`                                                | 12 failed of 55 (safety net 43 passed): hook not resolved ("was not installed by shitaku")               | 55 passed                                        | shared group kept, created group/event dropped, no `--force` needed, dry run, deleted, edited, file gone, malformed, kind collision, stale, journal rollback, undo restores bytes                                                                                            | n/a                                                                             |
+| 6.1/6.2 | `test/domain/manifest.test.ts`                                                           | 1 failed: owned item lacked the `hook` detail                                                            | 55 passed                                        | exact detail incl. created flags                                                                                                                                                                                                                                             | `ownedHook` shared with `deriveHookOwnership`                                   |
+| 6.3/6.4 | `installed-state.test.ts`, `doctor.test.ts`, `doctor-plan.test.ts`, `hook-merge.test.ts` | 19 failed of 107 (88 passed): `hasHook` missing, hook fell through to the tree branch, no `hook-missing` | 743 passed in `test/application` + `test/domain` | intact, edited, deleted, file missing, malformed JSON and wrong shape, read once per file, catalog hash (event/matcher change), out-of-date, missing-from-catalog, other scope still classified, unrelated keys and user hooks ignored, `${CLAUDE_PROJECT_DIR}` no env-unset | `SettingsText` named type after a lint error (`no-redundant-type-constituents`) |
+
+### Work Unit Evidence (PR 6)
+
+| Evidence          | Value                                                                                                                                                                                                                                                                  |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused test      | `pnpm vitest run test/application test/domain`: 36 files, 743 passed; full `pnpm run test`: 55 files, 1218 passed                                                                                                                                                      |
+| Runtime harness   | Built CLI in a temp HOME/cwd after installing a hook through `initMcps`: `status` lists `hooks:` / `fmt` with the settings path; `status --json` has `"kind": "hook"`; after editing the command, `status` says `missing` and `doctor` reports `hook-missing` (exit 4) |
+| Rollback boundary | Part A: revert `7f35ab9` (`uninstall-item.ts`, `manifest.ts` hook detail and their tests). Part B: revert `a428586` (`installed-state.ts`, `hook-merge.ts` `hasHook`, `doctor-plan.ts` and their tests)                                                                |
+
+### Validation
+
+`pnpm run typecheck`, `lint`, `format:check`, `test`, `build` all exit 0. Budget (src + test, `bd58d2e...HEAD`): 647 added / 20 deleted = 667. Part A (`7f35ab9`): 221 + 15 = 236. Part B (`a428586`): 426 + 5 = 431 (about 91 production, the rest tests). The two parts are separable commits on this branch; the orchestrator decides the PR cut.
+
+### Notes and Deviations
+
+- Design decision c makes "edited" indistinguishable from "removed", so the spec scenario "Edited hook refused (exit 3)" cannot be produced: an edited handler is `already-absent` (exit 0, nothing written, `modified: false`). A hook is therefore never refused and never needs `--force`; `refused`/exit 3 remain for the other kinds. A malformed settings file still fails closed (ConfigError, exit 1) before any write. This resolves the spec's open `--force` question; flagged for verify.
+- `OwnedItem` gained an optional `hook` detail (design table h, "optional `hook` detail"); `deriveHookOwnership` shares `ownedHook`.
+- Uninstall journals a hook `remove` item carrying event, matcher, handler and created flags, so `undo` re-adds or byte-restores it.
+- `desiredFor` now handles hooks (not named in tasks): without it an installed hook would read `missing-from-catalog`.
+- Doctor with a deleted settings file reports `config-missing` for the file (like MCP), not `hook-missing` per hook.
+- `--kind hook` on the CLI (`uninstall` choices, `UninstallOptions.kind`) is deliberately left to PR 7 (task 7.2); the use case already accepts it. Status/doctor text and JSON need no CLI change.
+- Task paths: `doctor-plan.ts` lives in `src/domain/plan/`.

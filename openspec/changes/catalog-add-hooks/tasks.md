@@ -67,10 +67,10 @@ Every PR: RED test first, then GREEN, then REFACTOR; tests and docs stay with co
 
 ## PR 6: Uninstall, status, doctor
 
-- [ ] 6.1 RED: uninstall `--kind hook`, edited exit 3, already absent, `modified: false` (`test/application/uninstall-item.test.ts`)
-- [ ] 6.2 GREEN: `src/application/uninstall-item.ts` hook branches
-- [ ] 6.3 RED: edited hook is `missing`, unparseable is `modified`, no env-unset false positive (`test/application/installed-state.test.ts`)
-- [ ] 6.4 GREEN: `src/application/installed-state.ts` `observeHook`; `src/domain/doctor-plan.ts` `hook-missing`, `config-unreadable`
+- [x] 6.1 RED: uninstall `--kind hook`, edited exit 3, already absent, `modified: false` (`test/application/uninstall-item.test.ts`)
+- [x] 6.2 GREEN: `src/application/uninstall-item.ts` hook branches
+- [x] 6.3 RED: edited hook is `missing`, unparseable is `modified`, no env-unset false positive (`test/application/installed-state.test.ts`)
+- [x] 6.4 GREEN: `src/application/installed-state.ts` `observeHook`; `src/domain/doctor-plan.ts` `hook-missing`, `config-unreadable`
 
 ## PR 7: CLI gate (flag and gate together)
 
