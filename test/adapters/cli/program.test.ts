@@ -577,10 +577,17 @@ describe('runCli', () => {
       expect(await run('init', '--yes', '--commands', 'review', '--scope', 'project', '--source', dir)).toBe(2);
       expect(err).toContain("conflict: command 'review' already exists with different content");
       expect(await readFile(commandFile(), 'utf8')).toBe('mine\n');
+      const stateDir = join(tmp.homeDir, '.claude', '.shitaku');
+      await expect(readdir(stateDir)).rejects.toThrow();
       expect(await run('init', '--yes', '--commands', 'review', '--scope', 'project', '--force', '--source', dir)).toBe(
         0,
       );
       expect(await readFile(commandFile(), 'utf8')).toBe(REVIEW);
+      const [backupId] = await readdir(join(stateDir, 'backups'));
+      const [saved] = await readdir(join(stateDir, 'backups', backupId ?? ''));
+      expect(await readFile(join(stateDir, 'backups', backupId ?? '', saved ?? ''), 'utf8')).toBe('mine\n');
+      expect(await run('undo')).toBe(0);
+      expect(await readFile(commandFile(), 'utf8')).toBe('mine\n');
     });
 
     it('asks for commands when the catalog has some, and installs the selection', async () => {
@@ -592,9 +599,10 @@ describe('runCli', () => {
     });
 
     it('does not ask for commands when the catalog has none', async () => {
-      usePrompter({ mcps: ['context7'], skills: [], scripts: [], scope: 'project', confirm: true });
-      expect(await run('init')).toBe(0);
-      expect(calls).toEqual(['mcps', 'skills', 'scripts', 'scope', 'confirm']);
+      const dir = await writeCommandCatalog([]);
+      usePrompter({ mcps: [], skills: [], scripts: [], scope: 'project', confirm: true });
+      await run('init', '--source', dir);
+      expect(calls).not.toContain('commands');
     });
 
     it('resolves an interactive command conflict: skip keeps the file, overwrite replaces it', async () => {
