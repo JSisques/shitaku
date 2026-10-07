@@ -18,6 +18,7 @@ describe('bundled catalog', () => {
       'vercel',
       'docker',
       'sqlite',
+      'hyperconsciousness',
       'supabase',
       'notion',
       'atlassian',

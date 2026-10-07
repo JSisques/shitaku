@@ -1,0 +1,21 @@
+{
+  "name": "hyperconsciousness",
+  "description": "Developer-alpha encrypted, append-only knowledge store with scoped, expiring MCP grants; build hc from source and add it to PATH, then initialize a store and grant access: https://github.com/louis030195/hyperconsciousness#install-from-source",
+  "server": {
+    "type": "stdio",
+    "command": "hc",
+    "args": ["mcp", "--as", "${HC_GRANT_ID}", "--dir", "${HC_STORE_DIR}"]
+  },
+  "env": [
+    {
+      "name": "HC_GRANT_ID",
+      "required": true,
+      "description": "ID of an existing, unexpired grant for this store and local device; create a narrowly scoped grant with hc grant before starting the MCP client"
+    },
+    {
+      "name": "HC_STORE_DIR",
+      "required": true,
+      "description": "Absolute path to a store initialized with hc start; the MCP process must run as the OS user that can unlock its keys"
+    }
+  ]
+}
