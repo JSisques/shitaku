@@ -8,6 +8,7 @@ export type DoctorCode =
   | 'config-unreadable'
   | 'mcp-missing'
   | 'skill-missing'
+  | 'command-missing'
   | 'env-unset'
   | 'duplicate-mcp' // severity 'problem'
   | 'modified'
@@ -32,7 +33,7 @@ export interface Finding {
 
 export interface ItemObservation {
   item: OwnedItem;
-  /** Skills are always `present`. */
+  /** Skills, scripts and commands are always `present`. */
   config: 'present' | 'missing' | 'unreadable';
   current: Observed;
   /** The installed MCP entry, when present. */
@@ -97,6 +98,17 @@ function itemFindings(o: ItemObservation, env: DiagnoseInput['env']): Finding[] 
         code: 'skill-missing',
         message: `${label(o)} is missing at ${o.item.path}`,
         fix: 'run shitaku init again to reinstall the skill',
+      },
+    ];
+  }
+  if (o.item.kind === 'command' && o.state === 'missing') {
+    return [
+      {
+        ...base,
+        severity: 'problem',
+        code: 'command-missing',
+        message: `${label(o)} is missing at ${o.item.path}`,
+        fix: 'run shitaku init again to reinstall the command',
       },
     ];
   }

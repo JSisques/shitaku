@@ -70,7 +70,8 @@ export async function listTree(root: string): Promise<string[] | null> {
 export async function readFileNoFollow(abs: string, label: string): Promise<Uint8Array | null> {
   let handle;
   try {
-    handle = await open(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
+    // O_NONBLOCK: opening a named pipe must not wait for a writer; the isFile check below then rejects it.
+    handle = await open(abs, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === 'ENOENT') return null;

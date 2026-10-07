@@ -1,4 +1,4 @@
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
@@ -9,6 +9,7 @@ import { undoInstall } from '@/application/undo-install.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
 import type { LoadedCatalog } from '@/ports/catalog-source.js';
+import { REVIEW_V1 } from '@test/helpers/commands.js';
 import { DEMO_V1, DEMO_V2 } from '@test/helpers/skills.js';
 import { SCRIPT_V1 } from '@test/helpers/scripts.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
@@ -37,7 +38,7 @@ describe('getDiagnosis', () => {
     load: () => (catalog instanceof Error ? Promise.reject(catalog) : Promise.resolve(catalog)),
   };
   const setCatalog = (mcps: McpItem[], skills: SkillItem[] = []): void => {
-    catalog = { mcps, skills, scripts: [], profiles: [], issues: [] };
+    catalog = { mcps, skills, scripts: [], commands: [], profiles: [], issues: [] };
   };
   const paths = () => ({ homeDir: tmp.homeDir, cwd: tmp.cwd });
   const deps = (): InitDeps => ({ source, fs, target: claudeCodeTarget, paths: paths(), env });
@@ -89,6 +90,17 @@ describe('getDiagnosis', () => {
     await installProject();
     await rm(projectSkill(), { recursive: true });
     expect(await codes()).toEqual(['problem:skill-missing:project:demo']);
+  });
+
+  it('reports a deleted command file, and nothing for a healthy or directory-replaced one', async () => {
+    const file = join(tmp.cwd, '.claude', 'commands', 'review.md');
+    catalog = { ...(catalog as LoadedCatalog), commands: [REVIEW_V1] };
+    await initMcps(deps(), { mcps: [], commands: ['review'], scope: 'project' });
+    expect(await codes()).toEqual([]);
+    await rm(file);
+    expect(await codes()).toEqual(['problem:command-missing:project:review']);
+    await mkdir(file);
+    expect(await codes()).toEqual(['info:modified:project:review']);
   });
 
   it('reports a required variable that is unset, by name, and clears it once set', async () => {
@@ -174,7 +186,7 @@ describe('getDiagnosis', () => {
           : f,
       ),
     };
-    catalog = { mcps: [], skills: [], scripts: [withTool], profiles: [], issues: [] };
+    catalog = { mcps: [], skills: [], scripts: [withTool], commands: [], profiles: [], issues: [] };
     await initMcps(deps(), { mcps: [], skills: [], scripts: ['lint'], scope: 'project' });
     const report = await getDiagnosis(deps(), {});
     expect(report.findings).toEqual([
@@ -202,7 +214,7 @@ describe('getDiagnosis', () => {
         },
       ],
     };
-    catalog = { mcps: [], skills: [], scripts: [complexity], profiles: [], issues: [] };
+    catalog = { mcps: [], skills: [], scripts: [complexity], commands: [], profiles: [], issues: [] };
     await initMcps(deps(), { mcps: [], skills: [], scripts: ['complexity'], scope: 'project' });
     const report = await getDiagnosis(deps(), {});
     const missing = report.findings.filter((f) => f.code === 'script-tool-missing');

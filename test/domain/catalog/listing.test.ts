@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { collapseWhitespace, listEntries, LIST_KINDS } from '@/domain/catalog/listing.js';
 import type { Catalog, McpItem, Profile } from '@/domain/catalog/schema.js';
+import type { CommandItem } from '@/domain/catalog/command.js';
 import type { ScriptItem } from '@/domain/catalog/script.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
 
@@ -12,6 +13,11 @@ const mcp = (name: string, description: string): McpItem => ({
 });
 const skill = (name: string, description: string): SkillItem => ({ name, description, files: [] });
 const script = (name: string, description: string): ScriptItem => ({ name, description, tools: [], files: [] });
+const command = (name: string, description: string): CommandItem => ({
+  name,
+  description,
+  bytes: new Uint8Array(),
+});
 const profile = (name: string, description?: string): Profile => ({
   name,
   ...(description === undefined ? {} : { description }),
@@ -19,18 +25,20 @@ const profile = (name: string, description?: string): Profile => ({
   mcps: [],
   skills: [],
   scripts: [],
+  commands: [],
 });
 
 const catalog: Catalog = {
   mcps: [mcp('b', 'Second server'), mcp('a', 'First server'), mcp('fs', 'Filesystem access')],
   skills: [skill('fs-tips', 'Browser automation'), skill('c', 'Third')],
   scripts: [script('lint', 'Run lint'), script('a-script', 'Alpha script')],
+  commands: [command('review', 'Review a diff'), command('a-cmd', 'Alpha command')],
   profiles: [profile('base'), profile('full', 'Everything')],
 };
 
 describe('LIST_KINDS', () => {
   it('exposes the plural kinds accepted by the CLI', () => {
-    expect(LIST_KINDS).toEqual(['mcps', 'skills', 'profiles', 'scripts']);
+    expect(LIST_KINDS).toEqual(['mcps', 'skills', 'profiles', 'scripts', 'commands']);
   });
 });
 
@@ -45,8 +53,10 @@ describe('collapseWhitespace', () => {
 });
 
 describe('listEntries', () => {
-  it('maps all four kinds and sorts by kind, then name', () => {
+  it('maps all five kinds and sorts by kind, then name', () => {
     expect(listEntries(catalog, {})).toEqual([
+      { kind: 'command', name: 'a-cmd', description: 'Alpha command' },
+      { kind: 'command', name: 'review', description: 'Review a diff' },
       { kind: 'mcp', name: 'a', description: 'First server' },
       { kind: 'mcp', name: 'b', description: 'Second server' },
       { kind: 'mcp', name: 'fs', description: 'Filesystem access' },
@@ -60,7 +70,7 @@ describe('listEntries', () => {
   });
 
   it('keeps the same name when it exists as an MCP and as a skill', () => {
-    const both: Catalog = { mcps: [mcp('x', 'm')], skills: [skill('x', 's')], scripts: [], profiles: [] };
+    const both: Catalog = { mcps: [mcp('x', 'm')], skills: [skill('x', 's')], scripts: [], commands: [], profiles: [] };
     expect(listEntries(both, {}).map((e) => `${e.kind}:${e.name}`)).toEqual(['mcp:x', 'skill:x']);
   });
 
@@ -73,10 +83,17 @@ describe('listEntries', () => {
     ['skills', 'skill', 2],
     ['profiles', 'profile', 2],
     ['scripts', 'script', 2],
+    ['commands', 'command', 2],
   ] as const)('filters by kind %s', (kind, entryKind, count) => {
     const entries = listEntries(catalog, { kind });
     expect(entries).toHaveLength(count);
     expect(entries.every((e) => e.kind === entryKind)).toBe(true);
+  });
+
+  it('uses singular kind command for JSON entries and searches the description', () => {
+    expect(listEntries(catalog, { kind: 'commands', search: 'DIFF' })).toEqual([
+      { kind: 'command', name: 'review', description: 'Review a diff' },
+    ]);
   });
 
   it('matches the search on the description, case-insensitively', () => {
@@ -97,7 +114,7 @@ describe('listEntries', () => {
     ]);
   });
 
-  const multi: Catalog = { mcps: [mcp('m', 'two\n   words')], skills: [], scripts: [], profiles: [] };
+  const multi: Catalog = { mcps: [mcp('m', 'two\n   words')], skills: [], scripts: [], commands: [], profiles: [] };
 
   it('searches the whitespace-collapsed description', () => {
     expect(listEntries(multi, { search: 'two words' })).toHaveLength(1);
@@ -108,7 +125,7 @@ describe('listEntries', () => {
   });
 
   it('treats an empty search as no filter', () => {
-    expect(listEntries(catalog, { search: '' })).toHaveLength(9);
+    expect(listEntries(catalog, { search: '' })).toHaveLength(11);
   });
 
   it('keeps raw descriptions untouched', () => {

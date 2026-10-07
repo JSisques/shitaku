@@ -2,6 +2,7 @@ import type { AgentTarget, McpServerEntry, Scope } from '@/ports/agent-target.js
 import type { Paths } from '@/ports/paths.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import { hashEntry, sha256 } from '@/domain/hash.js';
+import type { FlatFileChange } from '@/domain/plan/flat-file-plan.js';
 import type { ScriptChange } from '@/domain/plan/script-plan.js';
 import type { SkillChange } from '@/domain/plan/skill-plan.js';
 import { mergeAtPath, readAtPath } from '@/domain/json-merge.js';
@@ -39,6 +40,8 @@ export interface ChangePlan {
   skills: SkillChange[];
   /** One entry per requested script, in request order. */
   scripts: ScriptChange[];
+  /** One entry per requested command, in request order. */
+  commands: FlatFileChange[];
 }
 
 export interface BuildPlanInput {
@@ -139,5 +142,6 @@ export function buildPlan(input: BuildPlanInput): ChangePlan {
     declaredEnv,
     skills: [],
     scripts: [],
+    commands: [],
   };
 }

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as clack from '@clack/prompts';
 import { ClackPrompter } from '@/adapters/cli/clack-prompter.js';
+import type { CommandItem } from '@/domain/catalog/command.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
 import type { ChangePlan } from '@/domain/plan/change-plan.js';
@@ -23,8 +24,8 @@ const select = vi.mocked(clack.select);
 const confirm = vi.mocked(clack.confirm);
 const info = vi.mocked(clack.log.info);
 
-// Only the lengths of `files`, `skills` and `scripts` matter to the prompter, so the plan is built from placeholders.
-const planOf = (files: number, skills: number, emptyFiles = 0, scripts = 0): ChangePlan =>
+// Only the lengths of `files`, `skills`, `scripts` and `commands` matter to the prompter, so the plan is built from placeholders.
+const planOf = (files: number, skills: number, emptyFiles = 0, scripts = 0, commands = 0): ChangePlan =>
   ({
     files: [
       ...Array.from({ length: files }, () => ({ items: [{}] })),
@@ -32,9 +33,11 @@ const planOf = (files: number, skills: number, emptyFiles = 0, scripts = 0): Cha
     ],
     skills: Array.from({ length: skills }, () => ({})),
     scripts: Array.from({ length: scripts }, () => ({})),
+    commands: Array.from({ length: commands }, () => ({})),
   }) as unknown as ChangePlan;
 
 const mcp = (name: string, description: string): McpItem => ({ name, description }) as McpItem;
+const command = (name: string, description: string): CommandItem => ({ name, description }) as CommandItem;
 const skill = (name: string, description: string): SkillItem => ({ name, description }) as SkillItem;
 
 describe('ClackPrompter', () => {
@@ -95,6 +98,32 @@ describe('ClackPrompter', () => {
       multiselect.mockResolvedValueOnce(CANCELLED);
 
       await expect(prompter.selectSkills([])).rejects.toBeInstanceOf(PromptCancelled);
+    });
+  });
+
+  describe('selectCommands', () => {
+    it('offers each command with its description as a hint and returns the selection', async () => {
+      multiselect.mockResolvedValueOnce(['review']);
+
+      const result = await prompter.selectCommands([command('review', 'Review a diff'), command('lint', 'Lint')]);
+
+      expect(result).toEqual(['review']);
+      expect(multiselect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'Which slash commands do you want to install?',
+          options: [
+            { value: 'review', label: 'review', hint: 'Review a diff' },
+            { value: 'lint', label: 'lint', hint: 'Lint' },
+          ],
+          required: false,
+        }),
+      );
+    });
+
+    it('throws PromptCancelled when the prompt is dismissed', async () => {
+      multiselect.mockResolvedValueOnce(CANCELLED);
+
+      await expect(prompter.selectCommands([])).rejects.toBeInstanceOf(PromptCancelled);
     });
   });
 
@@ -168,6 +197,22 @@ describe('ClackPrompter', () => {
       );
     });
 
+    it('words a command conflict as a single-file overwrite', async () => {
+      select.mockResolvedValueOnce('overwrite');
+
+      await prompter.resolveConflict({ kind: 'command', name: 'review', reason: 'modified' });
+
+      expect(select).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "Command 'review' already exists with different content (modified). What now?",
+          options: [
+            { value: 'skip', label: 'Keep the existing one' },
+            { value: 'overwrite', label: 'Overwrite it' },
+          ],
+        }),
+      );
+    });
+
     it('throws PromptCancelled when the prompt is dismissed', async () => {
       select.mockResolvedValueOnce(CANCELLED);
 
@@ -183,10 +228,11 @@ describe('ClackPrompter', () => {
       { files: 2, skills: 1, scripts: 0, emptyFiles: 0, message: 'Apply the changes to 3 locations?' },
       { files: 1, skills: 0, scripts: 2, emptyFiles: 0, message: 'Apply the changes to 3 locations?' },
       { files: 1, skills: 0, scripts: 0, emptyFiles: 2, message: 'Apply the changes to 1 location?' },
-    ])('counts $files file(s), $skills skill(s) and $scripts script(s)', async (c) => {
+      { files: 0, skills: 0, scripts: 0, commands: 2, emptyFiles: 0, message: 'Apply the changes to 2 locations?' },
+    ])('counts $files file(s), $skills skill(s), $scripts script(s) and $commands command(s)', async (c) => {
       confirm.mockResolvedValueOnce(true);
 
-      const result = await prompter.confirm(planOf(c.files, c.skills, c.emptyFiles, c.scripts));
+      const result = await prompter.confirm(planOf(c.files, c.skills, c.emptyFiles, c.scripts, c.commands));
 
       expect(result).toBe(true);
       expect(confirm).toHaveBeenCalledWith({ message: c.message });

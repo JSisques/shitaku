@@ -14,6 +14,9 @@ const mcp = (name: string): object => ({
 
 const skillMd = (name: string): string => `---\nname: ${name}\ndescription: ${name} skill\n---\n# ${name}\n`;
 
+const commandMd = (description = 'Review a diff'): string =>
+  `---\ndescription: ${description}\nargument-hint: [path]\n---\n\nReview $ARGUMENTS\n`;
+
 const scriptMeta = (name: string, extra: Record<string, unknown> = {}): string =>
   JSON.stringify({ name, description: `${name} script`, tools: [], ...extra });
 const scriptEntry = (): string => 'export default {};\n';
@@ -39,6 +42,7 @@ describe('FolderCatalogSource', () => {
     await put('mcps/github.json', mcp('github'));
     await put('profiles/base.json', { name: 'base', mcps: ['github'] });
     await put('skills/x/SKILL.md', skillMd('x'));
+    await put('hooks/pre.sh', 'echo hi');
 
     const source = new FolderCatalogSource(dir, 'folder');
     const catalog = await source.load();
@@ -46,6 +50,7 @@ describe('FolderCatalogSource', () => {
     expect(catalog.mcps.map((m) => m.name)).toEqual(['github']);
     expect(catalog.profiles.map((p) => p.name)).toEqual(['base']);
     expect(catalog.skills.map((sk) => sk.name)).toEqual(['x']);
+    expect(catalog.commands).toEqual([]);
     expect(catalog.issues).toEqual([]);
   });
 
@@ -312,5 +317,117 @@ describe('FolderCatalogSource', () => {
     const catalog = await new FolderCatalogSource(dir, 'folder').load();
     expect(catalog.profiles.map((p) => p.name)).toEqual(['ok']);
     expect(catalog.issues[0]?.reason).toContain('ghost');
+  });
+
+  it('loads an empty commands list when items.commands is absent', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [] } });
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.commands).toEqual([]);
+    expect(catalog.issues).toEqual([]);
+  });
+
+  it('loads a valid command with its exact bytes', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], commands: ['review'] } });
+    await put('commands/review.md', commandMd());
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.issues).toEqual([]);
+    expect(catalog.commands).toHaveLength(1);
+    expect(catalog.commands[0]).toMatchObject({ name: 'review', description: 'Review a diff' });
+    expect(new TextDecoder().decode(catalog.commands[0]?.bytes)).toBe(commandMd());
+  });
+
+  it('skips an invalid command, reports its path, and keeps the valid ones', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], commands: ['good', 'nodesc', 'nofront', 'empty'] } });
+    await put('commands/good.md', commandMd());
+    await put('commands/nodesc.md', '---\nargument-hint: x\n---\nbody\n');
+    await put('commands/nofront.md', '# body only\n');
+    await put('commands/empty.md', '---\ndescription: d\n---\n');
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.commands.map((c) => c.name)).toEqual(['good']);
+    expect(catalog.issues.map((i) => i.file)).toEqual([
+      'commands/nodesc.md',
+      'commands/nofront.md',
+      'commands/empty.md',
+    ]);
+    expect(catalog.issues[0]).toMatchObject({
+      file: 'commands/nodesc.md',
+      reason: expect.stringContaining('description') as string,
+    });
+  });
+
+  it('flags a listed command with no file', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], commands: ['ghost'] } });
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.commands).toEqual([]);
+    expect(catalog.issues).toEqual([
+      { file: 'commands/ghost.md', reason: 'listed in catalog.json but the file is missing' },
+    ]);
+  });
+
+  it('flags an unlisted commands/*.md file but ignores other entries', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], commands: ['listed'] } });
+    await put('commands/listed.md', commandMd());
+    await put('commands/stray.md', commandMd());
+    await put('commands/.DS_Store', 'junk');
+    await put('commands/notes.txt', 'junk');
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.commands.map((c) => c.name)).toEqual(['listed']);
+    expect(catalog.issues).toEqual([{ file: 'commands/stray.md', reason: 'not listed in catalog.json' }]);
+  });
+
+  it('fails the catalog naming a command entry that could traverse paths', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], commands: ['../evil'] } });
+    await expect(new FolderCatalogSource(dir, 'folder').load()).rejects.toThrow(/\.\.\/evil/);
+  });
+
+  it('skips a command file that is a symlink', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], commands: ['linked', 'ok'] } });
+    await put('commands/ok.md', commandMd());
+    await put('secret.md', commandMd());
+    await symlink(join(dir, 'secret.md'), join(dir, 'commands', 'linked.md'));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.commands.map((c) => c.name)).toEqual(['ok']);
+    expect(catalog.issues).toHaveLength(1);
+    expect(catalog.issues[0]?.file).toBe('commands/linked.md');
+    expect(catalog.issues[0]?.reason).toContain('symbolic link');
+  });
+
+  it('skips commands when the commands directory is a symlink', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], commands: ['jump'] } });
+    await put('elsewhere/jump.md', commandMd());
+    await symlink(join(dir, 'elsewhere'), join(dir, 'commands'));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.commands).toEqual([]);
+    expect(catalog.issues[0]?.file).toBe('commands/jump.md');
+    expect(catalog.issues[0]?.reason).toContain('resolves outside');
+  });
+
+  it('rejects a command file above the size limit', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], commands: ['big'] } });
+    await put('commands/big.md', `${commandMd()}${'x'.repeat(MAX_FILE_BYTES)}`);
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.commands).toEqual([]);
+    expect(catalog.issues[0]?.file).toBe('commands/big.md');
+    expect(catalog.issues[0]?.reason).toContain('file size');
+  });
+
+  it('resolves profile commands and drops profiles that reference unknown ones', async () => {
+    await put('catalog.json', {
+      version: 1,
+      items: { mcps: [], commands: ['review'], profiles: ['ok', 'broken'] },
+    });
+    await put('commands/review.md', commandMd());
+    await put('profiles/ok.json', { name: 'ok', commands: ['review'] });
+    await put('profiles/broken.json', { name: 'broken', commands: ['ghost'] });
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.profiles.map((p) => p.name)).toEqual(['ok']);
+    expect(catalog.issues[0]?.reason).toContain("unknown command 'ghost'");
   });
 });

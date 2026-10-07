@@ -1,4 +1,5 @@
 import { confirm, isCancel, log, multiselect, select } from '@clack/prompts';
+import type { CommandItem } from '@/domain/catalog/command.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { ScriptItem } from '@/domain/catalog/script.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
@@ -13,8 +14,12 @@ function answer<T>(value: T | symbol): T {
   return value as T;
 }
 
-const conflictLabel = (kind: ConflictInfo['kind']): string =>
-  kind === 'skill' ? 'Skill' : kind === 'script' ? 'Script' : 'MCP';
+const CONFLICT_LABELS: Record<ConflictInfo['kind'], string> = {
+  mcp: 'MCP',
+  skill: 'Skill',
+  script: 'Script',
+  command: 'Command',
+};
 
 export class ClackPrompter implements Prompter {
   async selectMcps(options: McpItem[]): Promise<string[]> {
@@ -47,6 +52,16 @@ export class ClackPrompter implements Prompter {
     );
   }
 
+  async selectCommands(options: CommandItem[]): Promise<string[]> {
+    return answer<string[]>(
+      await multiselect({
+        message: 'Which slash commands do you want to install?',
+        options: options.map((c) => ({ value: c.name, label: c.name, hint: c.description })),
+        required: false,
+      }),
+    );
+  }
+
   async selectScope(): Promise<Scope> {
     return answer<Scope>(
       await select<Scope>({
@@ -63,7 +78,7 @@ export class ClackPrompter implements Prompter {
     const tree = conflict.kind === 'skill' || conflict.kind === 'script';
     return answer<'overwrite' | 'skip'>(
       await select<'overwrite' | 'skip'>({
-        message: `${conflictLabel(conflict.kind)} '${conflict.name}' already exists with different content (${conflict.reason}). What now?`,
+        message: `${CONFLICT_LABELS[conflict.kind]} '${conflict.name}' already exists with different content (${conflict.reason}). What now?`,
         options: [
           { value: 'skip', label: 'Keep the existing one' },
           {
@@ -76,7 +91,11 @@ export class ClackPrompter implements Prompter {
   }
 
   async confirm(plan: ChangePlan): Promise<boolean> {
-    const targets = plan.files.filter((f) => f.items.length > 0).length + plan.skills.length + plan.scripts.length;
+    const targets =
+      plan.files.filter((f) => f.items.length > 0).length +
+      plan.skills.length +
+      plan.scripts.length +
+      plan.commands.length;
     return answer<boolean>(
       await confirm({ message: `Apply the changes to ${targets} location${targets === 1 ? '' : 's'}?` }),
     );

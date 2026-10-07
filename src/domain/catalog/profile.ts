@@ -4,23 +4,27 @@ export interface ResolvedProfile {
   mcps: string[];
   skills: string[];
   scripts: string[];
+  commands: string[];
 }
 
-/** Resolves a profile to its MCP, skill and script names: parents first, de-duplicated in first-seen order. */
+/** Resolves a profile to its MCP, skill, script and command names: parents first, de-duplicated in first-seen order. */
 export function resolveProfile(
   name: string,
   profiles: readonly Profile[],
   mcpNames: readonly string[],
   skillNames: readonly string[],
   scriptNames: readonly string[] = [],
+  commandNames: readonly string[] = [],
 ): ResolvedProfile {
   const byName = new Map(profiles.map((p) => [p.name, p]));
   const knownMcps = new Set(mcpNames);
   const knownSkills = new Set(skillNames);
   const knownScripts = new Set(scriptNames);
+  const knownCommands = new Set(commandNames);
   const mcps = new Set<string>();
   const skills = new Set<string>();
   const scripts = new Set<string>();
+  const commands = new Set<string>();
 
   const visit = (current: string, trail: string[]): void => {
     if (trail.includes(current)) throw new Error(`profile cycle: ${[...trail, current].join(' -> ')}`);
@@ -40,10 +44,14 @@ export function resolveProfile(
       if (!knownScripts.has(script)) throw new Error(`profile '${current}' references unknown script '${script}'`);
       scripts.add(script);
     }
+    for (const command of profile.commands) {
+      if (!knownCommands.has(command)) throw new Error(`profile '${current}' references unknown command '${command}'`);
+      commands.add(command);
+    }
   };
 
   visit(name, []);
-  return { mcps: [...mcps], skills: [...skills], scripts: [...scripts] };
+  return { mcps: [...mcps], skills: [...skills], scripts: [...scripts], commands: [...commands] };
 }
 
 /** Returns one error message per profile that fails to resolve. */
@@ -52,10 +60,11 @@ export function validateProfiles(
   mcpNames: readonly string[],
   skillNames: readonly string[],
   scriptNames: readonly string[] = [],
+  commandNames: readonly string[] = [],
 ): string[] {
   return profiles.flatMap((p) => {
     try {
-      resolveProfile(p.name, profiles, mcpNames, skillNames, scriptNames);
+      resolveProfile(p.name, profiles, mcpNames, skillNames, scriptNames, commandNames);
       return [];
     } catch (e) {
       return [e instanceof Error ? e.message : String(e)];

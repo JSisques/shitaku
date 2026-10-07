@@ -27,7 +27,7 @@ export interface UninstallDeps {
 
 export interface UninstallRequest {
   name: string;
-  kind?: 'mcp' | 'skill' | 'script';
+  kind?: OwnedItem['kind'];
   scope?: Scope;
   force?: boolean;
   dryRun?: boolean;
@@ -37,7 +37,7 @@ export interface UninstallResult {
   status: 'removed' | 'already-absent' | 'dry-run' | 'refused';
   /** 3 when the item changed since install and `force` is not set, otherwise 0. */
   exitCode: 0 | 3;
-  item: { kind: 'mcp' | 'skill' | 'script'; scope: Scope; name: string; path: string };
+  item: { kind: OwnedItem['kind']; scope: Scope; name: string; path: string };
   /** Files that are (or would be) changed or deleted. */
   files: string[];
   /** The current hash differs from the one shitaku recorded. */
@@ -68,7 +68,7 @@ interface Plan {
   observed: string | null;
   /** MCP: the config text that was read. */
   text: string | null;
-  /** Skill/script: the files to delete, entry file first. */
+  /** Skill/script/command: the files to delete by absolute path, entry file first. */
   doomed: SkillFile[];
   files: string[];
 }
@@ -77,6 +77,7 @@ interface Plan {
 const expectedPath = (deps: UninstallDeps, item: OwnedItem): string => {
   if (item.kind === 'mcp') return deps.target.configPath(item.scope, deps.paths);
   if (item.kind === 'skill') return `${deps.target.skillsDir(item.scope, deps.paths)}/${item.name}`;
+  if (item.kind === 'command') return `${deps.target.commandsDir(item.scope, deps.paths)}/${item.name}.md`;
   return `${scriptsDir(item.scope, deps.paths)}/${item.name}`;
 };
 
@@ -124,11 +125,22 @@ async function planUninstall(deps: UninstallDeps, req: UninstallRequest): Promis
     const entry = readAtPath(text, deps.target.serversKeyPath(item.scope))[item.name];
     observed = entry === undefined ? null : hashEntry(entry);
     plan = { text, doomed: [], files: observed === null ? [] : [item.path] };
+  } else if (item.kind === 'command') {
+    const bytes = await deps.fs.readBytes(item.path);
+    observed = bytes === null ? null : sha256(bytes);
+    plan = {
+      text: null,
+      doomed: bytes === null ? [] : [{ path: item.path, bytes }],
+      files: bytes === null ? [] : [item.path],
+    };
   } else {
     const present = (await readPresent(deps.fs, item.path)) ?? [];
     observed = treeHash(present);
-    const doomed = observed === null ? [] : doomedFiles(install, item, present);
-    plan = { text: null, doomed, files: doomed.map((f) => `${item.path}/${f.path}`) };
+    const doomed = (observed === null ? [] : doomedFiles(install, item, present)).map((f) => ({
+      path: `${item.path}/${f.path}`,
+      bytes: f.bytes,
+    }));
+    plan = { text: null, doomed, files: doomed.map((f) => f.path) };
   }
 
   const modified = observed !== null && observed !== item.hash;
@@ -141,10 +153,12 @@ async function planUninstall(deps: UninstallDeps, req: UninstallRequest): Promis
 /** Re-reads the item; any difference from the plan means someone else changed it, so nothing is touched. */
 async function assertFresh(deps: UninstallDeps, plan: Plan): Promise<void> {
   const { item } = plan;
-  const fresh =
-    item.kind === 'mcp'
-      ? (await deps.fs.readText(item.path)) === plan.text
-      : treeHash((await readPresent(deps.fs, item.path)) ?? []) === plan.observed;
+  let fresh: boolean;
+  if (item.kind === 'mcp') fresh = (await deps.fs.readText(item.path)) === plan.text;
+  else if (item.kind === 'command') {
+    const bytes = await deps.fs.readBytes(item.path);
+    fresh = (bytes === null ? null : sha256(bytes)) === plan.observed;
+  } else fresh = treeHash((await readPresent(deps.fs, item.path)) ?? []) === plan.observed;
   if (!fresh) throw new StaleFileError(`${item.path} changed since planning, re-run`);
 }
 
@@ -190,7 +204,7 @@ async function applyUninstall(deps: UninstallDeps, plan: Plan): Promise<string> 
   }
 
   for (const [n, file] of plan.doomed.entries()) {
-    const path = `${item.path}/${file.path}`;
+    const path = file.path;
     const backup = backupPath(id, n, path);
     await deps.fs.writeBytes(`${state}/${backup}`, file.bytes);
     files.push({
@@ -211,10 +225,9 @@ async function applyUninstall(deps: UninstallDeps, plan: Plan): Promise<string> 
     });
   }
   try {
-    for (const file of plan.doomed) {
-      const path = `${item.path}/${file.path}`;
+    for (const { path, bytes } of plan.doomed) {
       await deps.fs.remove(path);
-      undo.push(() => restoreBytes(deps.fs, path, file.bytes));
+      undo.push(() => restoreBytes(deps.fs, path, bytes));
     }
     // ADR-2: runtime install-root deps are never owned; drop them so the script root can empty.
     if (item.kind === 'script') await deps.fs.remove(`${item.path}/node_modules`);
@@ -238,7 +251,7 @@ const journal = (deps: UninstallDeps, id: string, now: Date, plan: Plan, files: 
   });
 
 /**
- * Removes one shitaku-owned MCP entry, skill or script and records the removal as an install, so `undo` reverts it.
+ * Removes one shitaku-owned MCP entry, skill, script or command and records the removal as an install, so `undo` reverts it.
  * Refuses (exit 3) an item that changed since install unless forced; never touches an item shitaku does not own.
  */
 export async function uninstallItem(deps: UninstallDeps, req: UninstallRequest): Promise<UninstallResult> {

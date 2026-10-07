@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  deriveCommandOwnership,
   deriveOwnedItems,
   deriveOwnership,
   deriveScriptOwnership,
@@ -46,6 +47,48 @@ const skillInstall = (id: string, root: string, entryHash: string, over: Partial
   createdDirs: [root],
   ...over,
 });
+
+const commandInstall = (id: string, path: string, entryHash: string, over: Partial<Install> = {}): Install => ({
+  id,
+  createdAt: '2026-10-02T10:15:00.000Z',
+  undoneAt: null,
+  source: { kind: 'bundled', location: '/catalog', catalogVersion: 1 },
+  files: [
+    {
+      path,
+      scope: 'project',
+      backup: null,
+      beforeHash: null,
+      afterHash: entryHash,
+      items: [
+        {
+          kind: 'command',
+          name: path.split('/').pop()?.replace(/\.md$/, '') ?? '',
+          action: 'create',
+          entryHash,
+          root: path,
+        },
+      ],
+    },
+  ],
+  createdDirs: [],
+  ...over,
+});
+
+const removeCommandInstall = (id: string, path: string, over: Partial<Install> = {}): Install => {
+  const base = commandInstall(id, path, 'observed');
+  return {
+    ...base,
+    files: base.files.map((f) => ({
+      ...f,
+      backup: `backups/${id}/review.md`,
+      beforeHash: 'observed',
+      afterHash: null,
+      items: f.items.map((i) => ({ ...i, action: 'remove' as const })),
+    })),
+    ...over,
+  };
+};
 
 const manifest = (installs: Install[]): Manifest => ({ version: 1, installs });
 
@@ -382,5 +425,60 @@ describe('parseManifest', () => {
   it('rejects invalid JSON and wrong shapes with ManifestError', () => {
     expect(() => parseManifest('{ nope')).toThrow(ManifestError);
     expect(() => parseManifest('{"version":2,"installs":[]}')).toThrow(ManifestError);
+  });
+});
+
+describe('command items', () => {
+  const path = '/w/.claude/commands/review.md';
+
+  it('parses a command item whose root is the file path', () => {
+    const parsed = parseManifest(JSON.stringify(manifest([commandInstall('a', path, 'h1')])));
+    expect(parsed.installs[0]?.files[0]?.items[0]).toMatchObject({ kind: 'command', name: 'review', root: path });
+  });
+
+  it('accepts a null afterHash on a command file but still rejects it on an MCP file', () => {
+    const removed = removeCommandInstall('b', path);
+    expect(parseManifest(JSON.stringify(manifest([removed]))).installs[0]?.files[0]?.afterHash).toBeNull();
+    const mcp = install('c', 'github', 'h1');
+    const file = { ...mcp.files[0]!, afterHash: null };
+    expect(() => parseManifest(JSON.stringify(manifest([{ ...mcp, files: [file] }])))).toThrow(ManifestError);
+  });
+
+  it('loads a manifest without any command and keeps version 1', () => {
+    const parsed = parseManifest(JSON.stringify(manifest([install('a', 'github', 'h1')])));
+    expect(parsed.version).toBe(1);
+    expect(deriveCommandOwnership(parsed)).toEqual({});
+  });
+});
+
+describe('deriveCommandOwnership', () => {
+  const path = '/w/.claude/commands/review.md';
+
+  it('is empty without commands, ignoring MCP, skill and script items', () => {
+    expect(deriveCommandOwnership(emptyManifest())).toEqual({});
+    expect(deriveCommandOwnership(manifest([install('a', 'github', 'h1')]))).toEqual({});
+    expect(deriveCommandOwnership(manifest([skillInstall('a', '/h/.claude/skills/demo', 'tree1')]))).toEqual({});
+  });
+
+  it('maps each command file path to its hash; a later install replaces it and undone ones are ignored', () => {
+    const undone = commandInstall('c', path, 'h3', { undoneAt: '2026-10-03T00:00:00.000Z' });
+    expect(deriveCommandOwnership(manifest([commandInstall('a', path, 'h1')]))).toEqual({ [path]: 'h1' });
+    expect(
+      deriveCommandOwnership(manifest([commandInstall('a', path, 'h1'), commandInstall('b', path, 'h2'), undone])),
+    ).toEqual({ [path]: 'h2' });
+  });
+
+  it('a command remove drops the path; reinstalling owns it again', () => {
+    expect(
+      deriveCommandOwnership(manifest([commandInstall('a', path, 'h1'), removeCommandInstall('b', path)])),
+    ).toEqual({});
+    const steps = [commandInstall('a', path, 'h1'), removeCommandInstall('b', path), commandInstall('c', path, 'h3')];
+    expect(deriveCommandOwnership(manifest(steps))).toEqual({ [path]: 'h3' });
+  });
+
+  it('lists commands in owned items by file path with kind command', () => {
+    expect(deriveOwnedItems(manifest([commandInstall('a', path, 'h1')]))).toEqual([
+      { kind: 'command', scope: 'project', path, name: 'review', hash: 'h1', installId: 'a' },
+    ]);
   });
 });

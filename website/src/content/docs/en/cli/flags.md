@@ -7,21 +7,22 @@ description: Flags for shitaku init, undo, uninstall, status, list, and doctor.
 
 ## Shared
 
-| Flag                    | Commands                                | Meaning                                                     |
-| ----------------------- | --------------------------------------- | ----------------------------------------------------------- |
-| `--scope project\|user` | `init`, `uninstall`, `status`, `doctor` | Target project or user config                               |
-| `--source <folder>`     | `init`, `status`, `list`, `doctor`      | Custom catalog folder instead of bundled                    |
-| `--dry-run`             | `init`, `undo`, `uninstall`             | Print the plan; write nothing                               |
-| `--force`               | `init`, `undo`, `uninstall`             | Overwrite / proceed despite drift                           |
-| `--json`                | `status`, `list`, `doctor`              | Machine-readable stdout                                     |
-| `--yes`                 | `init`                                  | Skip confirmation (needs `--scope` and `--mcps`/`--skills`) |
+| Flag                    | Commands                                | Meaning                                                  |
+| ----------------------- | --------------------------------------- | -------------------------------------------------------- |
+| `--scope project\|user` | `init`, `uninstall`, `status`, `doctor` | Target project or user config                            |
+| `--source <folder>`     | `init`, `status`, `list`, `doctor`      | Custom catalog folder instead of bundled                 |
+| `--dry-run`             | `init`, `undo`, `uninstall`             | Print the plan; write nothing                            |
+| `--force`               | `init`, `undo`, `uninstall`             | Overwrite / proceed despite drift                        |
+| `--json`                | `status`, `list`, `doctor`              | Machine-readable stdout                                  |
+| `--yes`                 | `init`                                  | Skip confirmation (needs `--scope` and a selection flag) |
 
 ## `init`
 
-| Flag             | Meaning                     |
-| ---------------- | --------------------------- |
-| `--mcps <a,b>`   | Comma-separated MCP names   |
-| `--skills <a,b>` | Comma-separated skill names |
+| Flag               | Meaning                             |
+| ------------------ | ----------------------------------- |
+| `--mcps <a,b>`     | Comma-separated MCP names           |
+| `--skills <a,b>`   | Comma-separated skill names         |
+| `--commands <a,b>` | Comma-separated slash command names |
 
 ## `undo`
 
@@ -31,9 +32,9 @@ description: Flags for shitaku init, undo, uninstall, status, list, and doctor.
 
 ## `uninstall`
 
-| Flag                | Meaning                                 |
-| ------------------- | --------------------------------------- |
-| `--kind mcp\|skill` | Disambiguate when a name exists as both |
+| Flag                                 | Meaning                                          |
+| ------------------------------------ | ------------------------------------------------ |
+| `--kind mcp\|skill\|script\|command` | Disambiguate when a name exists as several kinds |
 
 ## `list`
 

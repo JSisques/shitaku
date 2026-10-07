@@ -6,6 +6,7 @@ const loaded: LoadedCatalog = {
   mcps: [{ name: 'fs', description: 'Filesystem', server: { type: 'stdio', command: 'npx', args: [] }, env: [] }],
   skills: [{ name: 'demo', description: 'Browser automation', files: [] }],
   scripts: [],
+  commands: [],
   profiles: [],
   issues: [{ file: 'skills/bad', reason: 'missing SKILL.md' }],
 };

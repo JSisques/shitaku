@@ -29,7 +29,7 @@ describe('bundled catalog', () => {
     const mcpNames = catalog.mcps.map((m) => m.name);
     const skillNames = catalog.skills.map((sk) => sk.name);
     const scriptNames = catalog.scripts.map((s) => s.name);
-    expect(resolveProfile('web', catalog.profiles, mcpNames, skillNames, scriptNames)).toEqual({
+    expect(resolveProfile('web', catalog.profiles, mcpNames, skillNames, scriptNames, [])).toEqual({
       mcps: [
         'context7',
         'github',
@@ -43,12 +43,24 @@ describe('bundled catalog', () => {
       ],
       skills: [],
       scripts: [],
+      commands: [],
     });
-    expect(resolveProfile('backend', catalog.profiles, mcpNames, skillNames, scriptNames)).toEqual({
+    expect(resolveProfile('backend', catalog.profiles, mcpNames, skillNames, scriptNames, [])).toEqual({
       mcps: ['context7', 'github', 'docker', 'sqlite', 'supabase'],
       skills: [],
       scripts: [],
+      commands: [],
     });
+  });
+
+  it('loads with an explicitly empty commands list', async () => {
+    const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
+    expect(catalog.issues).toEqual([]);
+    expect(catalog.commands).toEqual([]);
+    const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
+      items: { commands?: unknown };
+    };
+    expect(index.items.commands).toEqual([]);
   });
 
   it('ships complexity, dead-code, and duplication as registered and loadable bundled scripts', async () => {

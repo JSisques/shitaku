@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { chmod, mkdir, readdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -66,6 +67,16 @@ describe('NodeFileSystem', () => {
     await expect(fs.readBytes(join(tmp.cwd, 'dir'))).rejects.toThrow(UnsafeTreeError);
     await writeFile(join(tmp.cwd, 'big.bin'), new Uint8Array(MAX_FILE_BYTES + 1));
     await expect(fs.readBytes(join(tmp.cwd, 'big.bin'))).rejects.toThrow(UnsafeTreeError);
+  });
+
+  it.skipIf(process.platform === 'win32')('rejects a named pipe without blocking on it', async () => {
+    const pipe = join(tmp.cwd, 'pipe.md');
+    execFileSync('mkfifo', [pipe]);
+    const timeout = new Promise((resolve) => {
+      setTimeout(() => resolve('blocked'), 1000).unref();
+    });
+    const outcome = await Promise.race([fs.readBytes(pipe).then(String, (e: unknown) => e), timeout]);
+    expect(outcome).toBeInstanceOf(UnsafeTreeError);
   });
 
   it('lists regular files as sorted relative paths and null for a missing dir', async () => {

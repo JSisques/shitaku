@@ -1,3 +1,4 @@
+import type { CommandItem } from '@/domain/catalog/command.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { ScriptItem } from '@/domain/catalog/script.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
@@ -13,7 +14,7 @@ export class PromptCancelled extends Error {
 
 /** A planned item that cannot be installed without replacing something the user has. */
 export interface ConflictInfo {
-  kind: 'mcp' | 'skill' | 'script';
+  kind: 'mcp' | 'skill' | 'script' | 'command';
   name: string;
   reason: string;
 }
@@ -25,6 +26,8 @@ export interface Prompter {
   selectSkills(options: SkillItem[]): Promise<string[]>;
   /** Only asked when the catalog has scripts. May return an empty selection. */
   selectScripts(options: ScriptItem[]): Promise<string[]>;
+  /** Only asked when the catalog has commands. May return an empty selection. */
+  selectCommands(options: CommandItem[]): Promise<string[]>;
   selectScope(): Promise<Scope>;
   resolveConflict(conflict: ConflictInfo): Promise<'overwrite' | 'skip'>;
   confirm(plan: ChangePlan): Promise<boolean>;

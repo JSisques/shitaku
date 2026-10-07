@@ -39,6 +39,13 @@ const skill = (name: string, state: StatusState = 'installed', scope: Scope = 'u
   state,
 });
 
+const command = (name: string, state: StatusState = 'installed', scope: Scope = 'project'): ItemObservation => ({
+  item: { kind: 'command', scope, path: `/repo/.claude/commands/${name}.md`, name, hash: 'h', installId: 'i1' },
+  config: 'present',
+  current: state === 'missing' ? { kind: 'absent' } : { kind: 'hash', hash: 'h' },
+  state,
+});
+
 const script = (
   name: string,
   o: {
@@ -130,6 +137,27 @@ describe('diagnose: presence problems', () => {
     const findings = run([skill('demo', 'missing'), skill('other')]);
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({ code: 'skill-missing', kind: 'skill', name: 'demo', path: '/skills/demo' });
+  });
+
+  it('reports command-missing as a problem naming the command file', () => {
+    const findings = run([command('review', 'missing'), command('other')]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      code: 'command-missing',
+      severity: 'problem',
+      kind: 'command',
+      name: 'review',
+      path: '/repo/.claude/commands/review.md',
+      fix: 'run shitaku init again to reinstall the command',
+    });
+    expect(findings[0]?.message).toContain('project command review is missing at /repo/.claude/commands/review.md');
+  });
+
+  it('reports no finding for a healthy command and an info finding for a modified one', () => {
+    expect(run([command('review')])).toEqual([]);
+    expect(run([command('review', 'modified')])).toMatchObject([
+      { code: 'modified', severity: 'info', kind: 'command' },
+    ]);
   });
 });
 
