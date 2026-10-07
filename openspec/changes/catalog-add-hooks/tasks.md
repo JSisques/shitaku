@@ -41,10 +41,10 @@ Every PR: RED test first, then GREEN, then REFACTOR; tests and docs stay with co
 
 ## PR 2: hook-merge
 
-- [ ] 2.1 RED: table tests in `test/domain/hook-merge.test.ts` (append, deep-equal no-op, other matcher, empty arrays, absent file, tab/4-space indent, no trailing newline, wrong shapes, created flags)
-- [ ] 2.2 GREEN: `src/domain/hook-merge.ts` add/remove/update with strict `JSON.parse` and `ConfigError("<path>: <reason>")`
-- [ ] 2.3 RED/GREEN: remove drops group/event only if created and empty; update in place
-- [ ] 2.4 REFACTOR: shared locate helper
+- [x] 2.1 RED: table tests in `test/domain/hook-merge.test.ts` (append, deep-equal no-op, other matcher, empty arrays, absent file, tab/4-space indent, no trailing newline, wrong shapes, created flags)
+- [x] 2.2 GREEN: `src/domain/hook-merge.ts` add/remove/update with strict `JSON.parse` and `ConfigError("<path>: <reason>")`
+- [x] 2.3 RED/GREEN: remove drops group/event only if created and empty; update in place
+- [x] 2.4 REFACTOR: shared locate helper
 
 ## PR 3: Manifest and hook-plan
 
