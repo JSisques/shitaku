@@ -221,7 +221,8 @@ Install behavior: `init --hooks <name>` merges the handler into `~/.claude/setti
 
 - A hook you edit in `settings.json` no longer matches, so `status` reports it `missing` and `uninstall --kind hook` reports it already absent.
 - `shitaku undo` restores the original bytes, and with `--force` removes only the handlers it installed. `shitaku uninstall <name> --kind hook` removes only that handler.
-- Settings must be strict JSON; a file with comments or trailing commas is refused and nothing is written.
+- Settings must be strict JSON; a file with comments, trailing commas, a BOM or no content is refused and nothing is written.
+- An install keeps the existing keys and their order, the indentation, the line endings (LF or CRLF) and the trailing newline, but it re-serializes the file with `JSON.stringify`: one-line arrays are expanded, integer-like keys move first, duplicate keys keep the last value, integers above 2^53 lose precision and `\u` escapes become plain characters. `JSON.parse` cannot preserve these, so do not promise more in docs; `undo` with no later edits restores the exact bytes.
 - Claude Code reloads hooks live and may write `settings.json` itself, so avoid `/config` during an install.
 - Older shitaku versions throw a `ManifestError` on a manifest entry with `kind: 'hook'`; undo or uninstall hooks before downgrading.
 

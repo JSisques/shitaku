@@ -37,10 +37,10 @@ Before changing a file, shitaku backs it up under `~/.claude/.shitaku/backups/` 
 - Hooks from a `--source` folder follow the same trust model and the same confirmation as bundled ones. Only use folders you trust.
 - `init` shows the exact event, matcher and command and asks you to confirm. `--yes` is not consent: without `--allow-hooks` a non-interactive run writes nothing and exits `1`.
 - Project hooks live in `./.claude/settings.json`. If you commit it, they run for every collaborator who opens the project.
-- shitaku touches only `settings.json` (never `settings.local.json`, managed settings or plugin hooks), writes no marker into it, and finds its hooks again by exact content. Settings must be strict JSON: comments or trailing commas are refused with the file named, and nothing is written.
+- shitaku touches only `settings.json` (never `settings.local.json`, managed settings or plugin hooks), writes no marker into it, and finds its hooks again by exact content. Settings must be strict JSON: comments, trailing commas, a BOM or an empty file are refused with the file named, and nothing is written. The file is re-serialized, so existing keys and their order, the indentation, the line endings (LF or CRLF) and the trailing newline are kept, but one-line arrays are expanded, integer-like keys move first, duplicate keys keep the last value, integers above 2^53 lose precision and `\u` escapes become plain characters. `undo` with no later edits restores the exact original bytes.
 - An edited hook no longer matches: `status` reports it `missing` (`doctor` code `hook-missing`) and `uninstall` reports it already absent.
 - `undo` restores the original bytes. If the file changed afterwards it refuses (exit `3`); with `--force` it removes only the handlers shitaku installed and keeps everything else.
-- Claude Code reloads hooks live and may write `settings.json` itself, for example from `/config`. shitaku re-reads the file before writing, aborts if it changed, backs it up and writes atomically; still, avoid `/config` while an install or undo runs.
+- Claude Code reloads hooks live and may write `settings.json` itself, for example from `/config`. shitaku re-reads the file before writing; if it changed, it plans again and aborts only when the planned actions differ, then backs it up and writes atomically; still, avoid `/config` while an install or undo runs.
 - Older shitaku versions throw a `ManifestError` on a manifest entry with `kind: 'hook'`: run `undo` or `uninstall` before downgrading.
 
 ## Profiles
