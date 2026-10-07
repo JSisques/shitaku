@@ -84,3 +84,32 @@ Mode: Strict TDD. Chain: stacked-to-main (on `feat/commands-2b-init-undo`, stack
 - Undo hashes and restores command files as bytes (`isByteFile` = any non-mcp item), so non-UTF-8 originals round-trip.
 - `refreshFlatFile` fixes the noun to `'command'`; generalize it when #42 agents reuse the module.
 - Size: about 391 code+test lines (357 added, 34 removed), within the 400 budget.
+
+## Batch 4: PR 2c (uninstall, status, doctor) — tasks 2c.1-2c.7 complete
+
+Mode: Strict TDD. Chain: stacked-to-main (on `feat/commands-2c-uninstall-status`, stacked on `feat/commands-2b-init-undo`). Remaining: 3a.\*, 3b.\* (not started).
+
+### TDD Cycle Evidence
+
+| Task      | Test File                                                                                           | Layer       | Safety Net                 | RED                                                                                                              | GREEN        | Triangulate                                                                                                                  | Refactor                                                                                    |
+| --------- | --------------------------------------------------------------------------------------------------- | ----------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 2c.1/2c.2 | `test/application/uninstall-item.test.ts` (`uninstallItem (commands)`)                              | Integration | 34/34 (existing uninstall) | 8 failing before code (`UnsafeTreeError` on file)                                                                | 41/42 pass   | removed, refused, force+neighbor, absent, dry-run, symlink, stale, undo, skill+command and mcp+command collisions            | `doomed` carries absolute paths (`expectedPath` command branch now exercised by every test) |
+| 2c.3/2c.4 | `test/application/installed-state.test.ts` (`observeInstalled`, `getStatus`, `desiredFor` commands) | Integration | 9/9 (existing)             | 6 failing before code                                                                                            | 57/57 pass   | hash, absent, directory, symlink, no `listFiles`, 5 states, other items classified, `mine.md` ignored, two scopes, no writes | `observeFile` beside `observeMcp`/`observeTree`                                             |
+| 2c.5/2c.6 | `test/domain/plan/doctor-plan.test.ts`, `test/application/doctor.test.ts`                           | Unit + Int. | 20/20 (existing)           | 1 failing before code                                                                                            | 21/21 pass   | missing, healthy, modified (info); end-to-end deleted, healthy, directory-replaced                                           | None needed                                                                                 |
+| extra     | `test/adapters/fs/node-fs.test.ts` (named pipe), `init-mcps.test.ts` (`commands: []`)               | Integration | 15/15, 71/71               | pipe test blocked (1s race timeout); `commands` plan assertions passed at once (leftover coverage, code from 2b) | 40/40, 72/72 | pipe + regular file; absent vs requested commands                                                                            | None needed                                                                                 |
+| 2c.7      | whole suite                                                                                         | Gate        | N/A                        | N/A                                                                                                              | 1008/1008    | N/A                                                                                                                          | typecheck, lint, format:check, build clean                                                  |
+
+### Work Unit Evidence
+
+| Evidence             | Value                                                                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused test command | `pnpm vitest run test/application/uninstall-item.test.ts test/application/installed-state.test.ts test/domain/plan/doctor-plan.test.ts test/application/doctor.test.ts`: all pass |
+| Runtime harness      | N/A: no CLI flag until 3a; tests run `uninstallItem`/`getStatus`/`getDiagnosis` against the real `NodeFileSystem` in tmp dirs                                                     |
+| Rollback boundary    | `uninstall-item.ts`, `installed-state.ts`, `doctor-plan.ts`, the `O_NONBLOCK` flag in `walk.ts`, and their tests                                                                  |
+
+### Deviations from design
+
+- Fixed a hang found while testing special files: `readFileNoFollow` opened a named pipe with a blocking `O_RDONLY`, so `status`/`uninstall` would wait forever on a FIFO at a command path. Added `O_NONBLOCK` (tree walkers were never affected, they `lstat` first).
+- `UninstallRequest.kind` now reuses `OwnedItem['kind']`; `Plan.doomed` holds absolute paths for all kinds so a command is a one-entry list (no tree helper involved).
+- A symlink or directory at a command path makes `uninstall` throw `UnsafeTreeError` even with `--force` (same as skills); `status`/`doctor` report it `modified`.
+- Size: about 436 code+test lines (412 added, 24 removed), above the 400 budget (130 code, 306 tests). Contingency: split uninstall (2c.1-2c.2 + FIFO fix, ~250) from status/doctor (2c.3-2c.6, ~190).

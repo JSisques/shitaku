@@ -76,13 +76,13 @@ Commit scopes: PR 1 `feat(catalog)`; 2a `feat(plan)`; 2b `feat(init)`; 2c `feat(
 
 ## PR 2c: Uninstall, status, doctor
 
-- [ ] 2c.1 RED: extend `test/application/uninstall-item.test.ts`: unmodified removed with backup, exit 0; modified refused (exit 3); `--force` removes only the file, keeps `mine.md` and dir; already absent exit 0 writes nothing; undo restores and re-owns; kind collision lists candidates (skill+command, mcp+command). [Item Uninstall: all scenarios]
-- [ ] 2c.2 GREEN: modify `src/application/uninstall-item.ts` (command kind via `readBytes`, journal `afterHash: null`, `emptiedDirs` yields nothing for file roots, collision includes command).
-- [ ] 2c.3 RED: extend `test/application/installed-state.test.ts`: command hashing = file bytes; states `installed|modified|missing|out-of-date|missing-from-catalog`; directory/symlink/special file at path = `modified` and other items still classified; unlisted `mine.md` ignored; same name in two scopes distinct; no writes. [Install Status scenarios]
-- [ ] 2c.4 GREEN: modify `src/application/installed-state.ts` (single-file observation, never tree walkers).
-- [ ] 2c.5 RED: extend `test/domain/plan/doctor-plan.test.ts`: deleted owned command -> `command-missing` (severity `problem`); healthy -> no finding; no writes. [Doctor findings for commands]
-- [ ] 2c.6 GREEN: modify `src/domain/plan/doctor-plan.ts` (`command-missing`; `skill-missing` unchanged).
-- [ ] 2c.7 Gate: typecheck, lint, format:check, test, build.
+- [x] 2c.1 RED: extend `test/application/uninstall-item.test.ts`: unmodified removed with backup, exit 0; modified refused (exit 3); `--force` removes only the file, keeps `mine.md` and dir; already absent exit 0 writes nothing; undo restores and re-owns; kind collision lists candidates (skill+command, mcp+command). [Item Uninstall: all scenarios]
+- [x] 2c.2 GREEN: modify `src/application/uninstall-item.ts` (command kind via `readBytes`, journal `afterHash: null`, `emptiedDirs` yields nothing for file roots, collision includes command).
+- [x] 2c.3 RED: extend `test/application/installed-state.test.ts`: command hashing = file bytes; states `installed|modified|missing|out-of-date|missing-from-catalog`; directory/symlink/special file at path = `modified` and other items still classified; unlisted `mine.md` ignored; same name in two scopes distinct; no writes. [Install Status scenarios]
+- [x] 2c.4 GREEN: modify `src/application/installed-state.ts` (single-file observation, never tree walkers).
+- [x] 2c.5 RED: extend `test/domain/plan/doctor-plan.test.ts`: deleted owned command -> `command-missing` (severity `problem`); healthy -> no finding; no writes. [Doctor findings for commands]
+- [x] 2c.6 GREEN: modify `src/domain/plan/doctor-plan.ts` (`command-missing`; `skill-missing` unchanged).
+- [x] 2c.7 Gate: typecheck, lint, format:check, test, build.
 
 ## PR 3a: CLI surface (flag lands last)
 
