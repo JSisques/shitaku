@@ -351,7 +351,10 @@ describe('FolderCatalogSource', () => {
       'commands/nofront.md',
       'commands/empty.md',
     ]);
-    expect(catalog.issues[0]?.reason).toContain('description');
+    expect(catalog.issues[0]).toMatchObject({
+      file: 'commands/nodesc.md',
+      reason: expect.stringContaining('description') as string,
+    });
   });
 
   it('flags a listed command with no file', async () => {

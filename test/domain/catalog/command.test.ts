@@ -21,9 +21,6 @@ describe('parseCommand', () => {
     const bytes = enc(valid);
     const result = parseCommand('review', bytes);
     expect(result).toEqual({ command: { name: 'review', description: 'Review a diff', bytes } });
-    expect(new TextDecoder().decode('command' in result ? result.command.bytes : new Uint8Array())).toContain(
-      'argument-hint: [path]',
-    );
   });
 
   it('rejects an invalid name', () => {

@@ -26,4 +26,5 @@ Mode: Strict TDD. Chain: stacked-to-main. Remaining: 2a._, 2b._, 2c._, 3a._, 3b.
 
 - Loader tests build command fixtures in tmp dirs (existing `folder-source.test.ts` style, and symlinks cannot be committed reliably) instead of `test/fixtures/**/commands/`.
 - `readFrontmatter` also returns `body` (needed for the empty-body rule).
+- Task 1.9 dedupe was done by manual search (`FRONTMATTER` and `unquote` live only in `frontmatter.ts`); jscpd is not installed locally, so no jscpd run backs it.
 - Size: about 560 changed lines (482 added, 78 removed), above the 400 budget. Contingency split 1a/1b from tasks.md applies (about 190 / 370).

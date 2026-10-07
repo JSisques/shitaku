@@ -14,9 +14,15 @@ The catalog MUST support `commands/<name>.md` listed in `items.commands` (option
 
 #### Scenario: Invalid or guarded
 
-- GIVEN missing description, bad name, unlisted file, ghost entry, `../evil`, or a symlinked file
+- GIVEN missing description, unlisted file, ghost entry, or a symlinked file
 - WHEN loaded
 - THEN an error names the path and reason, the command is not selectable, and valid items remain usable
+
+#### Scenario: Invalid name in the index
+
+- GIVEN `items.commands` lists a name that violates the name pattern (for example `Review` or `../evil`)
+- WHEN loaded
+- THEN the whole catalog fails to load with an error naming the entry, as for skills and scripts
 
 #### Scenario: Old catalog without commands
 
