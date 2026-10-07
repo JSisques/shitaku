@@ -2,6 +2,7 @@ import { dirname } from 'node:path';
 import type { SkillFile } from '@/domain/catalog/skill.js';
 import { hashEntry, sha256, treeHash } from '@/domain/hash.js';
 import { readAtPath, removeAtPath } from '@/domain/json-merge.js';
+import { removeHook } from '@/domain/hook-merge.js';
 import { deriveOwnedItems, type Install, type Manifest, type OwnedItem } from '@/domain/manifest.js';
 import type { AgentTarget, Scope } from '@/ports/agent-target.js';
 import type { FileSystem } from '@/ports/file-system.js';
@@ -66,8 +67,10 @@ interface Plan {
   modified: boolean;
   /** Hash of what is on disk now; null when the item is absent. */
   observed: string | null;
-  /** MCP: the config text that was read. */
+  /** MCP and hook: the config text that was read. */
   text: string | null;
+  /** Hook: the settings text without the owned handler. */
+  after: string | null;
   /** Skill/script/command: the files to delete by absolute path, entry file first. */
   doomed: SkillFile[];
   files: string[];
@@ -77,6 +80,7 @@ interface Plan {
 const expectedPath = (deps: UninstallDeps, item: OwnedItem): string => {
   if (item.kind === 'mcp') return deps.target.configPath(item.scope, deps.paths);
   if (item.kind === 'skill') return `${deps.target.skillsDir(item.scope, deps.paths)}/${item.name}`;
+  if (item.kind === 'hook') return deps.target.settingsPath(item.scope, deps.paths);
   if (item.kind === 'command') return `${deps.target.commandsDir(item.scope, deps.paths)}/${item.name}.md`;
   return `${scriptsDir(item.scope, deps.paths)}/${item.name}`;
 };
@@ -119,17 +123,25 @@ async function planUninstall(deps: UninstallDeps, req: UninstallRequest): Promis
   const install = manifest.installs.find((i) => i.id === item.installId)!;
 
   let observed: string | null;
-  let plan: Pick<Plan, 'text' | 'doomed' | 'files'>;
+  let plan: Pick<Plan, 'text' | 'after' | 'doomed' | 'files'>;
   if (item.kind === 'mcp') {
     const text = await deps.fs.readText(item.path);
     const entry = readAtPath(text, deps.target.serversKeyPath(item.scope))[item.name];
     observed = entry === undefined ? null : hashEntry(entry);
-    plan = { text, doomed: [], files: observed === null ? [] : [item.path] };
+    plan = { text, after: null, doomed: [], files: observed === null ? [] : [item.path] };
+  } else if (item.kind === 'hook') {
+    // Identity is by exact content: an edited handler is no longer located, so it reads as already absent.
+    const text = await deps.fs.readText(item.path);
+    const { event, matcher, handler, ...created } = item.hook!;
+    const removal = text === null ? null : removeHook(text, item.path, { event, matcher, handler }, created);
+    observed = removal?.removed ? item.hash : null;
+    plan = { text, after: removal?.text ?? null, doomed: [], files: observed === null ? [] : [item.path] };
   } else if (item.kind === 'command') {
     const bytes = await deps.fs.readBytes(item.path);
     observed = bytes === null ? null : sha256(bytes);
     plan = {
       text: null,
+      after: null,
       doomed: bytes === null ? [] : [{ path: item.path, bytes }],
       files: bytes === null ? [] : [item.path],
     };
@@ -140,7 +152,7 @@ async function planUninstall(deps: UninstallDeps, req: UninstallRequest): Promis
       path: `${item.path}/${f.path}`,
       bytes: f.bytes,
     }));
-    plan = { text: null, doomed, files: doomed.map((f) => f.path) };
+    plan = { text: null, after: null, doomed, files: doomed.map((f) => f.path) };
   }
 
   const modified = observed !== null && observed !== item.hash;
@@ -154,7 +166,7 @@ async function planUninstall(deps: UninstallDeps, req: UninstallRequest): Promis
 async function assertFresh(deps: UninstallDeps, plan: Plan): Promise<void> {
   const { item } = plan;
   let fresh: boolean;
-  if (item.kind === 'mcp') fresh = (await deps.fs.readText(item.path)) === plan.text;
+  if (item.kind === 'mcp' || item.kind === 'hook') fresh = (await deps.fs.readText(item.path)) === plan.text;
   else if (item.kind === 'command') {
     const bytes = await deps.fs.readBytes(item.path);
     fresh = (bytes === null ? null : sha256(bytes)) === plan.observed;
@@ -180,21 +192,23 @@ async function applyUninstall(deps: UninstallDeps, plan: Plan): Promise<string> 
   const files: Install['files'] = [];
   const undo: (() => Promise<void>)[] = [];
 
-  // Temporary (PR 3 of catalog-add-hooks): no install records a hook yet; PR 6 adds the hook uninstall branches.
-  if (item.kind === 'hook') throw new Error('uninstalling a hook is not supported yet');
-
-  if (item.kind === 'mcp') {
+  if (item.kind === 'mcp' || item.kind === 'hook') {
     const before = plan.text!;
     const backup = backupPath(id, 0, item.path);
     await deps.fs.writeAtomic(`${state}/${backup}`, before);
-    const after = removeAtPath(before, deps.target.serversKeyPath(item.scope), [item.name]);
+    const after =
+      item.kind === 'hook' ? plan.after! : removeAtPath(before, deps.target.serversKeyPath(item.scope), [item.name]);
     files.push({
       path: item.path,
       scope: item.scope,
       backup,
       beforeHash: sha256(before),
       afterHash: sha256(after),
-      items: [{ kind: 'mcp', name: item.name, action: 'remove', entryHash: plan.observed! }],
+      items: [
+        item.kind === 'hook'
+          ? { kind: 'hook', name: item.name, action: 'remove', ...item.hook! }
+          : { kind: 'mcp', name: item.name, action: 'remove', entryHash: plan.observed! },
+      ],
     });
     try {
       await deps.fs.writeAtomic(item.path, after);
@@ -254,7 +268,7 @@ const journal = (deps: UninstallDeps, id: string, now: Date, plan: Plan, files: 
   });
 
 /**
- * Removes one shitaku-owned MCP entry, skill, script or command and records the removal as an install, so `undo` reverts it.
+ * Removes one shitaku-owned MCP entry, skill, script, command or hook handler and records the removal as an install, so `undo` reverts it.
  * Refuses (exit 3) an item that changed since install unless forced; never touches an item shitaku does not own.
  */
 export async function uninstallItem(deps: UninstallDeps, req: UninstallRequest): Promise<UninstallResult> {

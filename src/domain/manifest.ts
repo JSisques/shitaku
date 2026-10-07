@@ -148,6 +148,15 @@ type HookItem = Extract<z.infer<typeof ItemSchema>, { kind: 'hook' }>;
 /** What shitaku last wrote for one hook; the located handler is the canonical `handler`. */
 export type OwnedHook = Pick<HookItem, 'entryHash' | 'event' | 'matcher' | 'handler' | 'createdEvent' | 'createdGroup'>;
 
+const ownedHook = ({ entryHash, event, matcher, handler, createdEvent, createdGroup }: HookItem): OwnedHook => ({
+  entryHash,
+  event,
+  matcher,
+  handler,
+  createdEvent,
+  createdGroup,
+});
+
 /** settings file path -> hook name -> the hook shitaku last wrote there. Undone installs do not count. */
 export function deriveHookOwnership(manifest: Manifest): Record<string, Record<string, OwnedHook>> {
   const owned: Record<string, Record<string, OwnedHook>> = {};
@@ -159,8 +168,7 @@ export function deriveHookOwnership(manifest: Manifest): Record<string, Record<s
           delete owned[file.path]?.[item.name];
           if (Object.keys(owned[file.path] ?? {}).length === 0) delete owned[file.path];
         } else {
-          const { entryHash, event, matcher, handler, createdEvent, createdGroup } = item;
-          (owned[file.path] ??= {})[item.name] = { entryHash, event, matcher, handler, createdEvent, createdGroup };
+          (owned[file.path] ??= {})[item.name] = ownedHook(item);
         }
       }
     }
@@ -177,6 +185,8 @@ export interface OwnedItem {
   name: string;
   hash: string;
   installId: string;
+  /** A hook only: where its handler lives and how the install created it. */
+  hook?: OwnedHook;
 }
 
 /** Replays the non-undone installs in order; the newest install of a scope + path + name wins and keeps its install id. */
@@ -198,6 +208,7 @@ export function deriveOwnedItems(manifest: Manifest): OwnedItem[] {
           name: item.name,
           hash: item.entryHash,
           installId: install.id,
+          ...(item.kind === 'hook' ? { hook: ownedHook(item) } : {}),
         });
       }
     }

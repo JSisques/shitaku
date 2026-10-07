@@ -599,7 +599,22 @@ describe('deriveHookOwnership', () => {
 
   it('lists a hook in owned items by its settings file path with kind hook', () => {
     expect(deriveOwnedItems(manifest([hookInstall('a', hookItem())]))).toEqual([
-      { kind: 'hook', scope: 'project', path: settings, name: 'fmt', hash: 'hh1', installId: 'a' },
+      {
+        kind: 'hook',
+        scope: 'project',
+        path: settings,
+        name: 'fmt',
+        hash: 'hh1',
+        installId: 'a',
+        hook: {
+          entryHash: 'hh1',
+          event: 'PostToolUse',
+          matcher: 'Edit|Write',
+          handler,
+          createdEvent: true,
+          createdGroup: true,
+        },
+      },
     ]);
     expect(
       deriveOwnedItems(manifest([hookInstall('a', hookItem()), hookInstall('b', hookItem({ action: 'remove' }))])),

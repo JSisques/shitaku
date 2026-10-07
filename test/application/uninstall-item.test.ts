@@ -10,9 +10,11 @@ import { loadManifest, manifestPath, stateDir } from '@/application/journal.js';
 import { getStatus } from '@/application/status.js';
 import { undoInstall, UndoSelectionError } from '@/application/undo-install.js';
 import { uninstallItem, UninstallSelectionError, type UninstallRequest } from '@/application/uninstall-item.js';
+import { deriveOwnedItems } from '@/domain/manifest.js';
 import type { CatalogSource } from '@/ports/catalog-source.js';
 import { UnsafeTreeError, type FileSystem } from '@/ports/file-system.js';
 import { commandSource, REVIEW_V1 } from '@test/helpers/commands.js';
+import { FMT_V1, GUARD, hookSource } from '@test/helpers/hooks.js';
 import { DEMO_V1, faultyFs, skillSource } from '@test/helpers/skills.js';
 import { SCRIPT_V1, scriptSource } from '@test/helpers/scripts.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
@@ -648,5 +650,169 @@ describe('uninstallItem (commands)', () => {
     const error = await uninstall({ name: 'github', kind: undefined }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UninstallSelectionError);
     expect((error as UninstallSelectionError).candidates.map((c) => c.kind).sort()).toEqual(['command', 'mcp']);
+  });
+});
+
+describe('uninstallItem (hooks)', () => {
+  let tmp: TmpPaths;
+  let fs: NodeFileSystem;
+  let deps: InitDeps;
+  const settings = () => join(tmp.cwd, '.claude', 'settings.json');
+  const read = (path: string) => readFile(path, 'utf8');
+  const manifestText = () => read(manifestPath(tmp.homeDir));
+  const fmtHandler = { type: 'command', command: 'prettier -w .' };
+  const uninstall = (req: Partial<UninstallRequest> = {}, over: { fs?: FileSystem } = {}) =>
+    uninstallItem(
+      { fs: over.fs ?? fs, target: claudeCodeTarget, paths: { homeDir: tmp.homeDir, cwd: tmp.cwd } },
+      { name: 'fmt', kind: 'hook', ...req },
+    );
+  const install = (hooks: string[] = ['fmt']) => initMcps(deps, { mcps: [], hooks, scope: 'project' });
+  const edit = async (change: (doc: { hooks: Record<string, { hooks: object[] }[]> }) => void) => {
+    const doc = JSON.parse(await read(settings())) as { hooks: Record<string, { hooks: object[] }[]> };
+    change(doc);
+    await writeFile(settings(), JSON.stringify(doc, null, 2));
+  };
+
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    fs = new NodeFileSystem();
+    deps = {
+      source: hookSource([FMT_V1, GUARD]),
+      fs,
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('removes only the owned handler, keeps the user handler in its group, backs up and journals a remove', async () => {
+    const user = { type: 'command', command: 'echo mine' };
+    await mkdir(join(tmp.cwd, '.claude'));
+    await writeFile(
+      settings(),
+      JSON.stringify({ model: 'opus', hooks: { PostToolUse: [{ matcher: 'Edit|Write', hooks: [user] }] } }, null, 2),
+    );
+    await install();
+    const installed = await read(settings());
+    const result = await uninstall();
+    expect(result).toMatchObject({
+      status: 'removed',
+      exitCode: 0,
+      modified: false,
+      files: [settings()],
+      item: { kind: 'hook', scope: 'project', name: 'fmt', path: settings() },
+    });
+    expect(JSON.parse(await read(settings()))).toEqual({
+      model: 'opus',
+      hooks: { PostToolUse: [{ matcher: 'Edit|Write', hooks: [user] }] },
+    });
+    const manifest = await loadManifest(fs, tmp.homeDir);
+    const record = manifest.installs.find((i) => i.id === result.installId)!.files[0]!;
+    expect(record).toMatchObject({ path: settings(), items: [{ kind: 'hook', name: 'fmt', action: 'remove' }] });
+    expect(await read(`${stateDir(tmp.homeDir)}/${record.backup!}`)).toBe(installed);
+  });
+
+  it('drops the group and event it created, and keeps an event that held other groups', async () => {
+    await install(['fmt', 'guard']);
+    await uninstall();
+    expect(JSON.parse(await read(settings()))).toEqual({
+      hooks: { Stop: [{ hooks: [{ type: 'command', command: './guard.sh' }] }] },
+    });
+    await uninstall({ name: 'guard' });
+    expect(JSON.parse(await read(settings()))).toEqual({ hooks: {} });
+  });
+
+  it('never needs --force: the handler is located by content, so it is never reported as modified', async () => {
+    await install();
+    expect(await uninstall({ dryRun: true })).toMatchObject({ status: 'dry-run', exitCode: 0, modified: false });
+    expect(await uninstall({ force: true })).toMatchObject({ status: 'removed', exitCode: 0, modified: false });
+  });
+
+  it('dry run reports the settings file and writes nothing', async () => {
+    await install();
+    const before = [await read(settings()), await manifestText()];
+    expect(await uninstall({ dryRun: true })).toMatchObject({ status: 'dry-run', files: [settings()] });
+    expect([await read(settings()), await manifestText()]).toEqual(before);
+  });
+
+  it('reports already absent, exit 0 and no writes, when the handler was deleted', async () => {
+    await install();
+    await edit((doc) => {
+      doc.hooks.PostToolUse![0]!.hooks = [];
+    });
+    const before = [await read(settings()), await manifestText()];
+    expect(await uninstall()).toMatchObject({ status: 'already-absent', exitCode: 0, files: [], modified: false });
+    expect([await read(settings()), await manifestText()]).toEqual(before);
+  });
+
+  it('treats an edited handler as absent: identity is by exact content, so nothing is guessed or deleted', async () => {
+    await install();
+    await edit((doc) => {
+      doc.hooks.PostToolUse![0]!.hooks = [{ ...fmtHandler, command: 'prettier -w src' }];
+    });
+    const before = [await read(settings()), await manifestText()];
+    expect(await uninstall({ force: true })).toMatchObject({ status: 'already-absent', exitCode: 0, modified: false });
+    expect([await read(settings()), await manifestText()]).toEqual(before);
+  });
+
+  it('reports already absent when the settings file is gone', async () => {
+    await install();
+    await rm(settings());
+    expect(await uninstall()).toMatchObject({ status: 'already-absent', exitCode: 0, files: [] });
+  });
+
+  it('fails closed on a settings file that is not valid JSON, writing nothing', async () => {
+    await install();
+    await writeFile(settings(), '{ "hooks": ');
+    const before = await manifestText();
+    await expect(uninstall()).rejects.toThrow(/settings\.json: config is not valid JSON/);
+    expect(await read(settings())).toBe('{ "hooks": ');
+    expect(await manifestText()).toBe(before);
+  });
+
+  it('requires --kind when the name is both a skill and a hook, and --kind hook removes only the hook', async () => {
+    const both = {
+      ...deps,
+      source: {
+        ...hookSource([FMT_V1]),
+        load: async () => ({ ...(await hookSource([FMT_V1]).load()), skills: [{ ...DEMO_V1, name: 'fmt' }] }),
+      },
+    };
+    await initMcps(both, { mcps: [], hooks: ['fmt'], skills: ['fmt'], scope: 'project' });
+    const error = await uninstall({ kind: undefined }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UninstallSelectionError);
+    expect((error as UninstallSelectionError).candidates.map((c) => c.kind).sort()).toEqual(['hook', 'skill']);
+    await uninstall();
+    expect(JSON.parse(await read(settings()))).toEqual({ hooks: {} });
+    expect(await readdir(join(tmp.cwd, '.claude', 'skills', 'fmt'))).not.toEqual([]);
+  });
+
+  it('aborts with StaleFileError and changes nothing when the settings changed after planning', async () => {
+    await install();
+    const racing = racy(fs, 'readText', settings(), () => writeFile(settings(), '{ "model": "raced" }'));
+    const before = await manifestText();
+    await expect(uninstall({}, { fs: racing })).rejects.toThrow(StaleFileError);
+    expect(await read(settings())).toBe('{ "model": "raced" }');
+    expect(await manifestText()).toBe(before);
+  });
+
+  it('puts the settings back when journaling fails', async () => {
+    await install();
+    const installed = await read(settings());
+    const failing = faultyFs(fs, { method: 'writeAtomic', nth: 1, match: (p) => p === manifestPath(tmp.homeDir) });
+    await expect(uninstall({}, { fs: failing })).rejects.toThrow(/injected/);
+    expect(await read(settings())).toBe(installed);
+  });
+
+  it('is reverted by undo: the original bytes return and the hook is owned again', async () => {
+    await install();
+    const installed = await read(settings());
+    await uninstall();
+    expect((await undoInstall({ fs, paths: deps.paths }, {})).status).toBe('undone');
+    expect(await read(settings())).toBe(installed);
+    expect(deriveOwnedItems(await loadManifest(fs, tmp.homeDir)).map((o) => [o.kind, o.name])).toEqual([
+      ['hook', 'fmt'],
+    ]);
   });
 });
