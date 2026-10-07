@@ -916,9 +916,9 @@ describe('runCli', () => {
       expect(out).toEqual([]);
     });
 
-    it('rejects the unknown kind widgets and offers commands among the choices', async () => {
+    it('rejects the unknown kind widgets and offers commands and hooks among the choices', async () => {
       expect(await run('list', 'widgets')).toBe(1);
-      expect(err.join('\n')).toContain('Allowed choices are mcps, skills, profiles, scripts, commands');
+      expect(err.join('\n')).toContain('Allowed choices are mcps, skills, profiles, scripts, commands, hooks');
       expect(out).toEqual([]);
     });
 
@@ -1003,6 +1003,14 @@ describe('runCli', () => {
         expect(out).toEqual(['no matching items']);
         out = [];
         expect(await run('list', 'commands')).toBe(0);
+        expect(out).toEqual(['no matching items']);
+      });
+
+      it('prints no matching items for hooks when the catalog has none', async () => {
+        expect(await run('list', 'hooks', '--source', await fullCatalog())).toBe(0);
+        expect(out).toEqual(['no matching items']);
+        out = [];
+        expect(await run('list', 'hooks')).toBe(0);
         expect(out).toEqual(['no matching items']);
       });
 
