@@ -605,6 +605,11 @@ describe('uninstallItem (commands)', () => {
     await uninstall();
     expect((await undoInstall({ fs, paths: deps.paths }, {})).status).toBe('undone');
     expect(new Uint8Array(await readFile(file()))).toEqual(REVIEW_V1.bytes);
+    const status = await getStatus(
+      { fs, target: claudeCodeTarget, paths: deps.paths, source: deps.source },
+      { scope: 'project' },
+    );
+    expect(status.items).toMatchObject([{ kind: 'command', name: 'review', state: 'installed' }]);
   });
 
   it('lists skill and command candidates when the name is both, and --kind resolves it', async () => {
