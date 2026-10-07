@@ -145,7 +145,7 @@ Mode: Strict TDD. Chain: stacked-to-main (on `feat/commands-3a-cli`, stacked on 
 
 ## Batch 6: PR 3b (docs, generators, website en + es) — tasks 3b.1-3b.5 complete
 
-Mode: Strict TDD. Chain: stacked-to-main (on `feat/commands-3b-docs`, stacked on `feat/commands-3a-cli`). Remaining: none (all PR slices applied; next is verify).
+Mode: Strict TDD. Chain: stacked-to-main (split into 3b-i on `feat/commands-3b1-generators` and 3b-ii on `feat/commands-3b2-docs`, stacked on `feat/commands-3a-cli`). Remaining: none (all PR slices applied; next is verify).
 
 ### TDD Cycle Evidence
 
@@ -170,4 +170,4 @@ Mode: Strict TDD. Chain: stacked-to-main (on `feat/commands-3b-docs`, stacked on
 - The empty-catalog README renders `_No slash commands in the bundled catalog yet._` between the markers instead of an empty table; the website emits no command pages and no `commands/` directory (the Starlight sidebar autogenerates from existing pages).
 - The es overview page was rewritten in Spanish (it was an English copy of en); other es generated pages keep English descriptions as before.
 - The generated website pages did not change (the bundled catalog has no commands and the profiles have no `commands`), so all changed lines are hand-written.
-- Size: about 488 hand-written changed lines (252 code+tests: 81 scripts, 171 test; 236 docs: README 61, CONTRIBUTING 56, website 119), above the 400 budget, zero generated lines. Prettier realigned the en flags table (about 30 of the website lines). It splits cleanly into 3b-i (generators + tests, 252) and 3b-ii (docs, 236); recommendation: split, otherwise accept `size:exception`.
+- Size: about 488 hand-written changed lines (252 code+tests: 81 scripts, 171 test; 236 docs: README 61, CONTRIBUTING 56, website 119), above the 400 budget, zero generated lines. Prettier realigned the en flags table (about 30 of the website lines). It was split: 3b-i (generators, tests and README, 313 lines, PR #209) and 3b-ii (CONTRIBUTING and website docs, 175 hand-written lines plus openspec notes).
