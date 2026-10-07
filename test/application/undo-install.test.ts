@@ -10,6 +10,7 @@ import { sha256 } from '@/domain/hash.js';
 import { UndoSelectionError, UndoVerifyError, undoInstall } from '@/application/undo-install.js';
 import { DEMO_V1, DEMO_V2, skillSource } from '@test/helpers/skills.js';
 import { SCRIPT_V1, scriptSource } from '@test/helpers/scripts.js';
+import { commandSource, REVIEW_V1 } from '@test/helpers/commands.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
 const CATALOG = join(import.meta.dirname, '..', '..', 'catalog');
@@ -393,5 +394,79 @@ describe('undoInstall (scripts)', () => {
     const active = (await loadManifest(deps.fs, tmp.homeDir)).installs.filter((i) => i.undoneAt === null);
     expect(active).toHaveLength(1);
     expect(active[0]?.undoneAt).toBeNull();
+  });
+});
+
+describe('undoInstall (commands)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const dir = () => join(tmp.cwd, '.claude', 'commands');
+  const file = () => join(dir(), 'review.md');
+  const undoDeps = () => ({ fs: deps.fs, paths: deps.paths });
+  const install = (extra: { force?: boolean } = {}) =>
+    initMcps(deps, { mcps: [], commands: ['review'], scope: 'project', ...extra });
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: commandSource([REVIEW_V1]),
+      fs: new NodeFileSystem(),
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('removes the file and the directories the install created, without treating the file as a tree', async () => {
+    await install();
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'undone', exitCode: 0, changed: [] });
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('keeps a commands directory that existed before the install', async () => {
+    await mkdir(dir(), { recursive: true });
+    await install();
+    expect((await undoInstall(undoDeps(), {})).status).toBe('undone');
+    expect(await readdir(dir())).toEqual([]);
+  });
+
+  it('keeps the directory and the neighbor when the user added a command next to it', async () => {
+    await install();
+    await writeFile(join(dir(), 'mine.md'), 'mine');
+    expect((await undoInstall(undoDeps(), {})).status).toBe('undone');
+    expect(await readdir(dir())).toEqual(['mine.md']);
+    expect(await readFile(join(dir(), 'mine.md'), 'utf8')).toBe('mine');
+  });
+
+  it('refuses with exit 3 when the file was edited, unless forced', async () => {
+    await install();
+    await writeFile(file(), 'edited');
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'refused', exitCode: 3, changed: [file()] });
+    expect(await readFile(file(), 'utf8')).toBe('edited');
+    expect((await undoInstall(undoDeps(), { force: true })).status).toBe('undone');
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('restores the original bytes, even when they are not valid UTF-8, when a forced replace is undone', async () => {
+    const original = Buffer.from([0xff, 0xfe, 0x00, 0x80]);
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), original);
+    await install({ force: true });
+    expect((await undoInstall(undoDeps(), {})).status).toBe('undone');
+    expect(await readFile(file())).toEqual(original);
+    expect(await readdir(dir())).toEqual(['review.md']);
+  });
+
+  it('refuses before touching anything when the backup is missing, and again on rerun', async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), 'mine');
+    await install({ force: true });
+    const [entry] = (await loadManifest(deps.fs, tmp.homeDir)).installs[0]!.files;
+    await rm(`${stateDir(tmp.homeDir)}/${entry!.backup}`);
+    const manifestBefore = await readFile(manifestPath(tmp.homeDir), 'utf8');
+    await expect(undoInstall(undoDeps(), {})).rejects.toThrow(UndoVerifyError);
+    await expect(undoInstall(undoDeps(), {})).rejects.toThrow(/missing/);
+    expect(new Uint8Array(await readFile(file()))).toEqual(REVIEW_V1.bytes);
+    expect(await readFile(manifestPath(tmp.homeDir), 'utf8')).toBe(manifestBefore);
   });
 });

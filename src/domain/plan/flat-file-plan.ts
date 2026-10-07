@@ -38,6 +38,10 @@ export interface BuildFlatFilePlanInput {
   force?: boolean;
 }
 
+/** Whether an apply writes this file: a skip or a conflict leaves it alone. */
+export const writesFlatFile = (change: FlatFileChange): boolean =>
+  change.action === 'create' || change.action === 'update';
+
 export function buildFlatFilePlan({ entries, owned, noun, force = false }: BuildFlatFilePlanInput): FlatFileChange[] {
   return entries.map(({ name, path, scope, bytes, present }): FlatFileChange => {
     const desiredHash = sha256(bytes);

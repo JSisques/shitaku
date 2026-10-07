@@ -11,6 +11,7 @@ import {
   LeakError,
   planInit,
   StaleFileError,
+  UnknownCommandError,
   UnknownMcpError,
   UnknownScriptError,
   UnknownSkillError,
@@ -24,6 +25,8 @@ import { UnsafeTreeError } from '@/ports/file-system.js';
 import { parseManifest, type Manifest } from '@/domain/manifest.js';
 import { DEMO_V1, DEMO_V2, faultyFs, skillSource } from '@test/helpers/skills.js';
 import { SCRIPT_V1, SCRIPT_V2, scriptSource } from '@test/helpers/scripts.js';
+import { commandSource, REVIEW_V1, REVIEW_V2 } from '@test/helpers/commands.js';
+import type { Scope } from '@/ports/agent-target.js';
 import { parseDoc } from '@test/helpers/parse-doc.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
@@ -951,5 +954,149 @@ describe('initMcps (bundled duplication script)', () => {
     expect(await readFile(join(root(), 'index.mjs'), 'utf8')).toContain('duplication');
     expect(await readFile(join(root(), 'script.json'), 'utf8')).toMatch(/jscpd/);
     expect(await readdir(join(tmp.cwd, '.claude', 'skills')).catch(() => [])).toEqual([]);
+  });
+});
+
+describe('initMcps (commands)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const real = new NodeFileSystem();
+  const dir = (scope: Scope = 'project') => join(scope === 'user' ? tmp.homeDir : tmp.cwd, '.claude', 'commands');
+  const file = (scope: Scope = 'project') => join(dir(scope), 'review.md');
+  const manifest = async (): Promise<Manifest> => parseManifest(await readFile(manifestPath(tmp.homeDir), 'utf8'));
+  const install = (extra: { force?: boolean; dryRun?: boolean; scope?: Scope; commands?: string[] } = {}) =>
+    initMcps(deps, { mcps: [], commands: extra.commands ?? ['review'], scope: extra.scope ?? 'project', ...extra });
+  const mine = async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), 'mine');
+  };
+  const withFault = (fault: Parameters<typeof faultyFs>[1]) => {
+    const fs = faultyFs(real, fault);
+    deps = { ...deps, fs };
+    return fs;
+  };
+  const isManifest = (path: string) => path === manifestPath(tmp.homeDir);
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: commandSource([REVIEW_V1]),
+      fs: real,
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it.each<Scope>(['user', 'project'])('writes catalog-identical bytes at the %s root', async (scope) => {
+    expect((await install({ scope })).applied).toBe(true);
+    expect(new Uint8Array(await readFile(file(scope)))).toEqual(REVIEW_V1.bytes);
+  });
+
+  it('records one command file entry rooted at its path, with the directories it created', async () => {
+    await install();
+    const [record] = (await manifest()).installs;
+    expect(record!.createdDirs).toEqual([join(tmp.cwd, '.claude'), dir()]);
+    expect(record!.files).toEqual([
+      {
+        path: file(),
+        scope: 'project',
+        backup: null,
+        beforeHash: null,
+        afterHash: sha256(REVIEW_V1.bytes),
+        items: [
+          { kind: 'command', name: 'review', action: 'create', entryHash: sha256(REVIEW_V1.bytes), root: file() },
+        ],
+      },
+    ]);
+  });
+
+  it('writes through writeBytes (temp then rename) and leaves a neighbor command untouched', async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(join(dir(), 'mine.md'), 'mine');
+    const fs = withFault({ method: 'remove', nth: 99 });
+    await install();
+    expect(fs.calls).toContain(`writeBytes ${file()}`);
+    expect(await readFile(join(dir(), 'mine.md'), 'utf8')).toBe('mine');
+  });
+
+  it('skips a file that already equals the catalog without writing', async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), REVIEW_V1.bytes);
+    expect((await install()).applied).toBe(false);
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+
+  it('plans a conflict for an unmanaged file and writes nothing without --force', async () => {
+    await mine();
+    const { plan, applied } = await install();
+    expect(plan.commands[0]).toMatchObject({ name: 'review', action: 'conflict' });
+    expect(applied).toBe(false);
+    expect(await readFile(file(), 'utf8')).toBe('mine');
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+    await expect(readdir(join(stateDir(tmp.homeDir), 'backups'))).rejects.toThrow();
+  });
+
+  it('replaces an unmanaged file with --force after a byte-identical backup', async () => {
+    await mine();
+    expect((await install({ force: true })).applied).toBe(true);
+    expect(new Uint8Array(await readFile(file()))).toEqual(REVIEW_V1.bytes);
+    const [entry] = (await manifest()).installs[0]!.files;
+    expect(entry!.beforeHash).toBe(sha256('mine'));
+    expect(entry!.backup).toMatch(/-review\.md$/);
+    expect(await readFile(join(stateDir(tmp.homeDir), entry!.backup!), 'utf8')).toBe('mine');
+  });
+
+  it('updates an owned command that is unmodified on disk', async () => {
+    await install();
+    deps = { ...deps, source: commandSource([REVIEW_V2]) };
+    expect((await install()).plan.commands[0]).toMatchObject({ action: 'update' });
+    expect(new Uint8Array(await readFile(file()))).toEqual(REVIEW_V2.bytes);
+  });
+
+  it('writes nothing on dry run', async () => {
+    const { plan, applied } = await install({ dryRun: true });
+    expect(plan.commands[0]).toMatchObject({ action: 'create' });
+    expect(applied).toBe(false);
+    expect(await readdir(tmp.cwd)).toEqual([]);
+    expect(await readdir(tmp.homeDir)).toEqual([]);
+  });
+
+  it('rejects an unknown command naming it, writing nothing', async () => {
+    await expect(install({ commands: ['review', 'ghost'] })).rejects.toThrow(UnknownCommandError);
+    await expect(install({ commands: ['ghost'] })).rejects.toThrow('ghost');
+    expect(await readdir(tmp.cwd)).toEqual([]);
+    expect(await readdir(tmp.homeDir)).toEqual([]);
+  });
+
+  it('removes the file and the directories it created, with no manifest entry, when the write fails', async () => {
+    withFault({ method: 'writeBytes', nth: 1, match: (p) => p === file() });
+    await expect(install()).rejects.toThrow('injected writeBytes failure');
+    expect(await readdir(tmp.cwd)).toEqual([]);
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+
+  it('removes the file and the created directories when recording the manifest fails', async () => {
+    withFault({ method: 'writeAtomic', nth: 1, match: isManifest });
+    await expect(install()).rejects.toThrow('injected writeAtomic failure');
+    expect(await readdir(tmp.cwd)).toEqual([]);
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+
+  it('restores a forced replace byte-identical when the apply fails after the backup, keeping the backup', async () => {
+    await mine();
+    withFault({ method: 'writeAtomic', nth: 1, match: isManifest });
+    await expect(install({ force: true })).rejects.toThrow('injected writeAtomic failure');
+    expect(await readFile(file(), 'utf8')).toBe('mine');
+    const [id] = await readdir(join(stateDir(tmp.homeDir), 'backups'));
+    expect(await readdir(join(stateDir(tmp.homeDir), 'backups', id!))).toHaveLength(1);
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+
+  it('aborts with StaleFileError when the file changed between planning and applying', async () => {
+    const plan = await planInit(deps, { mcps: [], commands: ['review'], scope: 'project' });
+    await mine();
+    await expect(applyPlan(deps, plan)).rejects.toThrow(StaleFileError);
+    expect(await readFile(file(), 'utf8')).toBe('mine');
   });
 });

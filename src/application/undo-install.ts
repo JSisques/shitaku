@@ -42,36 +42,41 @@ const result = (status: UndoResult['status'], install?: Install, changed: string
   changed,
 });
 
+/** Skill and script directories: the roots whose contents `unrecordedFiles` lists. */
 const treeRoots = (install: Install): Set<string> =>
   new Set(
     install.files.flatMap((f) => f.items.flatMap((i) => (i.kind === 'skill' || i.kind === 'script' ? [i.root] : []))),
   );
 
+/** Every rooted item: tree directories plus command files. LIFO and pruning key on these; a command root is a file, so never list it. */
+const itemRoots = (install: Install): Set<string> =>
+  new Set(install.files.flatMap((f) => f.items.flatMap((i) => (i.kind === 'mcp' ? [] : [i.root]))));
+
 /** Script install roots only — ADR-2 cleans runtime `node_modules` here, not under skills. */
 const scriptRoots = (install: Install): Set<string> =>
   new Set(install.files.flatMap((f) => f.items.flatMap((i) => (i.kind === 'script' ? [i.root] : []))));
 
-/** LIFO per file and per skill/script root: refuse while a newer non-undone install touched the same file or tree. */
+/** LIFO per file and per skill/script/command root: refuse while a newer non-undone install touched the same file or tree. */
 function assertNewestPerFile(manifest: Manifest, install: Install): void {
   const newer = manifest.installs.slice(manifest.installs.indexOf(install) + 1).filter((i) => i.undoneAt === null);
-  const roots = treeRoots(install);
+  const roots = itemRoots(install);
   for (const file of install.files) {
     const blocker = newer.find((i) => i.files.some((f) => f.path === file.path));
     if (blocker) throw new UndoSelectionError(`${file.path} has a newer install (${blocker.id}); undo that one first`);
   }
   for (const root of roots) {
-    const blocker = newer.find((i) => treeRoots(i).has(root));
+    const blocker = newer.find((i) => itemRoots(i).has(root));
     if (blocker) throw new UndoSelectionError(`${root} has a newer install (${blocker.id}); undo that one first`);
   }
 }
 
 const hashOf = (data: string | Uint8Array | null): string | null => (data === null ? null : sha256(data));
 
-/** Skill and script files are raw bytes; MCP config files stay text. */
-const isTreeFile = (file: InstalledFile): boolean => file.items.some((i) => i.kind === 'skill' || i.kind === 'script');
+/** Skill, script and command files are raw bytes; MCP config files stay text. */
+const isByteFile = (file: InstalledFile): boolean => file.items.some((i) => i.kind !== 'mcp');
 
 const currentHash = async (deps: UndoDeps, file: InstalledFile): Promise<string | null> =>
-  hashOf(isTreeFile(file) ? await deps.fs.readBytes(file.path) : await deps.fs.readText(file.path));
+  hashOf(isByteFile(file) ? await deps.fs.readBytes(file.path) : await deps.fs.readText(file.path));
 
 /** Like `currentHash`, but a file that is unsafe on the current tree (a symlink, a special file) counts as drift. */
 const UNSAFE = Symbol('unsafe');
@@ -88,7 +93,7 @@ async function restore(deps: UndoDeps, file: InstalledFile): Promise<void> {
   const backupPath = file.backup === null ? null : `${stateDir(deps.paths.homeDir)}/${file.backup}`;
   if (backupPath === null) {
     await deps.fs.remove(file.path);
-  } else if (isTreeFile(file)) {
+  } else if (isByteFile(file)) {
     const bytes = await deps.fs.readBytes(backupPath);
     if (bytes === null) throw new UndoVerifyError(`backup for ${file.path} is missing`);
     await deps.fs.writeBytes(file.path, bytes);
@@ -127,12 +132,12 @@ async function assertBackupsPresent(deps: UndoDeps, install: Install): Promise<v
 }
 
 /**
- * Only directories the install can have created are pruned: a recorded skill/script root, one of its ancestors or one of
+ * Only directories the install can have created are pruned: a recorded skill/script/command root, one of its ancestors or one of
  * its subdirectories, that lies strictly inside the home or working directory. Anything else in a tampered manifest is ignored.
  */
 function prunableDirs(deps: UndoDeps, install: Install): string[] {
   const { homeDir, cwd } = deps.paths;
-  const roots = [...treeRoots(install)];
+  const roots = [...itemRoots(install)];
   const inside = (dir: string, base: string): boolean => dir.startsWith(`${base}/`);
   return install.createdDirs.filter(
     (dir) =>
