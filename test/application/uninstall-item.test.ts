@@ -788,6 +788,28 @@ describe('uninstallItem (hooks)', () => {
     expect(await readdir(join(tmp.cwd, '.claude', 'skills', 'fmt'))).not.toEqual([]);
   });
 
+  it('requires --kind when the name is both a command and a hook, and --kind hook removes only the hook', async () => {
+    const both = {
+      ...deps,
+      source: {
+        ...hookSource([FMT_V1]),
+        load: async () => ({ ...(await hookSource([FMT_V1]).load()), commands: [{ ...REVIEW_V1, name: 'fmt' }] }),
+      },
+    };
+    await initMcps(both, { mcps: [], hooks: ['fmt'], commands: ['fmt'], scope: 'project' });
+    const commandFile = join(tmp.cwd, '.claude', 'commands', 'fmt.md');
+    const before = await manifestText();
+    const error = await uninstall({ kind: undefined }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UninstallSelectionError);
+    expect((error as UninstallSelectionError).candidates.map((c) => c.kind).sort()).toEqual(['command', 'hook']);
+    expect(await manifestText()).toBe(before);
+    expect(JSON.parse(await read(settings()))).not.toEqual({ hooks: {} });
+
+    await uninstall();
+    expect(JSON.parse(await read(settings()))).toEqual({ hooks: {} });
+    expect(await readFile(commandFile, 'utf8')).not.toBe('');
+  });
+
   it('aborts with StaleFileError and changes nothing when the settings changed after planning', async () => {
     await install();
     const racing = racy(fs, 'readText', settings(), () => writeFile(settings(), '{ "model": "raced" }'));
