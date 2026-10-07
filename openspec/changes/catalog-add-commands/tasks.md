@@ -67,12 +67,12 @@ Commit scopes: PR 1 `feat(catalog)`; 2a `feat(plan)`; 2b `feat(init)`; 2c `feat(
 
 ## PR 2b: `init` apply + undo
 
-- [ ] 2b.1 RED: extend `test/application/init-mcps.test.ts`: user/project roots with catalog-identical bytes; neighbor `mine.md` untouched; conflict + no force writes nothing; `--force` backup then replace; dry-run no writes; unknown command `ghost` throws `UnknownCommandError` and writes nothing. [Commands Install: roots, Conflict refused, Forced replace, Dry run, Unknown command]
-- [ ] 2b.2 RED: add failure cases via `faultyFs`: create failure removes file + created dir, no manifest entry; forced-replace failure restores original byte-identical; stale file raises `StaleFileError`; temp-then-rename write. [Install Safety: Failure on create, Failure during forced replace]
-- [ ] 2b.3 GREEN: modify `src/application/init-mcps.ts` (`InitRequest.commands`, `UnknownCommandError`, `refreshFlatFile`, generalized `ByteStep`, 6th positional `commandNames` in profile API, journal `{kind:'command', root:path}`, `createdDirs` rollback).
-- [ ] 2b.4 RED: extend `test/application/undo-install.test.ts`: no `UnsafeTreeError`; created empty `./.claude/commands` pruned; pre-existing or non-empty dir kept; drift refused without `--force`; forced-replace backup restored; missing backup fails before any change. [Commands Install: Undo scenarios; Install Safety: Command in shared directory, Missing backup]
-- [ ] 2b.5 GREEN: modify `src/application/undo-install.ts` (split `itemRoots` for LIFO+prune from `treeRoots` for `unrecordedFiles`; command files via `readBytes`/`writeBytes`; non-recursive `removeDir`).
-- [ ] 2b.6 REFACTOR + gate: typecheck, lint, format:check, test, build. No CLI entry point exists yet.
+- [x] 2b.1 RED: extend `test/application/init-mcps.test.ts`: user/project roots with catalog-identical bytes; neighbor `mine.md` untouched; conflict + no force writes nothing; `--force` backup then replace; dry-run no writes; unknown command `ghost` throws `UnknownCommandError` and writes nothing. [Commands Install: roots, Conflict refused, Forced replace, Dry run, Unknown command]
+- [x] 2b.2 RED: add failure cases via `faultyFs`: create failure removes file + created dir, no manifest entry; forced-replace failure restores original byte-identical; stale file raises `StaleFileError`; temp-then-rename write. [Install Safety: Failure on create, Failure during forced replace]
+- [x] 2b.3 GREEN: modify `src/application/init-mcps.ts` (`InitRequest.commands`, `UnknownCommandError`, `refreshFlatFile`, generalized `ByteStep`, 6th positional `commandNames` in profile API, journal `{kind:'command', root:path}`, `createdDirs` rollback).
+- [x] 2b.4 RED: extend `test/application/undo-install.test.ts`: no `UnsafeTreeError`; created empty `./.claude/commands` pruned; pre-existing or non-empty dir kept; drift refused without `--force`; forced-replace backup restored; missing backup fails before any change. [Commands Install: Undo scenarios; Install Safety: Command in shared directory, Missing backup]
+- [x] 2b.5 GREEN: modify `src/application/undo-install.ts` (split `itemRoots` for LIFO+prune from `treeRoots` for `unrecordedFiles`; command files via `readBytes`/`writeBytes`; non-recursive `removeDir`).
+- [x] 2b.6 REFACTOR + gate: typecheck, lint, format:check, test, build. No CLI entry point exists yet.
 
 ## PR 2c: Uninstall, status, doctor
 

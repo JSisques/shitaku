@@ -56,3 +56,31 @@ Mode: Strict TDD. Chain: stacked-to-main (on `feat/commands-1b-catalog-schema`).
 - Two application-layer touches were needed to keep typecheck green: `init-mcps.ts` empty plan literal gets `commands: []`, and `uninstall-item.ts` widens `UninstallResult.item.kind` to `OwnedItem['kind']` and maps the command path in `expectedPath`. Full command uninstall stays in 2c.
 - `classifySkill`/`classifyScript` are now arrow-function consts (exports and signatures unchanged).
 - The `afterHash: null` refine is written as "no `mcp` item" instead of listing skill|script|command; equivalent for the current kinds.
+
+## Batch 3: PR 2b (`init` apply + undo) — tasks 2b.1-2b.6 complete
+
+Mode: Strict TDD. Chain: stacked-to-main (on `feat/commands-2b-init-undo`, stacked on `feat/commands-2a-install-model`). Remaining: 2c.\*, 3a.\*, 3b.\* (not started).
+
+### TDD Cycle Evidence
+
+| Task      | Test File                                                          | Layer       | Safety Net            | RED                              | GREEN        | Triangulate                                                                            | Refactor                                                              |
+| --------- | ------------------------------------------------------------------ | ----------- | --------------------- | -------------------------------- | ------------ | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 2b.1/2b.3 | `test/application/init-mcps.test.ts` (`initMcps (commands)`)       | Integration | 58/58 (existing init) | 13 failing before code           | 71/71 pass   | user+project roots, neighbor, skip, conflict, force, update, dry-run, unknown          | `TreeStep` generalized to `ByteStep` (item carried on the step)       |
+| 2b.2/2b.3 | same file (write failure, forced-replace failure, stale)           | Integration | same                  | failing before code (same batch) | pass         | create failure, manifest failure with created dirs, forced replace restore, stale      | `writesFlatFile` mirrors `writesSkill`; `refreshFlatFile`             |
+| 2b.4/2b.5 | `test/application/undo-install.test.ts` (`undoInstall (commands)`) | Integration | 27/27 (existing undo) | 2 failing (prune), 1 (non-UTF-8) | 33/33 pass   | prune created, keep pre-existing, keep neighbor, drift, forced restore, missing backup | `itemRoots` (LIFO + prune) split from `treeRoots` (`unrecordedFiles`) |
+| 2b.6      | whole suite                                                        | Gate        | N/A                   | N/A                              | 986/986 pass | N/A                                                                                    | typecheck, lint, format:check, build clean                            |
+
+### Work Unit Evidence
+
+| Evidence             | Value                                                                                                                                  |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused test command | `pnpm vitest run test/application`: 12 files, 245 tests passed                                                                         |
+| Runtime harness      | N/A: no CLI flag until 3a; tests run `initMcps`/`undoInstall` against the real `NodeFileSystem` in tmp dirs (and `faultyFs`)           |
+| Rollback boundary    | `src/application/init-mcps.ts`, `src/application/undo-install.ts`, `writesFlatFile` in `flat-file-plan.ts`, `test/helpers/commands.ts` |
+
+### Deviations from design
+
+- Command files go through `writeBytes` (already temp-then-rename in `NodeFileSystem`), so no new write primitive was added.
+- Undo hashes and restores command files as bytes (`isByteFile` = any non-mcp item), so non-UTF-8 originals round-trip.
+- `refreshFlatFile` fixes the noun to `'command'`; generalize it when #42 agents reuse the module.
+- Size: about 391 code+test lines (357 added, 34 removed), within the 400 budget.
