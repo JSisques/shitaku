@@ -141,7 +141,7 @@ async function planMcps(
   manifest: Manifest,
 ): Promise<ChangePlan> {
   if (req.mcps.length === 0)
-    return { files: [], requiredEnv: [], declaredEnv: [], skills: [], scripts: [], commands: [] };
+    return { files: [], requiredEnv: [], declaredEnv: [], skills: [], scripts: [], commands: [], hooks: [] };
   const items = req.mcps.map((name) => catalogMcps.find((m) => m.name === name)!);
   const path = deps.target.configPath(req.scope, deps.paths);
   const existing = await deps.fs.readText(path);
