@@ -50,11 +50,12 @@ catalog/
   scripts/<name>/index.mjs
   scripts/<name>/script.json
   commands/<name>.md
+  hooks/<name>.json
 ```
 
-Every item must be listed in `catalog/catalog.json` under `items.mcps`, `items.profiles`, `items.skills`, `items.scripts` or `items.commands`. The loader (`src/adapters/catalog/folder-source.ts`) validates items with the zod schemas in `src/domain/catalog/`. An invalid or unlisted item is skipped with a warning.
+Every item must be listed in `catalog/catalog.json` under `items.mcps`, `items.profiles`, `items.skills`, `items.scripts`, `items.commands` or `items.hooks`. The loader (`src/adapters/catalog/folder-source.ts`) validates items with the zod schemas in `src/domain/catalog/`. An invalid or unlisted item is skipped with a warning.
 
-After adding or changing an MCP, skill, script or slash command, run `pnpm run docs:catalog` to regenerate the catalog tables in `README.md`. CI fails (`pnpm run docs:catalog:check`) when they are out of date.
+After adding or changing an MCP, skill, script, slash command or hook, run `pnpm run docs:catalog` to regenerate the catalog tables in `README.md`. CI fails (`pnpm run docs:catalog:check`) when they are out of date.
 
 When catalog items change, also refresh the docs site pages:
 
@@ -65,7 +66,7 @@ pnpm run docs:website-catalog:check
 
 That regenerates Markdown under `website/src/content/docs/{en,es}/catalog/` from `catalog/` (read-only). Profiles stay browse-only with a not-installable callout. The isolated `.github/workflows/website.yml` workflow runs the same emit step before the Astro build; root `ci.yml` / `cd.yml` do not.
 
-Names for MCPs, skills, scripts and slash commands must match `^[a-z0-9][a-z0-9-]*$` (lowercase letters, digits and hyphens; no leading hyphen).
+Names for MCPs, skills, scripts, slash commands and hooks must match `^[a-z0-9][a-z0-9-]*$` (lowercase letters, digits and hyphens; no leading hyphen).
 
 ### Add a skill
 
@@ -185,13 +186,52 @@ Install behavior: the file is copied flat to `~/.claude/commands/<name>.md` (`us
 - `--force` backs the file up under `~/.claude/.shitaku/backups/` and replaces it; `shitaku undo` restores the original bytes. Undo refuses (exit `3`) if the file changed after the install, unless `--force` is set.
 - `shitaku uninstall <name> --kind command` removes only that file. The bundled catalog ships no command yet, so tests use fixtures and never depend on a bundled one.
 
+### Adding catalog items: hooks
+
+A hook is one JSON file that adds a single Claude Code `command` handler to the `hooks` key of a `settings.json`. Hooks run commands with the user's full permissions, so review them as you would code.
+
+1. Create `catalog/hooks/<name>.json`. The `name` field must equal the file name and match the naming rule.
+2. Fields: `name`, `description`, `event` (a hook event such as `PostToolUse`) and `command` are required; `matcher` (omitted means all), `timeout` (positive number) and `type` (only `command`) are optional. Unknown fields, several handlers and a non-`command` type are rejected.
+
+   ```json
+   {
+     "name": "fmt",
+     "description": "Format files after Claude edits them.",
+     "event": "PostToolUse",
+     "matcher": "Edit|Write",
+     "command": "${CLAUDE_PROJECT_DIR}/scripts/format.sh",
+     "timeout": 30
+   }
+   ```
+
+3. Secrets: `command` and `matcher` must not contain a literal secret. Write `${VAR}` references; they are copied unchanged and never expanded by shitaku. The check is a heuristic (known token shapes and `NAME=value` credentials), so it does not replace review. Never commit a real token.
+4. Add the name to `items.hooks` in `catalog/catalog.json`, and to the `hooks` list of any profile that should include it (it must exist in the catalog). A file that is not listed, or a listed one that is missing or invalid, is skipped with a warning. Update `test/adapters/catalog/bundled-catalog.test.ts` when you add a bundled hook.
+5. Verify:
+
+   ```sh
+   pnpm run build
+   node dist/main.js list hooks
+   node dist/main.js init --hooks my-hook --scope project --dry-run
+   pnpm test
+   ```
+
+   The dry run prints the exact event, matcher and command and `my-hook: create`, and writes nothing. Regenerate the README and website tables with `pnpm run docs:catalog` and `pnpm run docs:website-catalog`.
+
+Install behavior: `init --hooks <name>` merges the handler into `~/.claude/settings.json` (`user`) or `./.claude/settings.json` (`project`), never into `settings.local.json`, and writes no marker key: the manifest records the file, event, matcher and handler and finds the hook by exact content. It always confirms the exact commands first; `--yes` does not skip that, only `--allow-hooks` does, and a non-interactive run without it writes nothing and exits `1`. Hooks from `--source` follow the same gate.
+
+- A hook you edit in `settings.json` no longer matches, so `status` reports it `missing` and `uninstall --kind hook` reports it already absent.
+- `shitaku undo` restores the original bytes, and with `--force` removes only the handlers it installed. `shitaku uninstall <name> --kind hook` removes only that handler.
+- Settings must be strict JSON; a file with comments or trailing commas is refused and nothing is written.
+- Claude Code reloads hooks live and may write `settings.json` itself, so avoid `/config` during an install.
+- Older shitaku versions throw a `ManifestError` on a manifest entry with `kind: 'hook'`; undo or uninstall hooks before downgrading.
+
 ### Add a profile
 
-A profile is a named bundle of MCPs, skills, scripts and slash commands.
+A profile is a named bundle of MCPs, skills, scripts, slash commands and hooks.
 
 1. Create `catalog/profiles/<name>.json`. The `name` field must equal the file name.
-2. Fields: `name` (required), `description`, `extends` (profile names, applied first), `mcps`, `skills`, `scripts`, `commands` (names that exist in the catalog).
-3. Every referenced MCP, skill, script, command and parent profile must exist, and `extends` must not form a cycle. A profile that does not resolve is skipped with a warning.
+2. Fields: `name` (required), `description`, `extends` (profile names, applied first), `mcps`, `skills`, `scripts`, `commands`, `hooks` (names that exist in the catalog).
+3. Every referenced MCP, skill, script, command, hook and parent profile must exist, and `extends` must not form a cycle. A profile that does not resolve is skipped with a warning.
 4. Add the name to `items.profiles` in `catalog/catalog.json`, then update `test/adapters/catalog/bundled-catalog.test.ts` if needed.
 
 The CLI cannot select a profile yet; profiles are validated and resolved but not installable by name.
