@@ -14,7 +14,7 @@ A settings file that cannot be read or parsed MUST NOT abort `status`. Each hook
 
 ### Requirement: Doctor findings for hooks
 
-`doctor` MUST report an owned hook that is absent from its settings file as a finding naming the hook, event, and settings path. It MUST also report an owned hook that was edited, using the state decided in design. A present, unmodified hook MUST NOT produce a finding. `doctor` MUST NOT write.
+`doctor` MUST report an owned hook that is absent from its settings file as a finding naming the hook, event, and settings path. It MUST also report an owned hook that was edited, as `missing` (design c). A present, unmodified hook MUST NOT produce a finding. `doctor` MUST NOT write.
 
 #### Scenario: Hook removed
 
@@ -26,7 +26,7 @@ A settings file that cannot be read or parsed MUST NOT abort `status`. Each hook
 
 - GIVEN owned hook `fmt` whose command was edited
 - WHEN `doctor` runs
-- THEN it reports `fmt` as drifted and writes nothing
+- THEN it reports `fmt` as `hook-missing` and writes nothing
 
 #### Scenario: Healthy hook
 
@@ -83,7 +83,7 @@ Each item MUST have exactly one state, evaluated in this order:
 | `out-of-date`          | current equals recorded, catalog hash differs                                              |
 | `installed`            | current, recorded, and catalog hashes equal                                                |
 
-`modified` MUST win over `out-of-date`. Hashes are entry hash for MCPs, tree hash for skills and scripts, file-bytes hash for commands, and canonical handler hash for hooks. For an MCP or hook, only its own entry or handler is compared. OPEN (design): whether a hook whose handler was edited is reported as `modified` or as `missing`, because an edited handler is no longer locatable by canonical match.
+`modified` MUST win over `out-of-date`. Hashes are entry hash for MCPs, tree hash for skills and scripts, file-bytes hash for commands, and canonical handler hash for hooks. For an MCP or hook, only its own entry or handler is compared. Decided in design (c): a hook whose handler was edited is reported as `missing`, because an edited handler is no longer locatable by canonical match; only an unparseable settings file is reported as `modified`.
 (Previously: no hook handler state)
 
 #### Scenario: Installed
@@ -114,7 +114,7 @@ Each item MUST have exactly one state, evaluated in this order:
 
 - GIVEN the command of owned hook `fmt` was edited in `settings.json`
 - WHEN `status` runs
-- THEN `fmt` is reported as `modified` or `missing` (decided in design), never `installed`
+- THEN `fmt` is reported as `missing` (design c), never `installed`
 
 #### Scenario: Unlisted user hook ignored
 

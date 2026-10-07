@@ -140,7 +140,7 @@ Hook installation MUST present the exact event, matcher, and command text and re
 
 ### Requirement: Ownership
 
-Ownership MUST be recorded in the manifest as scope, settings path, event, matcher, and handler hash, and located by canonical JSON equality. No marker key MUST be written into user files. Whether an edited owned hook reports `modified` or `missing` is OPEN (decided in design).
+Ownership MUST be recorded in the manifest as scope, settings path, event, matcher, and handler hash, and located by canonical JSON equality. No marker key MUST be written into user files. An edited owned hook is reported `missing`, never `modified` (decided in design c).
 
 #### Scenario: Clean file
 

@@ -4,7 +4,7 @@
 
 ### Requirement: Hook uninstall
 
-`uninstall <name> --kind hook` MUST remove only the owned handler from its settings file, back up the pre-removal bytes, journal action `remove`, and exit 0. Other handlers, groups, events, and unknown keys MUST remain unchanged and in order. A group or event MUST be removed only if shitaku created it and it is now empty. If the handler cannot be located because it was edited, the command MUST exit 3 without writing unless `--force`; the exact `--force` semantics for an edited hook are decided in design. If the handler is absent, it MUST report "already absent", write nothing, and exit 0. A malformed settings file MUST exit non-zero without writing.
+`uninstall <name> --kind hook` MUST remove only the owned handler from its settings file, back up the pre-removal bytes, journal action `remove`, and exit 0. Other handlers, groups, events, and unknown keys MUST remain unchanged and in order. A group or event MUST be removed only if shitaku created it and it is now empty. An edited handler is indistinguishable from a removed one (design decision c), so both MUST be reported as "already absent", write nothing, and exit 0; a hook MUST never be reported as modified, and `--force` MUST have no effect on hooks. A malformed settings file MUST exit non-zero without writing.
 
 #### Scenario: Unmodified hook removed
 
@@ -18,11 +18,11 @@
 - WHEN `uninstall fmt --kind hook` runs
 - THEN only the shitaku handler is removed
 
-#### Scenario: Edited hook refused
+#### Scenario: Edited hook treated as absent
 
 - GIVEN the user edited the command of owned `fmt`
-- WHEN `uninstall fmt --kind hook` runs without `--force`
-- THEN exit is 3 and nothing is written
+- WHEN `uninstall fmt --kind hook` runs, with or without `--force`
+- THEN "already absent" is reported, nothing is written, and exit is 0
 
 #### Scenario: Already absent
 
