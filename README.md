@@ -129,6 +129,14 @@ _No slash commands in the bundled catalog yet._
 
 <!-- catalog:commands:end -->
 
+### Hooks
+
+<!-- catalog:hooks:start -->
+
+_No hooks in the bundled catalog yet._
+
+<!-- catalog:hooks:end -->
+
 ## Usage
 
 Examples below use the global `shitaku` command. After a one-off run, substitute `npx @jsisques/shitaku` for `shitaku`.
