@@ -4,8 +4,8 @@
 
 ### Requirement: Catalog layout and schema
 
-The catalog MUST be a folder with `catalog.json` (`{ "version": 1, "items": { "mcps": [...], "skills": [...], "profiles": [...], "scripts": [...] } }`, listing item names; `skills` and `scripts` are optional and default to empty), `mcps/<name>.json`, `skills/<name>/SKILL.md` (plus optional resources, including binary files), `scripts/<name>/index.mjs` plus validated metadata, and `profiles/<name>.json`. Each MCP item MUST have `name`, `description`, `server`, and optional `env` and `targets`. Env entries MUST carry `name` and `required`. Each skill's `SKILL.md` MUST have YAML frontmatter with non-empty `name` (equal to its directory name and listed in `items.skills`) and non-empty `description`. `instructions/` and `hooks/` are reserved and MUST be ignored.
-(Previously: no scripts kind in items or layout)
+The catalog MUST be a folder with `catalog.json` (`{ "version": 1, "items": { "mcps": [...], "skills": [...], "profiles": [...], "scripts": [...], "commands": [...] } }`, listing item names; `skills`, `scripts`, and `commands` are optional and default to empty), `mcps/<name>.json`, `skills/<name>/SKILL.md` (plus optional resources, including binary files), `scripts/<name>/index.mjs` plus validated metadata, `commands/<name>.md`, and `profiles/<name>.json`. Each MCP item MUST have `name`, `description`, `server`, and optional `env` and `targets`. Env entries MUST carry `name` and `required`. Each skill's `SKILL.md` MUST have YAML frontmatter with non-empty `name` (equal to its directory name and listed in `items.skills`) and non-empty `description`. `instructions/` and `hooks/` are reserved and MUST be ignored.
+(Previously: no commands kind in items or layout)
 
 #### Scenario: Valid MCP item
 
@@ -71,8 +71,8 @@ The loader MUST validate every item with the schema. An invalid item MUST be rep
 
 ### Requirement: Profile extends
 
-Profiles MAY `extends` other profiles and MAY list `skills` and `scripts` (each default empty). Resolution MUST merge parents first, de-duplicate MCP names, skill names, and script names, and fail on cycles or unknown references (MCP, skill, or script). Applying profiles in `init` is out of scope; resolution only.
-(Previously: profiles could not reference scripts)
+Profiles MAY `extends` other profiles and MAY list `skills`, `scripts`, and `commands` (each default empty). Resolution MUST merge parents first, de-duplicate MCP, skill, script, and command names, and fail on cycles or unknown references (MCP, skill, script, or command). Existing profiles without `commands` MUST remain valid. Applying profiles in `init` is out of scope; resolution only.
+(Previously: profiles could not reference commands)
 
 #### Scenario: Extends resolved
 
@@ -92,6 +92,12 @@ Profiles MAY `extends` other profiles and MAY list `skills` and `scripts` (each 
 - WHEN `web` is resolved
 - THEN `lint` appears once
 
+#### Scenario: Commands resolved
+
+- GIVEN `base` lists command `review` and `web` extends `base` and lists `review`
+- WHEN `web` is resolved
+- THEN `review` appears once
+
 #### Scenario: Cycle
 
 - GIVEN `a` extends `b` and `b` extends `a`
@@ -100,9 +106,15 @@ Profiles MAY `extends` other profiles and MAY list `skills` and `scripts` (each 
 
 #### Scenario: Unknown reference
 
-- GIVEN a profile lists MCP, skill, or script `ghost` that does not exist
+- GIVEN a profile lists MCP, skill, script, or command `ghost` that does not exist
 - WHEN resolved
 - THEN it fails naming `ghost`
+
+#### Scenario: Profile without commands field
+
+- GIVEN a profile JSON without `commands`
+- WHEN loaded
+- THEN it is valid with an empty command list
 
 ### Requirement: Source guards and limits
 
@@ -151,3 +163,31 @@ Catalog MUST support `scripts/<name>/` with `index.mjs` + validated metadata (`n
 - GIVEN missing fields, name mismatch, traversal, symlink, or over-limit script tree
 - WHEN loaded
 - THEN rejected naming path and reason; not selectable
+
+### Requirement: Command catalog entries
+
+The catalog MUST support `commands/<name>.md` listed in `items.commands` (optional, default empty). A command is invalid when: the name violates `^[a-z0-9][a-z0-9-]*$`, a listed name has no file, a `commands/*.md` file is not listed, frontmatter is missing/unparseable/multi-line, or `description` is missing or empty. Invalid commands MUST be reported with path and reason and MUST NOT be installable. Source guards (traversal, symlink, size limit) MUST apply. The bundled catalog is not required to ship a command.
+
+#### Scenario: Valid command
+
+- GIVEN `commands/review.md` with a `description` and `items.commands` lists `review`
+- WHEN loaded
+- THEN command `review` is available
+
+#### Scenario: Invalid or guarded
+
+- GIVEN missing description, unlisted file, ghost entry, or a symlinked file
+- WHEN loaded
+- THEN an error names the path and reason, the command is not selectable, and valid items remain usable
+
+#### Scenario: Invalid name in the index
+
+- GIVEN `items.commands` lists a name that violates the name pattern (for example `Review` or `../evil`)
+- WHEN loaded
+- THEN the whole catalog fails to load with an error naming the entry, as for skills and scripts
+
+#### Scenario: Old catalog without commands
+
+- GIVEN `catalog.json` has no `items.commands`
+- WHEN loaded
+- THEN it loads with zero commands and no error
