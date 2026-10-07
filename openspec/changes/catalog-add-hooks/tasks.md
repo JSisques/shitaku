@@ -62,8 +62,8 @@ Every PR: RED test first, then GREEN, then REFACTOR; tests and docs stay with co
 
 ## PR 5: Undo
 
-- [ ] 5.1 RED: byte restore, delete if created, drift refused exit 3, `--force` targeted reverse, `.claude/` pruning (`test/application/undo-install.test.ts`)
-- [ ] 5.2 GREEN: `src/application/undo-install.ts` roots, `isByteFile`, `prunableDirs`, reverse precomputed before first write
+- [x] 5.1 RED: byte restore, delete if created, drift refused exit 3, `--force` targeted reverse, `.claude/` pruning (`test/application/undo-install.test.ts`)
+- [x] 5.2 GREEN: `src/application/undo-install.ts` roots, `isByteFile`, `prunableDirs`, reverse precomputed before first write
 
 ## PR 6: Uninstall, status, doctor
 
