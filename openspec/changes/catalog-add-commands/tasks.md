@@ -86,10 +86,10 @@ Commit scopes: PR 1 `feat(catalog)`; 2a `feat(plan)`; 2b `feat(init)`; 2c `feat(
 
 ## PR 3a: CLI surface (flag lands last)
 
-- [ ] 3a.1 RED: extend `test/adapters/cli/program.test.ts`: `init --commands review` selects; `--commands ghost` exits non-zero naming `ghost`; `--yes` conflict without `--force` exits 2; `list` shows five kinds; `list commands` and empty = `no matching items` exit 0; `list widgets` commander error (pin exit code under `exitOverride`); `uninstall --kind command` accepted, `--kind widget` rejected. [Selection; Catalog List: Kind filter; Item Uninstall: Command surface]
-- [ ] 3a.2 RED: extend `test/adapters/cli/clack-prompter.test.ts`: commands select appears only when catalog has commands; conflict warn+ask; `printPlan` shows commands. [Prompt hidden when empty]
-- [ ] 3a.3 GREEN: modify `src/ports/prompter.ts`, `src/adapters/cli/clack-prompter.ts`, `src/adapters/cli/program.ts` (`--commands`, select, conflicts, `printPlan`, `--kind` choices, `list` kind).
-- [ ] 3a.4 Gate: typecheck, lint, format:check, test, build; manual `init --commands review --dry-run` against a fixture catalog.
+- [x] 3a.1 RED: extend `test/adapters/cli/program.test.ts`: `init --commands review` selects; `--commands ghost` exits non-zero naming `ghost`; `--yes` conflict without `--force` exits 2; `list` shows five kinds; `list commands` and empty = `no matching items` exit 0; `list widgets` commander error (pin exit code under `exitOverride`); `uninstall --kind command` accepted, `--kind widget` rejected. [Selection; Catalog List: Kind filter; Item Uninstall: Command surface]
+- [x] 3a.2 RED: extend `test/adapters/cli/clack-prompter.test.ts`: commands select appears only when catalog has commands; conflict warn+ask; `printPlan` shows commands. [Prompt hidden when empty]
+- [x] 3a.3 GREEN: modify `src/ports/prompter.ts`, `src/adapters/cli/clack-prompter.ts`, `src/adapters/cli/program.ts` (`--commands`, select, conflicts, `printPlan`, `--kind` choices, `list` kind).
+- [x] 3a.4 Gate: typecheck, lint, format:check, test, build; manual `init --commands review --dry-run` against a fixture catalog.
 
 ## PR 3b: Docs, generators, website (en + es)
 
