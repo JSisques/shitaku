@@ -8,7 +8,7 @@ import { runCli, type CliDeps } from '@/adapters/cli/program.js';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
 import { NodeFileSystem } from '@/adapters/fs/node-fs.js';
 import type { InstallMethod } from '@/domain/install-method.js';
-import { PromptCancelled, type Prompter } from '@/ports/prompter.js';
+import { PromptCancelled, type HookPreview, type Prompter } from '@/ports/prompter.js';
 import type { ProcessRunner } from '@/ports/process-runner.js';
 import { parseDoc } from '@test/helpers/parse-doc.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
@@ -18,12 +18,15 @@ const TOKEN = 'abc123-secret-value';
 
 /** Scripted prompter; any call it was not scripted for fails the test. */
 function fakePrompter(
-  script: Partial<Record<'mcps' | 'skills' | 'scripts' | 'commands' | 'scope' | 'confirm', unknown>> & {
+  script: Partial<
+    Record<'mcps' | 'skills' | 'scripts' | 'commands' | 'hooks' | 'scope' | 'confirm' | 'confirmHooks', unknown>
+  > & {
     conflict?: 'overwrite' | 'skip';
   } = {},
 ) {
   const calls: string[] = [];
   const conflicts: { kind: string; name: string; reason: string }[] = [];
+  const hookPreviews: HookPreview[][] = [];
   const unscripted = (name: string): never => {
     throw new Error(`unexpected prompt: ${name}`);
   };
@@ -44,6 +47,15 @@ function fakePrompter(
       calls.push('commands'),
       Promise.resolve((script.commands as string[] | undefined) ?? unscripted('commands'))
     ),
+    selectHooks: () => (
+      calls.push('hooks'),
+      Promise.resolve((script.hooks as string[] | undefined) ?? unscripted('hooks'))
+    ),
+    confirmHooks: (previews) => (
+      calls.push('confirmHooks'),
+      hookPreviews.push(previews),
+      Promise.resolve((script.confirmHooks as boolean | undefined) ?? unscripted('confirmHooks'))
+    ),
     selectScope: () => (
       calls.push('scope'),
       Promise.resolve((script.scope as 'project' | 'user' | undefined) ?? unscripted('scope'))
@@ -59,7 +71,7 @@ function fakePrompter(
     ),
     info: () => {},
   };
-  return { prompter, calls, conflicts };
+  return { prompter, calls, conflicts, hookPreviews };
 }
 
 describe('runCli', () => {
@@ -69,6 +81,7 @@ describe('runCli', () => {
   let prompter: Prompter;
   let calls: string[];
   let conflicts: { kind: string; name: string; reason: string }[];
+  let hookPreviews: HookPreview[][];
   let env: Record<string, string | undefined>;
   let updates: CliDeps['updates'];
   let cliVersion: string | undefined;
@@ -102,7 +115,7 @@ describe('runCli', () => {
     return runCli(['node', 'shitaku', ...args], deps);
   };
   const usePrompter = (script?: Parameters<typeof fakePrompter>[0]) =>
-    ({ prompter, calls, conflicts } = fakePrompter(script));
+    ({ prompter, calls, conflicts, hookPreviews } = fakePrompter(script));
 
   beforeEach(async () => {
     tmp = await makeTmpPaths();
@@ -631,6 +644,197 @@ describe('runCli', () => {
     it('rejects --kind widget with the allowed choices', async () => {
       expect(await run('uninstall', 'review', '--kind', 'widget')).toBe(1);
       expect(err.join('\n')).toContain('Allowed choices are mcp, skill, script, command');
+    });
+  });
+
+  describe('hooks', () => {
+    const settings = (root = tmp.cwd) => join(root, '.claude', 'settings.json');
+    const FMT = {
+      description: 'Format after edits',
+      event: 'PostToolUse',
+      matcher: 'Edit|Write',
+      command: 'prettier -w .',
+      timeout: 30,
+    };
+    const REVIEW = '---\ndescription: Review a diff\n---\nReview $ARGUMENTS\n';
+    const FMT_PREVIEW = [
+      "hook 'fmt' (project scope)",
+      '  event: PostToolUse',
+      '  matcher: Edit|Write',
+      '  command: prettier -w .',
+      '  timeout: 30s',
+    ];
+    /** A folder catalog that offers hook `fmt` (and slash command `review` when asked). */
+    const writeHookCatalog = async (opts: { commands?: boolean; hooks?: boolean } = {}): Promise<string> => {
+      const { commands = false, hooks = true } = opts;
+      const dir = join(tmp.root, 'hooks-catalog');
+      await mkdir(join(dir, 'hooks'), { recursive: true });
+      await mkdir(join(dir, 'commands'), { recursive: true });
+      const items = {
+        mcps: [],
+        skills: [],
+        scripts: [],
+        commands: commands ? ['review'] : [],
+        hooks: hooks ? ['fmt'] : [],
+        profiles: [],
+      };
+      await writeFile(join(dir, 'catalog.json'), JSON.stringify({ version: 1, items }));
+      if (hooks) await writeFile(join(dir, 'hooks', 'fmt.json'), JSON.stringify({ name: 'fmt', ...FMT }));
+      if (commands) await writeFile(join(dir, 'commands', 'review.md'), REVIEW);
+      return dir;
+    };
+    const handler = { type: 'command', command: 'prettier -w .', timeout: 30 };
+    const installed = { hooks: { PostToolUse: [{ matcher: 'Edit|Write', hooks: [handler] }] } };
+
+    it('lists --hooks and --allow-hooks in init help and warns that hooks run code', async () => {
+      expect(await run('init', '--help')).toBe(0);
+      expect(text()).toContain('--hooks <names>');
+      expect(text()).toContain('--allow-hooks');
+      expect(text()).toMatch(/hooks? run code/i);
+    });
+
+    it('with --yes but no --allow-hooks shows the exact command, writes nothing and exits 1', async () => {
+      const dir = await writeHookCatalog();
+      expect(await run('init', '--yes', '--hooks', 'fmt', '--scope', 'project', '--source', dir)).toBe(1);
+      expect(err).toEqual(expect.arrayContaining(FMT_PREVIEW));
+      expect(err.join('\n')).toContain('--allow-hooks');
+      expect(await readdir(tmp.cwd)).toEqual([]);
+      expect(await readdir(tmp.homeDir)).toEqual([]);
+      expect(calls).toEqual([]);
+    });
+
+    it('also exits 1 without --yes when --hooks and --scope make the run non-interactive', async () => {
+      const dir = await writeHookCatalog();
+      expect(await run('init', '--hooks', 'fmt', '--scope', 'user', '--source', dir)).toBe(1);
+      expect(err).toContain("hook 'fmt' (user scope)");
+      expect(await readdir(tmp.homeDir)).toEqual([]);
+    });
+
+    it('writes nothing of the other kinds either when the gate refuses', async () => {
+      const dir = await writeHookCatalog({ commands: true });
+      expect(
+        await run('init', '--yes', '--hooks', 'fmt', '--commands', 'review', '--scope', 'project', '--source', dir),
+      ).toBe(1);
+      expect(await readdir(tmp.cwd)).toEqual([]);
+    });
+
+    it('installs with --allow-hooks without prompting, and undo restores the project', async () => {
+      const dir = await writeHookCatalog();
+      expect(await run('init', '--yes', '--allow-hooks', '--hooks', 'fmt', '--scope', 'project', '--source', dir)).toBe(
+        0,
+      );
+      expect(parseDoc(await readFile(settings(), 'utf8'))).toEqual(installed);
+      expect(calls).toEqual([]);
+      expect(out).toContain(`project scope: ${settings()}`);
+      expect(out).toContain('  fmt: create');
+      expect(await run('undo')).toBe(0);
+      await expect(readdir(join(tmp.cwd, '.claude'))).rejects.toThrow();
+    });
+
+    it('installs at user scope with --allow-hooks', async () => {
+      const dir = await writeHookCatalog();
+      expect(await run('init', '--allow-hooks', '--hooks', 'fmt', '--scope', 'user', '--source', dir)).toBe(0);
+      expect(parseDoc(await readFile(settings(tmp.homeDir), 'utf8'))).toEqual(installed);
+    });
+
+    it('--dry-run prints the plan and the exact commands, writes nothing and needs no flag', async () => {
+      const dir = await writeHookCatalog();
+      expect(await run('init', '--hooks', 'fmt', '--scope', 'project', '--dry-run', '--source', dir)).toBe(0);
+      expect(out).toEqual(expect.arrayContaining([`project scope: ${settings()}`, '  fmt: create', ...FMT_PREVIEW]));
+      expect(out).toContain('dry run: nothing was written');
+      expect(await readdir(tmp.cwd)).toEqual([]);
+    });
+
+    it('does not gate a re-run where every hook is already installed', async () => {
+      const dir = await writeHookCatalog();
+      await run('init', '--allow-hooks', '--hooks', 'fmt', '--scope', 'project', '--source', dir);
+      out.length = err.length = 0;
+      expect(await run('init', '--yes', '--hooks', 'fmt', '--scope', 'project', '--source', dir)).toBe(0);
+      expect(out).toContain('nothing to change');
+      expect(err).toEqual([]);
+    });
+
+    it('exits 1 naming an unknown hook and writes nothing', async () => {
+      const dir = await writeHookCatalog();
+      expect(await run('init', '--allow-hooks', '--hooks', 'ghost', '--scope', 'project', '--source', dir)).toBe(1);
+      expect(err.join('\n')).toMatch(/^error: .*ghost/);
+      expect(await readdir(tmp.cwd)).toEqual([]);
+    });
+
+    it('asks for hooks when the catalog has some, shows the previews and installs after confirmation', async () => {
+      const dir = await writeHookCatalog();
+      usePrompter({ mcps: [], hooks: ['fmt'], scope: 'project', confirmHooks: true, confirm: true });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(calls).toEqual(['mcps', 'hooks', 'scope', 'confirmHooks', 'confirm']);
+      expect(hookPreviews).toEqual([
+        [
+          {
+            name: 'fmt',
+            scope: 'project',
+            path: settings(),
+            event: 'PostToolUse',
+            matcher: 'Edit|Write',
+            command: 'prettier -w .',
+            timeout: 30,
+          },
+        ],
+      ]);
+      expect(parseDoc(await readFile(settings(), 'utf8'))).toEqual(installed);
+    });
+
+    it('skips the confirmation prompt with --allow-hooks even when interactive', async () => {
+      const dir = await writeHookCatalog();
+      usePrompter({ mcps: [], hooks: ['fmt'], scope: 'project', confirm: true });
+      expect(await run('init', '--allow-hooks', '--source', dir)).toBe(0);
+      expect(calls).toEqual(['mcps', 'hooks', 'scope', 'confirm']);
+      expect(parseDoc(await readFile(settings(), 'utf8'))).toEqual(installed);
+    });
+
+    it('drops the hooks when the user declines and installs the rest', async () => {
+      const dir = await writeHookCatalog({ commands: true });
+      usePrompter({
+        mcps: [],
+        commands: ['review'],
+        hooks: ['fmt'],
+        scope: 'project',
+        confirmHooks: false,
+        confirm: true,
+      });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(await readFile(join(tmp.cwd, '.claude', 'commands', 'review.md'), 'utf8')).toBe(REVIEW);
+      await expect(readFile(settings(), 'utf8')).rejects.toThrow();
+      expect(calls).toEqual(['mcps', 'commands', 'hooks', 'scope', 'confirmHooks', 'confirm']);
+    });
+
+    it('stops with nothing written when the user declines and only hooks were selected', async () => {
+      const dir = await writeHookCatalog();
+      usePrompter({ mcps: [], hooks: ['fmt'], scope: 'project', confirmHooks: false });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(out).toContain('aborted: nothing was written');
+      expect(calls).not.toContain('confirm');
+      expect(await readdir(tmp.cwd)).toEqual([]);
+    });
+
+    it('does not ask for hooks when the catalog has none', async () => {
+      const dir = await writeHookCatalog({ hooks: false, commands: true });
+      usePrompter({ mcps: [], commands: ['review'], scope: 'project', confirm: true });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(calls).toEqual(['mcps', 'commands', 'scope', 'confirm']);
+    });
+
+    it('uninstalls a hook with --kind hook and undo brings it back', async () => {
+      const dir = await writeHookCatalog();
+      await run('init', '--allow-hooks', '--hooks', 'fmt', '--scope', 'project', '--source', dir);
+      expect(await run('uninstall', 'fmt', '--kind', 'hook')).toBe(0);
+      expect(text()).toMatch(/uninstalled hook 'fmt' \(project scope\)/);
+      expect(parseDoc(await readFile(settings(), 'utf8'))).not.toHaveProperty('hooks.PostToolUse');
+      expect(await run('undo')).toBe(0);
+      expect(parseDoc(await readFile(settings(), 'utf8'))).toEqual(installed);
+    });
+
+    it('offers hook among the --kind choices', async () => {
+      expect(await run('uninstall', 'fmt', '--kind', 'widget')).toBe(1);
+      expect(err.join('\n')).toContain('Allowed choices are mcp, skill, script, command, hook');
     });
   });
 
@@ -1200,7 +1404,7 @@ describe('runCli', () => {
       useUpdates('0.3.0');
       expect(await run('init', '--yes')).toBe(1);
       expect(err).toEqual([
-        'error: select at least one kind: pass --mcps, --skills, --scripts and/or --commands',
+        'error: select at least one kind: pass --mcps, --skills, --scripts, --commands and/or --hooks',
         NOTICE,
       ]);
     });

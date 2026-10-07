@@ -1,17 +1,19 @@
 import { Argument, Command, CommanderError, Option } from 'commander';
 import { renderBanner, shouldShowBanner } from '@/adapters/cli/banner.js';
 import type { TerminalSettings } from '@/adapters/cli/banner.js';
+import { formatHookPreview } from '@/adapters/cli/hook-preview.js';
 import {
   planInit,
   applyPlan,
   LeakError,
   StaleFileError,
   UnknownCommandError,
+  UnknownHookError,
   UnknownMcpError,
   UnknownScriptError,
   UnknownSkillError,
 } from '@/application/init-mcps.js';
-import type { InitDeps } from '@/application/init-mcps.js';
+import type { InitDeps, InitRequest } from '@/application/init-mcps.js';
 import { checkForUpdate } from '@/application/check-update.js';
 import { getDiagnosis } from '@/application/doctor.js';
 import { CatalogLoadError, listCatalog } from '@/application/list-catalog.js';
@@ -26,13 +28,14 @@ import { ConfigError } from '@/domain/json-merge.js';
 import { ManifestError } from '@/domain/manifest.js';
 import type { ChangePlan } from '@/domain/plan/change-plan.js';
 import type { Finding } from '@/domain/plan/doctor-plan.js';
+import type { PlannedHook } from '@/domain/plan/hook-plan.js';
 import type { AgentTarget, Scope } from '@/ports/agent-target.js';
 import type { CatalogSource } from '@/ports/catalog-source.js';
 import { UnsafeTreeError, type FileSystem } from '@/ports/file-system.js';
 import type { Paths } from '@/ports/paths.js';
 import type { ProcessRunner } from '@/ports/process-runner.js';
 import { PromptCancelled } from '@/ports/prompter.js';
-import type { Prompter } from '@/ports/prompter.js';
+import type { HookPreview, Prompter } from '@/ports/prompter.js';
 import type { LatestVersionSource } from '@/ports/version-source.js';
 
 /** Everything the CLI touches, injected by the composition root (or by tests). */
@@ -79,6 +82,9 @@ interface InitOptions {
   skills?: string[];
   scripts?: string[];
   commands?: string[];
+  hooks?: string[];
+  /** The one flag that skips the hook confirmation; `--yes` never does. */
+  allowHooks?: boolean;
   scope?: Scope;
   source?: string;
   dryRun?: boolean;
@@ -157,13 +163,38 @@ function printPlan(deps: CliDeps, plan: ChangePlan): void {
     deps.out(`${command.scope} scope: ${command.path}`);
     deps.out(row(command.name, command.action, command.reason));
   }
+  for (const file of plan.hooks.filter((f) => f.items.length > 0)) {
+    deps.out(`${file.scope} scope: ${file.path}`);
+    for (const hook of file.items) deps.out(row(hook.name, hook.action, hook.reason));
+  }
   for (const v of plan.requiredEnv)
     deps.out(v.set ? `env ${v.name}: set` : `warning: ${v.name} is not set; set it before using the server`);
 }
 
+/** What each hook the plan would write or change adds to its settings file, for the gate to show. */
+function hookPreviews(plan: ChangePlan): HookPreview[] {
+  const preview = (scope: Scope, path: string, hook: PlannedHook): HookPreview => {
+    const { command, timeout } = hook.handler;
+    return {
+      name: hook.name,
+      scope,
+      path,
+      event: hook.event,
+      matcher: hook.matcher,
+      command: typeof command === 'string' ? command : '',
+      ...(typeof timeout === 'number' ? { timeout } : {}),
+    };
+  };
+  return plan.hooks.flatMap((f) => f.items.filter((h) => h.action !== 'skip').map((h) => preview(f.scope, f.path, h)));
+}
+
 function hasKindFlag(opts: InitOptions): boolean {
   return (
-    opts.mcps !== undefined || opts.skills !== undefined || opts.scripts !== undefined || opts.commands !== undefined
+    opts.mcps !== undefined ||
+    opts.skills !== undefined ||
+    opts.scripts !== undefined ||
+    opts.commands !== undefined ||
+    opts.hooks !== undefined
   );
 }
 
@@ -176,7 +207,7 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
   const kindFlag = hasKindFlag(opts);
   const nonInteractive = initIsNonInteractive(opts);
   if (nonInteractive && !kindFlag) {
-    deps.err('error: select at least one kind: pass --mcps, --skills, --scripts and/or --commands');
+    deps.err('error: select at least one kind: pass --mcps, --skills, --scripts, --commands and/or --hooks');
     return 1;
   }
   if (nonInteractive && opts.scope === undefined) {
@@ -212,13 +243,16 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
   const commands =
     opts.commands ??
     (kindFlag || catalog.commands.length === 0 ? [] : await deps.prompter.selectCommands(catalog.commands));
-  if (mcps.length === 0 && skills.length === 0 && scripts.length === 0 && commands.length === 0) {
-    deps.err('error: select at least one MCP, skill, script or command');
+  const hooks =
+    opts.hooks ?? (kindFlag || catalog.hooks.length === 0 ? [] : await deps.prompter.selectHooks(catalog.hooks));
+  if (mcps.length + skills.length + scripts.length + commands.length + hooks.length === 0) {
+    deps.err('error: select at least one MCP, skill, script, command or hook');
     return 1;
   }
   const scope = opts.scope ?? (await deps.prompter.selectScope());
   let force = opts.force === true;
-  let plan = await planInit(initDeps, { mcps, skills, scripts, commands, scope, force });
+  let request: InitRequest = { mcps, skills, scripts, commands, hooks, scope, force };
+  let plan = await planInit(initDeps, request);
 
   const conflicts = [
     ...plan.files
@@ -244,20 +278,41 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
       if (choice === 'skip') keep[c.kind].delete(c.name);
       else force = true;
     }
-    plan = await planInit(initDeps, {
+    request = {
       mcps: mcps.filter((m) => keep.mcp.has(m)),
       skills: skills.filter((sk) => keep.skill.has(sk)),
       scripts: scripts.filter((sc) => keep.script.has(sc)),
       commands: commands.filter((c) => keep.command.has(c)),
+      hooks,
       scope,
       force,
-    });
+    };
+    plan = await planInit(initDeps, request);
+  }
+
+  // Hooks run code, so `--yes` is not consent: only --allow-hooks or an explicit answer installs them.
+  const previews = hookPreviews(plan);
+  if (previews.length > 0 && !opts.dryRun && opts.allowHooks !== true) {
+    if (nonInteractive) {
+      for (const line of previews.flatMap(formatHookPreview)) deps.err(line);
+      deps.err('error: hooks run commands with your permissions; review them above and re-run with --allow-hooks');
+      return 1;
+    }
+    if (!(await deps.prompter.confirmHooks(previews))) {
+      request = { ...request, hooks: [] };
+      plan = await planInit(initDeps, request);
+      if (plan.files.length + plan.skills.length + plan.scripts.length + plan.commands.length === 0) {
+        deps.out('aborted: nothing was written');
+        return 0;
+      }
+    }
   }
 
   printPlan(deps, plan);
   if (scope === 'user' && plan.files.length > 0)
     deps.out('note: close Claude Code before applying, it may rewrite ~/.claude.json while running');
   if (opts.dryRun) {
+    for (const line of previews.flatMap(formatHookPreview)) deps.out(line);
     deps.out('dry run: nothing was written');
     return 0;
   }
@@ -294,7 +349,7 @@ async function runUndo(deps: CliDeps, opts: { id?: string; force?: boolean; dryR
 
 interface UninstallOptions {
   scope?: Scope;
-  kind?: 'mcp' | 'skill' | 'script' | 'command';
+  kind?: 'mcp' | 'skill' | 'script' | 'command' | 'hook';
   dryRun?: boolean;
   force?: boolean;
 }
@@ -536,15 +591,23 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
   program
     .command('init')
-    .description('Install MCP servers, skills, scripts and slash commands for Claude Code')
+    .description('Install MCP servers, skills, scripts, slash commands and hooks for Claude Code')
     .option('--mcps <names>', 'comma-separated MCP names', csv)
     .option('--skills <names>', 'comma-separated skill names', csv)
     .option('--scripts <names>', 'comma-separated script names', csv)
     .option('--commands <names>', 'comma-separated slash command names', csv)
+    .option('--hooks <names>', 'comma-separated hook names (hooks run code: you confirm the exact commands first)', csv)
+    .option(
+      '--allow-hooks',
+      'install the selected hooks without asking; --yes alone never does (they run code with your permissions)',
+    )
     .addOption(new Option('--scope <scope>', 'where to install').choices(['project', 'user']))
-    .option('--source <folder>', 'use a catalog folder instead of the bundled one (trusted: its commands run later)')
+    .option(
+      '--source <folder>',
+      'use a catalog folder instead of the bundled one (trusted: its commands and hooks run code)',
+    )
     .option('--dry-run', 'print the plan without writing anything')
-    .option('--yes', 'skip confirmation (requires --scope and --mcps, --skills, --scripts and/or --commands)')
+    .option('--yes', 'skip confirmation (requires --scope and --mcps, --skills, --scripts, --commands and/or --hooks)')
     .option(
       '--force',
       'overwrite existing entries, skill/script directories and command files that differ (backed up first)',
@@ -564,14 +627,15 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
   program
     .command('uninstall <name>')
-    .description('Remove one MCP server, skill, script or slash command that shitaku installed (undo reverts it)')
+    .description('Remove one MCP server, skill, script, slash command or hook that shitaku installed (undo reverts it)')
     .addOption(new Option('--scope <scope>', 'scope to remove from (default: inferred)').choices(['project', 'user']))
     .addOption(
-      new Option('--kind <kind>', 'resolve a name that is an MCP, skill, script and/or command').choices([
+      new Option('--kind <kind>', 'resolve a name that is an MCP, skill, script, command and/or hook').choices([
         'mcp',
         'skill',
         'script',
         'command',
+        'hook',
       ]),
     )
     .option('--dry-run', 'show what would be removed')
@@ -594,7 +658,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
   program
     .command('list')
-    .description('List the MCPs, skills, profiles, scripts and slash commands a catalog offers')
+    .description('List the MCPs, skills, profiles, scripts, slash commands and hooks a catalog offers')
     .addArgument(new Argument('[kind]', 'only list this kind').choices(LIST_KINDS))
     .option('--search <text>', 'only items whose name or description contains this text (case-insensitive)')
     .option('--source <folder>', 'list a catalog folder instead of the bundled one')
@@ -670,6 +734,7 @@ async function guarded(deps: CliDeps, run: () => Promise<number>): Promise<numbe
       UnknownSkillError,
       UnknownScriptError,
       UnknownCommandError,
+      UnknownHookError,
       UnsafeTreeError,
       StaleFileError,
       LeakError,
