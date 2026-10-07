@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmod, mkdir, readdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readdir, readFile, readlink, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { NodeFileSystem } from '@/adapters/fs/node-fs.js';
@@ -33,6 +33,39 @@ describe('NodeFileSystem', () => {
     await fs.writeAtomic(file, 'new');
     expect((await stat(file)).mode & 0o777).toBe(0o600);
     expect(await readFile(file, 'utf8')).toBe('new');
+  });
+
+  it('writes through a symlinked target: the link survives and its target is rewritten', async () => {
+    const real = join(tmp.cwd, 'dotfiles', 'settings.json');
+    await mkdir(join(tmp.cwd, 'dotfiles'));
+    await writeFile(real, 'old');
+    await chmod(real, 0o600);
+    const link = join(tmp.cwd, 'settings.json');
+    await symlink(real, link);
+    await fs.writeAtomic(link, 'new');
+    expect((await lstat(link)).isSymbolicLink()).toBe(true);
+    expect(await readlink(link)).toBe(real);
+    expect(await readFile(real, 'utf8')).toBe('new');
+    expect((await stat(real)).mode & 0o777).toBe(0o600);
+    expect(await readdir(join(tmp.cwd, 'dotfiles'))).toEqual(['settings.json']);
+  });
+
+  it('follows a chain of relative symlinks to the final file', async () => {
+    await mkdir(join(tmp.cwd, 'a'));
+    await writeFile(join(tmp.cwd, 'a', 'real.json'), 'old');
+    await symlink('real.json', join(tmp.cwd, 'a', 'mid.json'));
+    await symlink(join('a', 'mid.json'), join(tmp.cwd, 'top.json'));
+    await fs.writeAtomic(join(tmp.cwd, 'top.json'), 'new');
+    expect((await lstat(join(tmp.cwd, 'top.json'))).isSymbolicLink()).toBe(true);
+    expect((await lstat(join(tmp.cwd, 'a', 'mid.json'))).isSymbolicLink()).toBe(true);
+    expect(await readFile(join(tmp.cwd, 'a', 'real.json'), 'utf8')).toBe('new');
+  });
+
+  it('replaces a dangling symlink with a regular file instead of failing', async () => {
+    const link = join(tmp.cwd, 'dangling.json');
+    await symlink(join(tmp.cwd, 'missing.json'), link);
+    await fs.writeAtomic(link, 'new');
+    expect(await readFile(link, 'utf8')).toBe('new');
   });
 
   it('reports a failed rename, keeps the target intact and removes the temp file', async () => {
