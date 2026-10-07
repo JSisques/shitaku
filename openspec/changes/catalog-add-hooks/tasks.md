@@ -94,6 +94,9 @@ Every PR: RED test first, then GREEN, then REFACTOR; tests and docs stay with co
 - [x] 9.6 Test: a name that is both a command and a hook needs `--kind` (`test/application/uninstall-item.test.ts`) (W6)
 - [x] 9.7 Test: security note tokens exist in README, CONTRIBUTING and security en/es (`test/hooks-docs.test.ts`) (W7)
 - [x] 9.8 Docs: what a hook install keeps and normalizes, and the re-plan wording on the security pages (W2, W5)
+- [x] 9.9 Docs: hook field table on the en and es security pages, guarded by `test/hooks-docs.test.ts` (W1)
+- [x] 9.10 Fix: keep CRLF only when every newline is CRLF (mixed files are written as LF), test RED first, wording updated on all four surfaces (S1)
+- [x] 9.11 Docs: uninstalling the hook whose install created `hooks` can leave `"hooks": {}`; guard test extended (S2)
 - Not done: S3 (secret heuristic gaps), S4 (position of a re-added handler), S5 (TDD evidence table of earlier PRs).
 
 ## Key Learnings

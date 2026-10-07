@@ -326,3 +326,17 @@ Strict TDD. Fixes the CRITICAL and W1-W7 of the full verify (S1 and S2 done; S3-
 - W2 documents what cannot be preserved (one-line arrays, integer-like key order, integers above 2^53, `\u` escapes); CRLF is now preserved. The Spanish security text was written in neutral register.
 - S1: empty or whitespace-only settings fail closed with `config file is empty`. S2: serialization failures (deep nesting RangeError) become a ConfigError naming the file.
 - Next: re-run sdd-verify, then archive.
+
+## PR 9 remediation, second round (tasks 9.9-9.11)
+
+Findings from the re-verify report (W1, S1, S2). Mode: strict TDD for code.
+
+| Task | Test file                                                       | RED                                                 | GREEN                | Notes                                                 |
+| ---- | --------------------------------------------------------------- | --------------------------------------------------- | -------------------- | ----------------------------------------------------- |
+| 9.10 | `test/domain/hook-merge.test.ts`                                | mixed LF/CRLF file came back as all CRLF (1 failed) | 41 passed            | `isAllCrlf`: has CRLF and no bare LF; 3 lines of code |
+| 9.9  | `test/hooks-docs.test.ts` (format tokens, table row, en and es) | n/a: docs guard written together with the table     | passed in full suite | table mirrors `src/domain/catalog/hook.ts`            |
+| 9.11 | `test/hooks-docs.test.ts` (empty `hooks` key, all 4 surfaces)   | n/a: docs guard                                     | passed in full suite | wording: removal never drops the `hooks` key itself   |
+
+Validation: `typecheck`, `lint`, `format:check`, `test`, `build`, `docs:catalog:check`, `docs:website-catalog:check` all exit 0. Total PR 9 outside openspec: 398 insertions, 25 deletions (`git diff --shortstat 6f3203b...HEAD -- . ':!openspec'`), 423 changed lines, over the soft 400 if deletions count; no size:exception requested (insertions-only measure is 398).
+
+Decisions: S1 fixed in code (a file is CRLF only when every newline is CRLF) because it is clearly right and tiny; the "kept" wording now says a mixed file is written as LF. Next: re-run sdd-verify, then archive.
