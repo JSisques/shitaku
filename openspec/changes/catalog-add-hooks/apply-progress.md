@@ -133,3 +133,32 @@ Note: the old-manifest parse test passes without production changes once `derive
 
 - Added `deriveHookOwnership` and `OwnedHook`, not named in the task list, because `buildHookPlan` needs the owned event, matcher, handler and created flags.
 - An owned hook whose event or matcher changed in the catalog is appended as a new create; the old handler is left in place (no move). Open edge case for a later PR.
+
+## PR 4: Port, target, init/apply (tasks 4.1-4.4)
+
+Branch `feat/hooks-4-init-apply` (stacked on #217, not pushed). Commits: `feat(claude-code)` settingsPath and toHookHandler, `feat(init)` install catalog hooks into the settings file, plus this `docs(openspec)` commit. Strict TDD.
+
+### TDD Cycle Evidence (PR 4)
+
+| Task    | Test file                                  | RED                                                                                                      | GREEN                 | Triangulate                                                                                                                                                                                                                | Refactor |
+| ------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| 4.1/4.2 | `test/adapters/claude-code/target.test.ts` | 4 failed (`settingsPath` / `toHookHandler` is not a function), safety net 80/80 over target + init tests | 12 passed             | user and project scope; handler with and without timeout (key absent)                                                                                                                                                      | n/a      |
+| 4.3/4.4 | `test/application/init-mcps.test.ts`       | 13 failed of 85 (hooks not planned or applied, `UnknownHookError` missing)                               | 85 passed (full 1171) | user/project write, manifest item and createdDirs, other keys kept plus byte-identical backup, idempotent skip, update in place, malformed fails closed, dry run, unknown hook, stale abort, replan-and-write, rollback x2 | n/a      |
+
+### Work Unit Evidence (PR 4)
+
+| Evidence          | Value                                                                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Focused test      | `pnpm vitest run test/application/init-mcps.test.ts test/adapters/claude-code/target.test.ts`: 97 passed; full suite 1171 passed |
+| Runtime harness   | Application tests against the real `NodeFileSystem` in a temp HOME/cwd, plus a fault-injecting fs for rollback                   |
+| Rollback boundary | revert the two code commits: `agent-target.ts`, `claude-code/target.ts`, `init-mcps.ts`, their tests and `test/helpers/hooks.ts` |
+
+### Validation
+
+`pnpm run typecheck`, `lint`, `format:check`, `test`, `build` all exit 0. Budget: 312 added / 9 deleted lines vs `d04cdce` (code 107, tests 205), under 400.
+
+### Notes
+
+- API: `InitRequest.hooks?: string[]`, `UnknownHookError`; `planInit` yields one `HookFileChange` per scope settings file; `applyPlan` refreshes (re-read, replan, `StaleFileError` when actions differ), backs up with the MCP backup counter, writes with `writeAtomic`, journals `hook` items (skips excluded, `previous` only on update) and records the created `.claude/` through `missingDirs`.
+- No CLI flag or prompter selects hooks (PR 7). Until PR 5/6, undo, uninstall, status and doctor still fall through for hook items; reachable only via the use case API.
+- Deviation: none from design.

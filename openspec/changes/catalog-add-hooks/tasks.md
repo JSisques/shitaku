@@ -55,10 +55,10 @@ Every PR: RED test first, then GREEN, then REFACTOR; tests and docs stay with co
 
 ## PR 4: Port, target, init/apply
 
-- [ ] 4.1 RED: `settingsPath` user/project and `toHookHandler` (`test/adapters/claude-code/target.test.ts`)
-- [ ] 4.2 GREEN: `src/ports/agent-target.ts`, `src/adapters/claude-code/target.ts`
-- [ ] 4.3 RED: apply writes, idempotent re-run, `StaleFileError`, rollback, backup, created `.claude/` (`test/application/init-mcps.test.ts`)
-- [ ] 4.4 GREEN: `src/application/init-mcps.ts` hook branch (re-read, replan, `writeAtomic`, manifest items)
+- [x] 4.1 RED: `settingsPath` user/project and `toHookHandler` (`test/adapters/claude-code/target.test.ts`)
+- [x] 4.2 GREEN: `src/ports/agent-target.ts`, `src/adapters/claude-code/target.ts`
+- [x] 4.3 RED: apply writes, idempotent re-run, `StaleFileError`, rollback, backup, created `.claude/` (`test/application/init-mcps.test.ts`)
+- [x] 4.4 GREEN: `src/application/init-mcps.ts` hook branch (re-read, replan, `writeAtomic`, manifest items)
 
 ## PR 5: Undo
 
