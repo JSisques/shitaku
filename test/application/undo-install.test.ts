@@ -1,16 +1,18 @@
-import { mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FolderCatalogSource } from '@/adapters/catalog/folder-source.js';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
 import { NodeFileSystem } from '@/adapters/fs/node-fs.js';
 import { initMcps, type InitDeps } from '@/application/init-mcps.js';
+import { ConfigError } from '@/domain/json-merge.js';
 import { appendInstall, loadManifest, manifestPath, stateDir } from '@/application/journal.js';
 import { sha256 } from '@/domain/hash.js';
 import { UndoSelectionError, UndoVerifyError, undoInstall } from '@/application/undo-install.js';
 import { DEMO_V1, DEMO_V2, skillSource } from '@test/helpers/skills.js';
 import { SCRIPT_V1, scriptSource } from '@test/helpers/scripts.js';
 import { commandSource, REVIEW_V1 } from '@test/helpers/commands.js';
+import { FMT_V1, FMT_V2, GUARD, hookSource } from '@test/helpers/hooks.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
 const CATALOG = join(import.meta.dirname, '..', '..', 'catalog');
@@ -468,5 +470,177 @@ describe('undoInstall (commands)', () => {
     await expect(undoInstall(undoDeps(), {})).rejects.toThrow(/missing/);
     expect(new Uint8Array(await readFile(file()))).toEqual(REVIEW_V1.bytes);
     expect(await readFile(manifestPath(tmp.homeDir), 'utf8')).toBe(manifestBefore);
+  });
+});
+
+describe('undoInstall (hooks)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const settings = () => join(tmp.cwd, '.claude', 'settings.json');
+  const read = (path: string) => readFile(path, 'utf8');
+  const undoDeps = () => ({ fs: deps.fs, paths: deps.paths });
+  const install = (hooks: string[] = ['fmt']) => initMcps(deps, { mcps: [], hooks, scope: 'project' });
+  const fmtHandler = { type: 'command', command: 'prettier -w .' };
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: hookSource([FMT_V1, GUARD]),
+      fs: new NodeFileSystem(),
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('restores the original bytes of a settings file nothing else touched', async () => {
+    const original = `{\n\t"model": "opus"\n}`;
+    await mkdir(join(tmp.cwd, '.claude'));
+    await writeFile(settings(), original);
+    await install();
+    expect(await read(settings())).not.toBe(original);
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'undone', exitCode: 0, changed: [] });
+    expect(await read(settings())).toBe(original);
+    expect((await loadManifest(deps.fs, tmp.homeDir)).installs[0]?.undoneAt).not.toBeNull();
+  });
+
+  it('removes a settings file the install created, and the .claude directory with it', async () => {
+    await install();
+    expect((await undoInstall(undoDeps(), {})).status).toBe('undone');
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('keeps the .claude directory when the user put another file in it', async () => {
+    await install();
+    await writeFile(join(tmp.cwd, '.claude', 'notes.md'), 'mine');
+    // The new file is not part of the install; the settings file itself is unchanged.
+    expect((await undoInstall(undoDeps(), {})).status).toBe('undone');
+    expect(await readdir(join(tmp.cwd, '.claude'))).toEqual(['notes.md']);
+  });
+
+  it('keeps a .claude directory that existed before the install', async () => {
+    await mkdir(join(tmp.cwd, '.claude'));
+    await install();
+    expect((await undoInstall(undoDeps(), {})).status).toBe('undone');
+    expect(await readdir(join(tmp.cwd, '.claude'))).toEqual([]);
+  });
+
+  it('reads the settings file as text, so a symlink to identical content is not drift', async () => {
+    await install();
+    const content = await read(settings());
+    await writeFile(join(tmp.root, 'dotfiles-settings.json'), content);
+    await unlink(settings());
+    await symlink(join(tmp.root, 'dotfiles-settings.json'), settings());
+    expect((await undoInstall(undoDeps(), {})).status).toBe('undone');
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('refuses with exit 3 when the settings file changed, and touches nothing', async () => {
+    await install();
+    const edited = (await read(settings())).replace('"hooks"', '"model": "opus", "hooks"');
+    await writeFile(settings(), edited);
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'refused', exitCode: 3, changed: [settings()] });
+    expect(await read(settings())).toBe(edited);
+    expect((await loadManifest(deps.fs, tmp.homeDir)).installs[0]?.undoneAt).toBeNull();
+  });
+
+  it('with force removes only its own handler, so later edits survive', async () => {
+    await install();
+    const doc = JSON.parse(await read(settings())) as { hooks: Record<string, unknown[]> };
+    doc.hooks.PreToolUse = [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo user' }] }];
+    await writeFile(settings(), JSON.stringify({ model: 'opus', ...doc }, null, 2));
+    expect(await undoInstall(undoDeps(), { force: true })).toMatchObject({ status: 'undone', exitCode: 0 });
+    expect(JSON.parse(await read(settings()))).toEqual({
+      model: 'opus',
+      hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo user' }] }] },
+    });
+    expect((await loadManifest(deps.fs, tmp.homeDir)).installs[0]?.undoneAt).not.toBeNull();
+  });
+
+  it('with force keeps a group it did not create, in its original order', async () => {
+    const user = { type: 'command', command: 'echo user' };
+    const original = { hooks: { PostToolUse: [{ matcher: 'Edit|Write', hooks: [user] }] } };
+    await mkdir(join(tmp.cwd, '.claude'));
+    await writeFile(settings(), JSON.stringify(original, null, 2));
+    await install();
+    const after = JSON.parse(await read(settings())) as typeof original;
+    expect(after.hooks.PostToolUse[0]?.hooks).toEqual([user, fmtHandler]);
+    await writeFile(settings(), JSON.stringify({ ...after, model: 'opus' }, null, 2));
+    expect((await undoInstall(undoDeps(), { force: true })).status).toBe('undone');
+    expect(JSON.parse(await read(settings()))).toEqual({ ...original, model: 'opus' });
+  });
+
+  it('with force puts back the previous handler of an update', async () => {
+    await install();
+    deps.source = hookSource([FMT_V2, GUARD]);
+    await install();
+    const doc = JSON.parse(await read(settings())) as Record<string, unknown>;
+    await writeFile(settings(), JSON.stringify({ ...doc, model: 'opus' }, null, 2));
+    expect((await undoInstall(undoDeps(), { force: true })).status).toBe('undone');
+    expect(JSON.parse(await read(settings()))).toEqual({
+      model: 'opus',
+      hooks: { PostToolUse: [{ matcher: 'Edit|Write', hooks: [fmtHandler] }] },
+    });
+  });
+
+  it('with force re-adds a handler an install removed', async () => {
+    await mkdir(join(tmp.cwd, '.claude'));
+    await writeFile(settings(), JSON.stringify({ hooks: { PostToolUse: [] } }));
+    await appendInstall(deps.fs, tmp.homeDir, {
+      id: 'x',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      undoneAt: null,
+      source: { kind: 'bundled', location: '/catalog', catalogVersion: 1 },
+      createdDirs: [],
+      files: [
+        {
+          path: settings(),
+          scope: 'project',
+          backup: null,
+          beforeHash: null,
+          afterHash: sha256('something else'),
+          items: [
+            {
+              kind: 'hook',
+              name: 'fmt',
+              action: 'remove',
+              entryHash: 'h',
+              event: 'PostToolUse',
+              matcher: 'Edit|Write',
+              handler: fmtHandler,
+              createdEvent: false,
+              createdGroup: false,
+            },
+          ],
+        },
+      ],
+    });
+    expect((await undoInstall(undoDeps(), { force: true })).status).toBe('undone');
+    expect(JSON.parse(await read(settings()))).toEqual({
+      hooks: { PostToolUse: [{ matcher: 'Edit|Write', hooks: [fmtHandler] }] },
+    });
+  });
+
+  it('leaves a settings file the user deleted alone when forced', async () => {
+    await install();
+    await rm(settings());
+    expect((await undoInstall(undoDeps(), { force: true })).status).toBe('undone');
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('computes the reverse before the first write: a corrupt settings file fails with nothing half-done', async () => {
+    const real = new FolderCatalogSource(CATALOG, 'bundled');
+    deps.source = {
+      ref: () => real.ref(),
+      load: async () => ({ ...(await real.load()), hooks: [FMT_V1] }),
+    };
+    await initMcps(deps, { mcps: ['github'], hooks: ['fmt'], scope: 'project' });
+    const mcpAfter = await read(join(tmp.cwd, '.mcp.json'));
+    await writeFile(settings(), '{ not json');
+    await expect(undoInstall(undoDeps(), { force: true })).rejects.toThrow(ConfigError);
+    await expect(undoInstall(undoDeps(), { force: true })).rejects.toThrow(/settings\.json/);
+    expect(await read(join(tmp.cwd, '.mcp.json'))).toBe(mcpAfter);
+    expect(await read(settings())).toBe('{ not json');
+    expect((await loadManifest(deps.fs, tmp.homeDir)).installs[0]?.undoneAt).toBeNull();
   });
 });
