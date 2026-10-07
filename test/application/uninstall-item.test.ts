@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FolderCatalogSource } from '@/adapters/catalog/folder-source.js';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
 import { NodeFileSystem } from '@/adapters/fs/node-fs.js';
-import { initMcps, StaleFileError, type InitDeps } from '@/application/init-mcps.js';
+import { initMcps, StaleFileError, type InitDeps, type InitRequest } from '@/application/init-mcps.js';
 import { loadManifest, manifestPath, stateDir } from '@/application/journal.js';
 import { getStatus } from '@/application/status.js';
 import { undoInstall, UndoSelectionError } from '@/application/undo-install.js';
 import { uninstallItem, UninstallSelectionError, type UninstallRequest } from '@/application/uninstall-item.js';
+import type { CatalogSource } from '@/ports/catalog-source.js';
 import { UnsafeTreeError, type FileSystem } from '@/ports/file-system.js';
+import { commandSource, REVIEW_V1 } from '@test/helpers/commands.js';
 import { DEMO_V1, faultyFs, skillSource } from '@test/helpers/skills.js';
 import { SCRIPT_V1, scriptSource } from '@test/helpers/scripts.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
@@ -20,7 +22,7 @@ const SKILL_MD = '---\nname: demo\n---\none';
 /** Runs `mutate` just before the second `method` call on `path`: the gap between planning and applying. */
 function racy(
   fs: NodeFileSystem,
-  method: 'readText' | 'listFiles',
+  method: 'readText' | 'listFiles' | 'readBytes',
   path: string,
   mutate: () => Promise<void>,
 ): FileSystem {
@@ -479,5 +481,151 @@ describe('uninstallItem (scripts)', () => {
     expect(await undoInstall(undoDeps, {})).toMatchObject({ status: 'undone', exitCode: 0 });
     expect(await exists(root())).toBe(false);
     expect(await exists(join(root(), 'node_modules'))).toBe(false);
+  });
+});
+
+describe('uninstallItem (commands)', () => {
+  let tmp: TmpPaths;
+  let fs: NodeFileSystem;
+  let deps: InitDeps;
+  const dir = () => join(tmp.cwd, '.claude', 'commands');
+  const file = () => join(dir(), 'review.md');
+  const exists = (path: string) =>
+    access(path).then(
+      () => true,
+      () => false,
+    );
+  const uninstall = (req: Partial<UninstallRequest> = {}, over: { fs?: FileSystem } = {}) =>
+    uninstallItem(
+      { fs: over.fs ?? fs, target: claudeCodeTarget, paths: { homeDir: tmp.homeDir, cwd: tmp.cwd } },
+      { name: 'review', kind: 'command', ...req },
+    );
+  const withCommands = (base: CatalogSource, name = 'review'): CatalogSource => ({
+    ref: () => base.ref(),
+    load: async () => ({ ...(await base.load()), commands: [{ ...REVIEW_V1, name }] }),
+  });
+  const install = (extra: Partial<InitRequest> = {}, d: InitDeps = deps) =>
+    initMcps(d, { mcps: [], commands: ['review'], scope: 'project', ...extra });
+
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    fs = new NodeFileSystem();
+    deps = {
+      source: commandSource([REVIEW_V1]),
+      fs,
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('removes an unmodified command, backs up its bytes and journals afterHash null', async () => {
+    await install();
+    const result = await uninstall();
+    expect(result).toMatchObject({
+      status: 'removed',
+      exitCode: 0,
+      modified: false,
+      files: [file()],
+      item: { kind: 'command', scope: 'project', name: 'review', path: file() },
+    });
+    expect(await exists(file())).toBe(false);
+    const last = (await loadManifest(fs, tmp.homeDir)).installs.at(-1)!;
+    expect(last.files).toHaveLength(1);
+    expect(last.files[0]).toMatchObject({
+      path: file(),
+      afterHash: null,
+      items: [{ kind: 'command', name: 'review', action: 'remove', root: file() }],
+    });
+    expect(new Uint8Array(await readFile(join(stateDir(tmp.homeDir), last.files[0]!.backup!)))).toEqual(
+      REVIEW_V1.bytes,
+    );
+  });
+
+  it('refuses a modified command with exit 3 and writes nothing, and plans it with --force on a dry run', async () => {
+    await install();
+    await writeFile(file(), 'edited');
+    const manifest = await readFile(manifestPath(tmp.homeDir), 'utf8');
+    expect(await uninstall()).toMatchObject({ status: 'refused', exitCode: 3, modified: true, files: [file()] });
+    expect(await readFile(file(), 'utf8')).toBe('edited');
+    expect(await readFile(manifestPath(tmp.homeDir), 'utf8')).toBe(manifest);
+    expect(await uninstall({ force: true, dryRun: true })).toMatchObject({ status: 'dry-run', files: [file()] });
+    expect(await readFile(file(), 'utf8')).toBe('edited');
+  });
+
+  it('with --force removes only the recorded file and keeps the neighbor and the directory', async () => {
+    await install();
+    await writeFile(join(dir(), 'mine.md'), 'mine');
+    await writeFile(file(), 'edited');
+    expect(await uninstall({ force: true })).toMatchObject({ status: 'removed', exitCode: 0, modified: true });
+    expect(await readdir(dir())).toEqual(['mine.md']);
+    expect(await readFile(join(dir(), 'mine.md'), 'utf8')).toBe('mine');
+  });
+
+  it('keeps the commands directory even when the install created it and it is now empty', async () => {
+    await install();
+    await uninstall();
+    expect(await readdir(dir())).toEqual([]);
+  });
+
+  it('reports already-absent without writing when the file was deleted', async () => {
+    await install();
+    await rm(file());
+    const manifest = await readFile(manifestPath(tmp.homeDir), 'utf8');
+    expect(await uninstall()).toMatchObject({ status: 'already-absent', exitCode: 0, files: [], modified: false });
+    expect(await readFile(manifestPath(tmp.homeDir), 'utf8')).toBe(manifest);
+  });
+
+  it('writes nothing on a dry run for an unmodified command', async () => {
+    await install();
+    expect(await uninstall({ dryRun: true })).toMatchObject({ status: 'dry-run', files: [file()] });
+    expect(new Uint8Array(await readFile(file()))).toEqual(REVIEW_V1.bytes);
+  });
+
+  it('refuses with UnsafeTreeError and changes nothing when a symlink replaced the file, even with --force', async () => {
+    await install();
+    await rm(file());
+    await writeFile(join(tmp.cwd, 'target.md'), 'x');
+    await symlink(join(tmp.cwd, 'target.md'), file());
+    await expect(uninstall({ force: true })).rejects.toThrow(UnsafeTreeError);
+    expect((await lstat(file())).isSymbolicLink()).toBe(true);
+  });
+
+  it('aborts with StaleFileError and changes nothing when the file changed after planning', async () => {
+    await install();
+    const racing = racy(fs, 'readBytes', file(), () => writeFile(file(), 'raced'));
+    await expect(uninstall({ force: true }, { fs: racing })).rejects.toThrow(StaleFileError);
+    expect(await readFile(file(), 'utf8')).toBe('raced');
+    expect((await loadManifest(fs, tmp.homeDir)).installs).toHaveLength(1);
+  });
+
+  it('undo restores the original bytes and ownership', async () => {
+    await install();
+    await uninstall();
+    expect((await undoInstall({ fs, paths: deps.paths }, {})).status).toBe('undone');
+    expect(new Uint8Array(await readFile(file()))).toEqual(REVIEW_V1.bytes);
+  });
+
+  it('lists skill and command candidates when the name is both, and --kind resolves it', async () => {
+    const both = { ...deps, source: withCommands(skillSource([{ ...DEMO_V1, name: 'review' }])) };
+    await initMcps(both, { mcps: [], skills: ['review'], commands: ['review'], scope: 'project' });
+    const error = await uninstall({ kind: undefined }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UninstallSelectionError);
+    expect((error as UninstallSelectionError).candidates.map((c) => c.kind).sort()).toEqual(['command', 'skill']);
+    expect(await exists(file())).toBe(true);
+
+    expect(await uninstall({ kind: 'skill' })).toMatchObject({ status: 'removed', item: { kind: 'skill' } });
+    expect(await exists(file())).toBe(true);
+    expect(await uninstall()).toMatchObject({ status: 'removed', item: { kind: 'command' } });
+    expect(await exists(file())).toBe(false);
+  });
+
+  it('lists mcp and command candidates when the name is both', async () => {
+    const both = { ...deps, source: withCommands(new FolderCatalogSource(CATALOG, 'bundled'), 'github') };
+    await initMcps(both, { mcps: ['github'], commands: ['github'], scope: 'project' });
+    const error = await uninstall({ name: 'github', kind: undefined }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UninstallSelectionError);
+    expect((error as UninstallSelectionError).candidates.map((c) => c.kind).sort()).toEqual(['command', 'mcp']);
   });
 });

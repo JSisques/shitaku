@@ -335,6 +335,13 @@ describe('planInit (skills)', () => {
     expect(both.files).toHaveLength(1);
     expect(both.skills.map((s) => s.name)).toEqual(['example-skill']);
     expect((await planInit(deps, { mcps: ['github'], scope: 'project' })).skills).toEqual([]);
+    expect(both.commands).toEqual([]);
+  });
+
+  it('plans no commands when none are requested, even if the catalog offers one', async () => {
+    deps = { ...deps, source: commandSource([REVIEW_V1]) };
+    expect((await planInit(deps, { mcps: [], scope: 'project' })).commands).toEqual([]);
+    expect((await planInit(deps, { mcps: [], commands: ['review'], scope: 'project' })).commands).toHaveLength(1);
   });
 
   it('skips an identical tree on disk', async () => {
