@@ -1,6 +1,6 @@
 # Contributing to shitaku
 
-Thanks for helping. This guide covers local setup, adding catalog items (MCPs, skills, scripts, profiles), commit conventions and what a pull request needs to pass.
+Thanks for helping. This guide covers local setup, adding catalog items (MCPs, skills, scripts, slash commands, profiles), commit conventions and what a pull request needs to pass.
 
 ## Local setup
 
@@ -49,11 +49,12 @@ catalog/
   skills/<name>/SKILL.md
   scripts/<name>/index.mjs
   scripts/<name>/script.json
+  commands/<name>.md
 ```
 
-Every item must be listed in `catalog/catalog.json` under `items.mcps`, `items.profiles`, `items.skills` or `items.scripts`. The loader (`src/adapters/catalog/folder-source.ts`) validates items with the zod schemas in `src/domain/catalog/`. An invalid or unlisted item is skipped with a warning.
+Every item must be listed in `catalog/catalog.json` under `items.mcps`, `items.profiles`, `items.skills`, `items.scripts` or `items.commands`. The loader (`src/adapters/catalog/folder-source.ts`) validates items with the zod schemas in `src/domain/catalog/`. An invalid or unlisted item is skipped with a warning.
 
-After adding or changing an MCP, skill or script, run `pnpm run docs:catalog` to regenerate the catalog tables in `README.md`. CI fails (`pnpm run docs:catalog:check`) when they are out of date.
+After adding or changing an MCP, skill, script or slash command, run `pnpm run docs:catalog` to regenerate the catalog tables in `README.md`. CI fails (`pnpm run docs:catalog:check`) when they are out of date.
 
 When catalog items change, also refresh the docs site pages:
 
@@ -64,7 +65,7 @@ pnpm run docs:website-catalog:check
 
 That regenerates Markdown under `website/src/content/docs/{en,es}/catalog/` from `catalog/` (read-only). Profiles stay browse-only with a not-installable callout. The isolated `.github/workflows/website.yml` workflow runs the same emit step before the Astro build; root `ci.yml` / `cd.yml` do not.
 
-Names for MCPs, skills and scripts must match `^[a-z0-9][a-z0-9-]*$` (lowercase letters, digits and hyphens; no leading hyphen).
+Names for MCPs, skills, scripts and slash commands must match `^[a-z0-9][a-z0-9-]*$` (lowercase letters, digits and hyphens; no leading hyphen).
 
 ### Add a skill
 
@@ -143,13 +144,54 @@ Examples: `catalog/mcps/github.json` (http with a secret header) and `catalog/mc
 
 Install roots: project `./.shitaku/scripts/<name>/`, user `~/.claude/.shitaku/scripts/<name>/` — never agent skill directories.
 
+### Adding catalog items: slash commands
+
+A slash command is a single Markdown file that Claude Code runs as `/<name>`. It is not a shitaku CLI subcommand.
+
+1. Create `catalog/commands/<name>.md`. The file name (without `.md`) is the command name and must match `^[a-z0-9][a-z0-9-]*$`.
+2. Start the file with frontmatter that has a non-empty single-line `description`; other single-line keys such as `argument-hint` pass through untouched. Multi-line values are rejected. The body after the frontmatter must not be empty.
+
+   ```md
+   ---
+   description: Review the staged changes and list risks.
+   argument-hint: [focus]
+   ---
+
+   Review the staged changes. Focus on $ARGUMENTS.
+   ```
+
+3. Add the name to `items.commands` in `catalog/catalog.json`:
+
+   ```json
+   "commands": ["review"]
+   ```
+
+   A file that is not listed, or a listed one that is missing or invalid, is skipped with a warning. No symlinks.
+
+4. Verify:
+
+   ```sh
+   pnpm run build
+   node dist/main.js list commands
+   node dist/main.js init --commands my-command --scope project --dry-run
+   pnpm test
+   ```
+
+   The dry run prints `my-command: create` and writes nothing. Regenerate the README and website tables with `pnpm run docs:catalog` and `pnpm run docs:website-catalog`.
+
+Install behavior: the file is copied flat to `~/.claude/commands/<name>.md` (`user`) or `./.claude/commands/<name>.md` (`project`). Other files in that directory are never touched.
+
+- A different `<name>.md` that shitaku did not install (or that changed since) is a conflict: `init` exits `2` and writes nothing.
+- `--force` backs the file up under `~/.claude/.shitaku/backups/` and replaces it; `shitaku undo` restores the original bytes. Undo refuses (exit `3`) if the file changed after the install, unless `--force` is set.
+- `shitaku uninstall <name> --kind command` removes only that file. The bundled catalog ships no command yet, so tests use fixtures and never depend on a bundled one.
+
 ### Add a profile
 
-A profile is a named bundle of MCPs, skills and scripts.
+A profile is a named bundle of MCPs, skills, scripts and slash commands.
 
 1. Create `catalog/profiles/<name>.json`. The `name` field must equal the file name.
-2. Fields: `name` (required), `description`, `extends` (profile names, applied first), `mcps`, `skills`, `scripts` (names that exist in the catalog).
-3. Every referenced MCP, skill, script and parent profile must exist, and `extends` must not form a cycle. A profile that does not resolve is skipped with a warning.
+2. Fields: `name` (required), `description`, `extends` (profile names, applied first), `mcps`, `skills`, `scripts`, `commands` (names that exist in the catalog).
+3. Every referenced MCP, skill, script, command and parent profile must exist, and `extends` must not form a cycle. A profile that does not resolve is skipped with a warning.
 4. Add the name to `items.profiles` in `catalog/catalog.json`, then update `test/adapters/catalog/bundled-catalog.test.ts` if needed.
 
 The CLI cannot select a profile yet; profiles are validated and resolved but not installable by name.

@@ -1,8 +1,10 @@
 ---
-title: Catalog overview
-description: Browse MCP servers, skills, scripts, and profiles from the bundled catalog.
+title: Resumen del catálogo
+description: Explora los servidores MCP, skills, scripts, comandos slash y perfiles del catálogo incluido.
 ---
 
-# Catalog overview
+# Resumen del catálogo
 
-Catalog pages are generated from `catalog/` in the repository. Item descriptions stay in English in every locale. The bundled catalog ships **`complexity`** and **`dead-code`** under `catalog/scripts/`; list more names in `items.scripts` and regenerate website pages to add them here.
+Las páginas del catálogo se generan a partir de `catalog/` en el repositorio. Las descripciones de los elementos permanecen en inglés en todos los idiomas. El catálogo incluido trae **`complexity`**, **`dead-code`** y **`duplication`** en `catalog/scripts/`; añade más nombres en `items.scripts` y regenera las páginas del sitio para verlos aquí.
+
+Los comandos slash (`catalog/commands/<name>.md`) tienen su propia página en `commands/` cuando el catálogo lista alguno. El catálogo incluido todavía no trae ninguno.
