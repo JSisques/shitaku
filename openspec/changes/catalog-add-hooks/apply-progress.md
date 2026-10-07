@@ -91,3 +91,45 @@ Safety net: whole suite green at base (1,097 tests); 1,127 after.
 - Update signature is `updateHook(text, file, spec, next)` where `spec.handler` is the previous handler.
 - Matcher present but not a string, groups without a `hooks` array, and non-object groups raise a `ConfigError` naming the file and path.
 - `ConfigError` is reused from `json-merge.ts` rather than redefined.
+
+## PR 3 of 8: Manifest and hook-plan (tasks 3.1-3.4, complete)
+
+Branch `feat/hooks-3-manifest-plan`, stacked on `feat/hooks-2-hook-merge`. Strict TDD. Commits `d214268` feat(domain) manifest hook item and `bb591aa` feat(plan) hook-plan, plus a docs(openspec) commit; not pushed.
+
+API: manifest `hook` item `{name, action, entryHash, event, matcher|null, handler, previous?, createdEvent, createdGroup}` (no `root`; the owning file path is the settings file). `deriveHookOwnership(manifest)` returns settings path -> hook name -> `OwnedHook`. `OwnedItem.kind` gains `hook` (path = settings file). `buildHookPlan({path, scope, existing, hooks, owned})` returns `HookFileChange {path, scope, beforeHash, before, after, items: PlannedHook[]}`; actions are `create | update | skip` (type `HookAction` excludes `conflict`). `hookEntryHash`, `writesHookFile` exported. `ChangePlan.hooks: HookFileChange[]` (empty from `buildPlan`).
+
+Planning rules: `addHook` first (deep-equal present -> skip); else if the owned handler sits at the same event and matcher and `updateHook` finds it -> in-place update, `previous` = owned handler, created flags carried from the owned entry; else create (appended). An owned hook that was edited or removed therefore creates again and never conflicts.
+
+### TDD Cycle Evidence
+
+| Task    | Test file                              | RED                                                                                  | GREEN     | Triangulation                                                                                                                      | REFACTOR               |
+| ------- | -------------------------------------- | ------------------------------------------------------------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| 3.1/3.2 | `test/domain/manifest.test.ts`         | 9 failed, 46 passed (hook item rejected by the union, `deriveHookOwnership` missing) | 55 passed | round-trip, null matcher, `previous`, missing event, null afterHash rejected, update/undone/remove replay, ownership maps isolated | n/a                    |
+| 3.3/3.4 | `test/domain/plan/hook-plan.test.ts`   | suite failed to load (module missing)                                                | 14 passed | create (absent/existing group/new group), multi-hook, skip x2, update x2, never-conflict x4, malformed                             | lint-only typed helper |
+| 3.4     | `test/domain/plan/change-plan.test.ts` | added after the code (typecheck, not a failing test, flagged `hooks` missing)        | passed    | single assertion                                                                                                                   | n/a                    |
+
+Note: the old-manifest parse test passes without production changes once `deriveHookOwnership` exists; it is a regression guard, not a RED. The `change-plan.test.ts` assertion is coverage added after GREEN.
+
+### Work Unit Evidence (PR 3)
+
+| Evidence          | Value                                                                                        |
+| ----------------- | -------------------------------------------------------------------------------------------- |
+| Focused test      | `pnpm vitest run test/domain`: all passed; full `pnpm run test`: 55 files, 1154 tests passed |
+| Runtime harness   | N/A: not wired; nothing calls `buildHookPlan` or writes hook items until PR 4                |
+| Rollback boundary | revert `bb591aa` and `d214268`: manifest, plan files, and the three one-line compile guards  |
+
+### Validation
+
+`pnpm run typecheck`, `lint`, `format:check`, `test`, `build` all exit 0. Review budget: 461 added / 5 deleted lines vs `0320079` (code 164, tests 296), over the 400 budget. No `size:exception` was approved for this PR; reported honestly, not compressed.
+
+### Branch audit (design decision h) and temporary measures
+
+- `manifest.ts`: `deriveOwnership` (`!== 'mcp'` skip) and the `afterHash` refine already exclude hooks correctly; `deriveOwnedItems` path now uses `file.path` for `mcp` and `hook`.
+- `undo-install.ts` `itemRoots`: hooks have no root, so they are excluded (permanent and correct). `isByteFile` still treats a hook file as bytes (`kind !== 'mcp'`): left for PR 5.
+- `uninstall-item.ts`: temporary guard in `applyUninstall` throws for a hook so the root-bearing tree branch compiles; PR 6 replaces it. `expectedPath`, `installed-state.ts` observation and `desiredFor`, and `doctor-plan.ts` branches fall through to tree behavior for `hook`; unreachable until PR 4 writes hook items, handled in PRs 5 and 6.
+- `init-mcps.ts`: only the empty-plan literal gained `hooks: []`.
+
+### Deviations and Notes
+
+- Added `deriveHookOwnership` and `OwnedHook`, not named in the task list, because `buildHookPlan` needs the owned event, matcher, handler and created flags.
+- An owned hook whose event or matcher changed in the catalog is appended as a new create; the old handler is left in place (no move). Open edge case for a later PR.

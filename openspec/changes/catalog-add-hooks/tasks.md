@@ -48,10 +48,10 @@ Every PR: RED test first, then GREEN, then REFACTOR; tests and docs stay with co
 
 ## PR 3: Manifest and hook-plan
 
-- [ ] 3.1 RED: old-manifest fixture parses; hook item round-trips (`test/domain/manifest.test.ts`)
-- [ ] 3.2 GREEN: `src/domain/manifest.ts` hook item, `OwnedItem`, `deriveOwnedItems`, `entryHash`
-- [ ] 3.3 RED: classify skip/update/create, never conflict (`test/domain/plan/hook-plan.test.ts`)
-- [ ] 3.4 GREEN: `src/domain/plan/hook-plan.ts`; `change-plan.ts` gains `hooks: HookFileChange[]`
+- [x] 3.1 RED: old-manifest fixture parses; hook item round-trips (`test/domain/manifest.test.ts`)
+- [x] 3.2 GREEN: `src/domain/manifest.ts` hook item, `OwnedItem`, `deriveOwnedItems`, `entryHash`
+- [x] 3.3 RED: classify skip/update/create, never conflict (`test/domain/plan/hook-plan.test.ts`)
+- [x] 3.4 GREEN: `src/domain/plan/hook-plan.ts`; `change-plan.ts` gains `hooks: HookFileChange[]`
 
 ## PR 4: Port, target, init/apply
 
