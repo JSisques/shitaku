@@ -1,6 +1,6 @@
 ---
 title: Catalog overview
-description: Browse MCP servers, skills, scripts, and profiles from the bundled catalog.
+description: Browse MCP servers, skills, scripts, slash commands, and profiles from the bundled catalog.
 ---
 
 # Catalog overview

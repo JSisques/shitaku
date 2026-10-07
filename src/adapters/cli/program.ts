@@ -547,7 +547,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     .option('--yes', 'skip confirmation (requires --scope and --mcps, --skills, --scripts and/or --commands)')
     .option(
       '--force',
-      'overwrite existing entries and skill/script directories that differ (trees are backed up first)',
+      'overwrite existing entries, skill/script directories and command files that differ (backed up first)',
     )
     .action(async (opts: InitOptions) => void (exitCode = await guarded(deps, () => runInit(deps, opts))));
 
