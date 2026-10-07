@@ -17,6 +17,9 @@ const skillMd = (name: string): string => `---\nname: ${name}\ndescription: ${na
 const commandMd = (description = 'Review a diff'): string =>
   `---\ndescription: ${description}\nargument-hint: [path]\n---\n\nReview $ARGUMENTS\n`;
 
+const hookJson = (name: string, extra: Record<string, unknown> = {}): string =>
+  JSON.stringify({ name, description: `${name} hook`, event: 'PostToolUse', command: `run-${name}`, ...extra });
+
 const scriptMeta = (name: string, extra: Record<string, unknown> = {}): string =>
   JSON.stringify({ name, description: `${name} script`, tools: [], ...extra });
 const scriptEntry = (): string => 'export default {};\n';
@@ -429,5 +432,128 @@ describe('FolderCatalogSource', () => {
     const catalog = await new FolderCatalogSource(dir, 'folder').load();
     expect(catalog.profiles.map((p) => p.name)).toEqual(['ok']);
     expect(catalog.issues[0]?.reason).toContain("unknown command 'ghost'");
+  });
+
+  it('loads an empty hooks list when items.hooks is absent', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [] } });
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.hooks).toEqual([]);
+    expect(catalog.issues).toEqual([]);
+  });
+
+  it('loads a valid hook', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], hooks: ['fmt'] } });
+    await put('hooks/fmt.json', hookJson('fmt', { matcher: 'Edit|Write', timeout: 30 }));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.issues).toEqual([]);
+    expect(catalog.hooks).toEqual([
+      {
+        name: 'fmt',
+        description: 'fmt hook',
+        event: 'PostToolUse',
+        command: 'run-fmt',
+        matcher: 'Edit|Write',
+        timeout: 30,
+      },
+    ]);
+  });
+
+  it('skips invalid hooks, reports each path and reason, and keeps the valid ones', async () => {
+    await put('catalog.json', {
+      version: 1,
+      items: { mcps: [], hooks: ['good', 'nocmd', 'secret', 'renamed', 'broken', 'two'] },
+    });
+    await put('hooks/good.json', hookJson('good'));
+    await put('hooks/nocmd.json', hookJson('nocmd', { command: '' }));
+    await put('hooks/secret.json', hookJson('secret', { command: 'curl -H "Authorization: Bearer abc123def456ghi"' }));
+    await put('hooks/renamed.json', hookJson('other'));
+    await put('hooks/broken.json', '{ not json');
+    await put('hooks/two.json', hookJson('two', { hooks: [{ type: 'command', command: 'x' }] }));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.hooks.map((h) => h.name)).toEqual(['good']);
+    expect(catalog.issues.map((i) => i.file)).toEqual([
+      'hooks/nocmd.json',
+      'hooks/secret.json',
+      'hooks/renamed.json',
+      'hooks/broken.json',
+      'hooks/two.json',
+    ]);
+    expect(catalog.issues[0]?.reason).toContain('command');
+    expect(catalog.issues[1]?.reason).toContain('literal secret');
+    expect(catalog.issues[2]?.reason).toContain("does not match file name 'renamed'");
+    expect(catalog.issues[4]?.reason).toContain('hooks');
+  });
+
+  it('flags a listed hook with no file', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], hooks: ['ghost'] } });
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.hooks).toEqual([]);
+    expect(catalog.issues).toEqual([
+      { file: 'hooks/ghost.json', reason: 'listed in catalog.json but the file is missing' },
+    ]);
+  });
+
+  it('flags an unlisted hooks/*.json file but ignores other entries', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], hooks: ['listed'] } });
+    await put('hooks/listed.json', hookJson('listed'));
+    await put('hooks/stray.json', hookJson('stray'));
+    await put('hooks/.gitkeep', '');
+    await put('hooks/pre.sh', 'echo hi');
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.hooks.map((h) => h.name)).toEqual(['listed']);
+    expect(catalog.issues).toEqual([{ file: 'hooks/stray.json', reason: 'not listed in catalog.json' }]);
+  });
+
+  it('fails the catalog naming a hook entry that could traverse paths', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], hooks: ['../evil'] } });
+    await expect(new FolderCatalogSource(dir, 'folder').load()).rejects.toThrow(/\.\.\/evil/);
+  });
+
+  it('skips a hook file that is a symlink', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], hooks: ['linked', 'ok'] } });
+    await put('hooks/ok.json', hookJson('ok'));
+    await put('secret.json', hookJson('linked'));
+    await symlink(join(dir, 'secret.json'), join(dir, 'hooks', 'linked.json'));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.hooks.map((h) => h.name)).toEqual(['ok']);
+    expect(catalog.issues).toHaveLength(1);
+    expect(catalog.issues[0]?.file).toBe('hooks/linked.json');
+    expect(catalog.issues[0]?.reason).toContain('symbolic link');
+  });
+
+  it('skips hooks when the hooks directory is a symlink', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], hooks: ['jump'] } });
+    await put('elsewhere/jump.json', hookJson('jump'));
+    await symlink(join(dir, 'elsewhere'), join(dir, 'hooks'));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.hooks).toEqual([]);
+    expect(catalog.issues[0]?.file).toBe('hooks/jump.json');
+    expect(catalog.issues[0]?.reason).toContain('resolves outside');
+  });
+
+  it('rejects a hook file above the size limit', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], hooks: ['big'] } });
+    await put('hooks/big.json', hookJson('big', { description: 'x'.repeat(MAX_FILE_BYTES) }));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.hooks).toEqual([]);
+    expect(catalog.issues[0]?.file).toBe('hooks/big.json');
+    expect(catalog.issues[0]?.reason).toContain('file size');
+  });
+
+  it('resolves profile hooks and drops profiles that reference unknown ones', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], hooks: ['fmt'], profiles: ['ok', 'broken'] } });
+    await put('hooks/fmt.json', hookJson('fmt'));
+    await put('profiles/ok.json', { name: 'ok', hooks: ['fmt'] });
+    await put('profiles/broken.json', { name: 'broken', hooks: ['ghost'] });
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.profiles.map((p) => p.name)).toEqual(['ok']);
+    expect(catalog.issues[0]?.reason).toContain("unknown hook 'ghost'");
   });
 });

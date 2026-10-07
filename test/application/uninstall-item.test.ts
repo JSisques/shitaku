@@ -417,6 +417,7 @@ describe('uninstallItem (scripts)', () => {
             skills: [DEMO_V1],
             scripts: [{ ...SCRIPT_V1, name: 'demo' }],
             commands: [],
+            hooks: [],
             profiles: [],
             issues: [],
           }),

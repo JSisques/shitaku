@@ -268,7 +268,7 @@ describe('planInit (skills)', () => {
   const v2: SkillItem = { ...v1, files: [{ path: 'SKILL.md', bytes: enc('two') }] };
   const source = (skills: SkillItem[]): CatalogSource => ({
     ref: () => ({ kind: 'bundled', location: '/catalog' }),
-    load: () => Promise.resolve({ mcps: [], skills, scripts: [], commands: [], profiles: [], issues: [] }),
+    load: () => Promise.resolve({ mcps: [], skills, scripts: [], commands: [], hooks: [], profiles: [], issues: [] }),
   });
 
   let tmp: TmpPaths;

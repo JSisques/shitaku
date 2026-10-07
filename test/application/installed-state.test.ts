@@ -28,6 +28,7 @@ const catalog: LoadedCatalog = {
   skills: [DEMO_V1],
   scripts: [],
   commands: [],
+  hooks: [],
   profiles: [],
   issues: [],
 };

@@ -35,7 +35,7 @@ describe('getStatus', () => {
     load: () => (catalog instanceof Error ? Promise.reject(catalog) : Promise.resolve(catalog)),
   };
   const setCatalog = (mcps: McpItem[], skills: SkillItem[] = []): void => {
-    catalog = { mcps, skills, scripts: [], commands: [], profiles: [], issues: [] };
+    catalog = { mcps, skills, scripts: [], commands: [], hooks: [], profiles: [], issues: [] };
   };
   const deps = (): InitDeps => ({
     source,
@@ -136,6 +136,7 @@ describe('getStatus', () => {
       skills: [DEMO_V1],
       scripts: [],
       commands: [],
+      hooks: [],
       profiles: [],
       issues: [{ file: 'mcps/bad.json', reason: 'invalid' }],
     };
@@ -299,7 +300,7 @@ describe('getStatus (scripts)', () => {
   beforeEach(async () => {
     tmp = await makeTmpPaths();
     fs = new NodeFileSystem();
-    catalog = { mcps: [], skills: [], scripts: [SCRIPT_V1], commands: [], profiles: [], issues: [] };
+    catalog = { mcps: [], skills: [], scripts: [SCRIPT_V1], commands: [], hooks: [], profiles: [], issues: [] };
   });
   afterEach(() => tmp.cleanup());
 
@@ -314,7 +315,7 @@ describe('getStatus (scripts)', () => {
     expect(await statesOf()).toEqual({ 'project/script/lint': 'missing' });
 
     await initMcps({ ...deps(), source: scriptSource([SCRIPT_V1]) }, { mcps: [], scripts: ['lint'], scope: 'project' });
-    catalog = { mcps: [], skills: [], scripts: [SCRIPT_V2], commands: [], profiles: [], issues: [] };
+    catalog = { mcps: [], skills: [], scripts: [SCRIPT_V2], commands: [], hooks: [], profiles: [], issues: [] };
     expect(await statesOf()).toEqual({ 'project/script/lint': 'out-of-date' });
   });
 
@@ -342,6 +343,7 @@ describe('getStatus (scripts)', () => {
       mcps: [GITHUB],
       skills: [DEMO_V1],
       scripts: [SCRIPT_V1],
+      hooks: [],
       commands: [],
       profiles: [],
       issues: [],

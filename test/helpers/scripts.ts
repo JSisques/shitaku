@@ -7,7 +7,7 @@ export { enc, faultyFs };
 /** A catalog source that serves the given scripts and no MCPs/skills. */
 export const scriptSource = (scripts: ScriptItem[]): CatalogSource => ({
   ref: () => ({ kind: 'bundled', location: '/catalog' }),
-  load: () => Promise.resolve({ mcps: [], skills: [], scripts, commands: [], profiles: [], issues: [] }),
+  load: () => Promise.resolve({ mcps: [], skills: [], scripts, commands: [], hooks: [], profiles: [], issues: [] }),
 });
 
 /** Four files; index.mjs is written last by apply so a half-written script never loads. */

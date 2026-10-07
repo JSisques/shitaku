@@ -44,12 +44,14 @@ describe('bundled catalog', () => {
       skills: [],
       scripts: [],
       commands: [],
+      hooks: [],
     });
     expect(resolveProfile('backend', catalog.profiles, mcpNames, skillNames, scriptNames, [])).toEqual({
       mcps: ['context7', 'github', 'docker', 'sqlite', 'supabase'],
       skills: [],
       scripts: [],
       commands: [],
+      hooks: [],
     });
   });
 
