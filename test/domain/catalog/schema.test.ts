@@ -82,6 +82,13 @@ describe('ProfileSchema', () => {
   });
 });
 
+describe('ProfileSchema commands', () => {
+  it('defaults commands to an empty list and accepts listed ones', () => {
+    expect(ProfileSchema.parse({ name: 'p' }).commands).toEqual([]);
+    expect(ProfileSchema.parse({ name: 'p', commands: ['review'] }).commands).toEqual(['review']);
+  });
+});
+
 describe('CatalogIndexSchema', () => {
   it('parses items.mcps and items.profiles', () => {
     const idx = CatalogIndexSchema.parse({ version: 1, items: { mcps: ['github'] } });
@@ -118,6 +125,19 @@ describe('CatalogIndexSchema', () => {
     const res = CatalogIndexSchema.safeParse({ version: 1, items: { mcps: [], scripts: ['../evil'] } });
     expect(res.success).toBe(false);
     expect(JSON.stringify(res.error?.issues)).toContain('scripts');
+    expect(res.error?.message).toContain('../evil');
+  });
+
+  it('defaults items.commands to an empty list when absent and parses listed commands', () => {
+    expect(CatalogIndexSchema.parse({ version: 1, items: { mcps: [] } }).items.commands).toEqual([]);
+    const idx = CatalogIndexSchema.parse({ version: 1, items: { mcps: [], commands: ['review', 'a1'] } });
+    expect(idx.items.commands).toEqual(['review', 'a1']);
+  });
+
+  it('rejects a command name that could traverse paths, naming the value', () => {
+    const res = CatalogIndexSchema.safeParse({ version: 1, items: { mcps: [], commands: ['../evil'] } });
+    expect(res.success).toBe(false);
+    expect(JSON.stringify(res.error?.issues)).toContain('commands');
     expect(res.error?.message).toContain('../evil');
   });
 

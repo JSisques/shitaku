@@ -413,6 +413,7 @@ describe('uninstallItem (scripts)', () => {
             mcps: [],
             skills: [DEMO_V1],
             scripts: [{ ...SCRIPT_V1, name: 'demo' }],
+            commands: [],
             profiles: [],
             issues: [],
           }),

@@ -1,10 +1,12 @@
+import type { Dirent } from 'node:fs';
 import { readdir, readFile, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ZodType } from 'zod';
-import { readTree } from '@/adapters/fs/walk.js';
+import { readFileNoFollow, readTree } from '@/adapters/fs/walk.js';
 import { resolveProfile } from '@/domain/catalog/profile.js';
 import { CatalogIndexSchema, McpItemSchema, ProfileSchema } from '@/domain/catalog/schema.js';
 import type { McpItem, Profile } from '@/domain/catalog/schema.js';
+import { parseCommand, type CommandItem } from '@/domain/catalog/command.js';
 import { parseSkill, type SkillItem } from '@/domain/catalog/skill.js';
 import { parseScript, type ScriptItem } from '@/domain/catalog/script.js';
 import type { CatalogIssue, CatalogSource, LoadedCatalog, SourceRef } from '@/ports/catalog-source.js';
@@ -53,12 +55,14 @@ export class FolderCatalogSource implements CatalogSource {
     const candidates: Profile[] = await readEntries('profiles', index.items.profiles, ProfileSchema);
     const skills = await this.loadSkills(index.items.skills, issues);
     const scripts = await this.loadScripts(index.items.scripts, issues);
+    const commands = await this.loadCommands(index.items.commands, issues);
     const mcpNames = mcps.map((m) => m.name);
     const skillNames = skills.map((sk) => sk.name);
     const scriptNames = scripts.map((sc) => sc.name);
+    const commandNames = commands.map((c) => c.name);
     const profiles = candidates.filter((p) => {
       try {
-        resolveProfile(p.name, candidates, mcpNames, skillNames, scriptNames);
+        resolveProfile(p.name, candidates, mcpNames, skillNames, scriptNames, commandNames);
         return true;
       } catch (e) {
         issues.push({ file: `profiles/${p.name}.json`, reason: e instanceof Error ? e.message : String(e) });
@@ -66,7 +70,7 @@ export class FolderCatalogSource implements CatalogSource {
       }
     });
 
-    return { mcps, skills, scripts, profiles, issues };
+    return { mcps, skills, scripts, commands, profiles, issues };
   }
 
   /** Loads each listed skill as bytes. A bad skill is skipped with an issue; an unlisted directory is an issue too. */
@@ -86,13 +90,7 @@ export class FolderCatalogSource implements CatalogSource {
         issues.push({ file, reason: e instanceof Error ? e.message : String(e) });
       }
     }
-    const present = await readdir(join(this.location, 'skills'), { withFileTypes: true }).catch(() => []);
-    for (const name of present
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name)
-      .sort()) {
-      if (!listed.includes(name)) issues.push({ file: `skills/${name}`, reason: 'not listed in catalog.json' });
-    }
+    await this.flagUnlisted('skills', listed, issues, (d) => (d.isDirectory() ? d.name : null));
     return skills;
   }
 
@@ -113,14 +111,57 @@ export class FolderCatalogSource implements CatalogSource {
         issues.push({ file, reason: e instanceof Error ? e.message : String(e) });
       }
     }
-    const present = await readdir(join(this.location, 'scripts'), { withFileTypes: true }).catch(() => []);
-    for (const name of present
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name)
-      .sort()) {
-      if (!listed.includes(name)) issues.push({ file: `scripts/${name}`, reason: 'not listed in catalog.json' });
-    }
+    await this.flagUnlisted('scripts', listed, issues, (d) => (d.isDirectory() ? d.name : null));
     return scripts;
+  }
+
+  /** Loads each listed command as one file. A bad command is skipped with an issue; an unlisted `*.md` is an issue too. */
+  private async loadCommands(listed: readonly string[], issues: CatalogIssue[]): Promise<CommandItem[]> {
+    const commands: CommandItem[] = [];
+    const expectedDir = join(await realpath(this.location), 'commands');
+    // A symlinked commands directory would redirect every read outside the catalog.
+    const realDir = await realpath(join(this.location, 'commands')).catch(() => expectedDir);
+    for (const name of listed) {
+      const file = `commands/${name}.md`;
+      try {
+        if (realDir !== expectedDir) throw new Error(`commands directory resolves outside ${expectedDir}`);
+        const bytes = await readFileNoFollow(join(this.location, file), file);
+        const parsed =
+          bytes === null ? { issue: 'listed in catalog.json but the file is missing' } : parseCommand(name, bytes);
+        if ('issue' in parsed) issues.push({ file, reason: parsed.issue });
+        else commands.push(parsed.command);
+      } catch (e) {
+        issues.push({ file, reason: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    await this.flagUnlisted(
+      'commands',
+      listed,
+      issues,
+      (d) => (d.isFile() && d.name.endsWith('.md') ? d.name.slice(0, -'.md'.length) : null),
+      '.md',
+    );
+    return commands;
+  }
+
+  /** Reports every entry of `dir` that `itemName` recognizes as an item but `catalog.json` does not list. `suffix` is the item's file extension, if any. */
+  private async flagUnlisted(
+    dir: string,
+    listed: readonly string[],
+    issues: CatalogIssue[],
+    itemName: (entry: Dirent) => string | null,
+    suffix = '',
+  ): Promise<void> {
+    const present = await readdir(join(this.location, dir), { withFileTypes: true }).catch(() => []);
+    const names = present
+      .flatMap((d) => {
+        const name = itemName(d);
+        return name === null ? [] : [{ name, file: `${dir}/${name}${suffix}` }];
+      })
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const { name, file } of names) {
+      if (!listed.includes(name)) issues.push({ file, reason: 'not listed in catalog.json' });
+    }
   }
 
   private async readIndex(): Promise<ReturnType<typeof CatalogIndexSchema.parse>> {

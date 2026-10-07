@@ -43,15 +43,15 @@ Commit scopes: PR 1 `feat(catalog)`; 2a `feat(plan)`; 2b `feat(init)`; 2c `feat(
 
 ## PR 1: Catalog (frontmatter, command, schema, profile, listing, loader)
 
-- [ ] 1.1 RED: create `test/domain/catalog/frontmatter.test.ts` (single-line keys, missing/unclosed block, multi-line value rejected; skill messages unchanged).
-- [ ] 1.2 GREEN: create `src/domain/catalog/frontmatter.ts` (`readFrontmatter(text, file)`); modify `src/domain/catalog/skill.ts` to use it; existing `test/domain/catalog/skill.test.ts` must stay green. [Catalog: Command catalog entries]
-- [ ] 1.3 RED: create `test/domain/catalog/command.test.ts`: valid with passthrough `argument-hint`; names `Review`, `-x`, `a_b` rejected; missing/blank `description`; multi-line value; empty body. [Commands Install: Command name and frontmatter]
-- [ ] 1.4 GREEN: create `src/domain/catalog/command.ts` (`CommandNameSchema`, `parseCommand` -> `{ name, description, bytes }`).
-- [ ] 1.5 RED: extend `test/domain/catalog/schema.test.ts` (`items.commands` optional/default `[]`), `profile.test.ts` (commands resolved once, unknown `ghost` fails, no field = empty, cycle), `listing.test.ts` (`kind: 'command'`, `list commands --search DIFF`). [Catalog: Old catalog, Commands resolved, Unknown reference, Profile without commands; Catalog List: JSON command kind, Search]
-- [ ] 1.6 GREEN: modify `src/domain/catalog/schema.ts`, `profile.ts`, `listing.ts` (`items.commands`, `ProfileSchema.commands`, `Catalog.commands` required, `LIST_KINDS`); add `commands: []` to the ~26 `Catalog` literals in `test/**` and `test/helpers/`, add `commandSource` helper.
-- [ ] 1.7 RED: extend `test/adapters/catalog/folder-source.test.ts` with fixtures under `test/fixtures/**/commands/`: valid, unlisted `*.md`, ghost entry, `../evil`, symlink, bad frontmatter; valid items stay usable. [Catalog: Valid command, Invalid or guarded]
-- [ ] 1.8 GREEN: modify `src/adapters/catalog/folder-source.ts` (`loadCommands` via `readFileNoFollow` + realpath containment, unlisted-file issue); `catalog/catalog.json` add `"commands": []`; extend `test/adapters/catalog/bundled-catalog.test.ts` (empty commands valid; `hooks/` still ignored).
-- [ ] 1.9 REFACTOR + gate: dedupe parsing helpers (jscpd), then run typecheck, lint, format:check, test, build.
+- [x] 1.1 RED: create `test/domain/catalog/frontmatter.test.ts` (single-line keys, missing/unclosed block, multi-line value rejected; skill messages unchanged).
+- [x] 1.2 GREEN: create `src/domain/catalog/frontmatter.ts` (`readFrontmatter(text, file)`); modify `src/domain/catalog/skill.ts` to use it; existing `test/domain/catalog/skill.test.ts` must stay green. [Catalog: Command catalog entries]
+- [x] 1.3 RED: create `test/domain/catalog/command.test.ts`: valid with passthrough `argument-hint`; names `Review`, `-x`, `a_b` rejected; missing/blank `description`; multi-line value; empty body. [Commands Install: Command name and frontmatter]
+- [x] 1.4 GREEN: create `src/domain/catalog/command.ts` (`CommandNameSchema`, `parseCommand` -> `{ name, description, bytes }`).
+- [x] 1.5 RED: extend `test/domain/catalog/schema.test.ts` (`items.commands` optional/default `[]`), `profile.test.ts` (commands resolved once, unknown `ghost` fails, no field = empty, cycle), `listing.test.ts` (`kind: 'command'`, `list commands --search DIFF`). [Catalog: Old catalog, Commands resolved, Unknown reference, Profile without commands; Catalog List: JSON command kind, Search]
+- [x] 1.6 GREEN: modify `src/domain/catalog/schema.ts`, `profile.ts`, `listing.ts` (`items.commands`, `ProfileSchema.commands`, `Catalog.commands` required, `LIST_KINDS`); add `commands: []` to the ~26 `Catalog` literals in `test/**` and `test/helpers/`, add `commandSource` helper.
+- [x] 1.7 RED: extend `test/adapters/catalog/folder-source.test.ts` with fixtures under `test/fixtures/**/commands/`: valid, unlisted `*.md`, ghost entry, `../evil`, symlink, bad frontmatter; valid items stay usable. [Catalog: Valid command, Invalid or guarded]
+- [x] 1.8 GREEN: modify `src/adapters/catalog/folder-source.ts` (`loadCommands` via `readFileNoFollow` + realpath containment, unlisted-file issue); `catalog/catalog.json` add `"commands": []`; extend `test/adapters/catalog/bundled-catalog.test.ts` (empty commands valid; `hooks/` still ignored).
+- [x] 1.9 REFACTOR + gate: dedupe parsing helpers (jscpd), then run typecheck, lint, format:check, test, build.
 
 ## PR 2a: Domain install model
 

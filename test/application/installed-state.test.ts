@@ -19,7 +19,14 @@ const GITHUB: McpItem = {
   env: [],
 };
 
-const catalog: LoadedCatalog = { mcps: [GITHUB], skills: [DEMO_V1], scripts: [], profiles: [], issues: [] };
+const catalog: LoadedCatalog = {
+  mcps: [GITHUB],
+  skills: [DEMO_V1],
+  scripts: [],
+  commands: [],
+  profiles: [],
+  issues: [],
+};
 
 const owned = (kind: 'mcp' | 'skill', name: string, path: string): OwnedItem => ({
   scope: 'project',
