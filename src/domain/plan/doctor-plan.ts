@@ -9,6 +9,7 @@ export type DoctorCode =
   | 'mcp-missing'
   | 'skill-missing'
   | 'command-missing'
+  | 'hook-missing'
   | 'env-unset'
   | 'duplicate-mcp' // severity 'problem'
   | 'modified'
@@ -109,6 +110,18 @@ function itemFindings(o: ItemObservation, env: DiagnoseInput['env']): Finding[] 
         code: 'command-missing',
         message: `${label(o)} is missing at ${o.item.path}`,
         fix: 'run shitaku init again to reinstall the command',
+      },
+    ];
+  }
+  if (o.item.kind === 'hook' && o.state === 'missing') {
+    // An edited handler is no longer located, so it reads as missing too: identity is by exact content.
+    return [
+      {
+        ...base,
+        severity: 'problem',
+        code: 'hook-missing',
+        message: `${label(o)} (${o.item.hook?.event ?? 'unknown event'}) is missing from ${o.item.path}`,
+        fix: 'run shitaku init again to reinstall the hook',
       },
     ];
   }

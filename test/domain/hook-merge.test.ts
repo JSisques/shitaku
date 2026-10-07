@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addHook, removeHook, updateHook, type HookSpec } from '@/domain/hook-merge.js';
+import { addHook, hasHook, removeHook, updateHook, type HookSpec } from '@/domain/hook-merge.js';
 import { ConfigError } from '@/domain/json-merge.js';
 
 const FILE = '/home/u/.claude/settings.json';
@@ -220,5 +220,28 @@ describe('updateHook', () => {
 
   it('fails closed naming the file on malformed settings', () => {
     expect(() => updateHook('[]', FILE, spec, next)).toThrow(`${FILE}: config root must be a JSON object`);
+  });
+});
+
+describe('hasHook', () => {
+  const present = json({
+    hooks: { PostToolUse: [{ matcher: 'Edit|Write', hooks: [{ type: 'command', command: 'user' }, handler] }] },
+  });
+
+  it('finds the handler by exact content in its event and matcher group', () => {
+    expect(hasHook(present, FILE, spec)).toBe(true);
+    expect(hasHook(present, FILE, { ...spec, handler: { ...handler, timeout: 31 } })).toBe(false);
+  });
+
+  it('does not find it under another matcher or event, nor in a file without hooks', () => {
+    expect(hasHook(present, FILE, { ...spec, matcher: 'Bash' })).toBe(false);
+    expect(hasHook(present, FILE, { ...spec, matcher: null })).toBe(false);
+    expect(hasHook(present, FILE, { ...spec, event: 'Stop' })).toBe(false);
+    expect(hasHook('{}', FILE, spec)).toBe(false);
+  });
+
+  it('fails closed naming the file on malformed settings', () => {
+    expect(() => hasHook('{ nope', FILE, spec)).toThrow(ConfigError);
+    expect(() => hasHook('[]', FILE, spec)).toThrow(`${FILE}: config root must be a JSON object`);
   });
 });

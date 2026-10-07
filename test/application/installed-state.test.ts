@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { claudeCodeTarget } from '@/adapters/claude-code/target.js';
@@ -9,10 +9,13 @@ import { desiredFor, observeInstalled } from '@/application/installed-state.js';
 import { getStatus } from '@/application/status.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import { hashEntry, sha256, treeHash } from '@/domain/hash.js';
-import type { OwnedItem } from '@/domain/manifest.js';
+import { deriveOwnedItems, type OwnedItem } from '@/domain/manifest.js';
+import { hookEntryHash } from '@/domain/plan/hook-plan.js';
+import { loadManifest } from '@/application/journal.js';
 import type { LoadedCatalog } from '@/ports/catalog-source.js';
 import type { FileSystem } from '@/ports/file-system.js';
 import { commandSource, REVIEW_V1, REVIEW_V2 } from '@test/helpers/commands.js';
+import { FMT_V1, FMT_V2, GUARD, hookSource } from '@test/helpers/hooks.js';
 import { DEMO_V1 } from '@test/helpers/skills.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
@@ -287,5 +290,182 @@ describe('desiredFor', () => {
     });
     expect(desiredFor(withCommand, claudeCodeTarget, owned('command', 'gone', '/x'))).toEqual({ kind: 'absent' });
     expect(desiredFor(catalog, claudeCodeTarget, owned('command', 'review', '/x'))).toEqual({ kind: 'absent' });
+  });
+});
+
+describe('hooks', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const settings = (scope: 'project' | 'user' = 'project') =>
+    join(scope === 'project' ? tmp.cwd : tmp.homeDir, '.claude', 'settings.json');
+  const entry = (hook: typeof FMT_V1) =>
+    hookEntryHash({ event: hook.event, matcher: hook.matcher ?? null, handler: claudeCodeTarget.toHookHandler(hook) });
+  const status = (source = deps.source) => getStatus({ ...deps, source }, {});
+  const states = async (source = deps.source) => (await status(source)).items.map((i) => [i.name, i.state]);
+  const install = (scope: 'project' | 'user' = 'project', hooks = ['fmt', 'guard']) =>
+    initMcps(deps, { mcps: [], hooks, scope });
+  const observe = async (name = 'fmt', scope: 'project' | 'user' = 'project', fs: FileSystem = deps.fs) => {
+    const item = deriveOwnedItems(await loadManifest(deps.fs, tmp.homeDir)).find(
+      (i) => i.name === name && i.scope === scope,
+    )!;
+    return observeInstalled({ fs, target: claudeCodeTarget })(item);
+  };
+  const edit = async (change: (doc: { hooks: Record<string, { hooks: object[] }[]> }) => void) => {
+    const doc = JSON.parse(await readFile(settings(), 'utf8')) as { hooks: Record<string, { hooks: object[] }[]> };
+    change(doc);
+    await writeFile(settings(), JSON.stringify(doc, null, 2));
+  };
+
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: hookSource([FMT_V1, GUARD]),
+      fs: new NodeFileSystem(),
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  describe('observeInstalled', () => {
+    it('hashes an intact handler as its recorded entry and offers no entry, so no env is ever required', async () => {
+      await install();
+      expect(await observe()).toEqual({
+        config: 'present',
+        current: { kind: 'hash', hash: entry(FMT_V1) },
+      });
+    });
+
+    it('reports an edited handler and a deleted handler as absent', async () => {
+      await install();
+      await edit((doc) => {
+        doc.hooks.PostToolUse![0]!.hooks = [{ type: 'command', command: 'prettier -w src' }];
+        delete doc.hooks.Stop;
+      });
+      expect(await observe('fmt')).toEqual({ config: 'present', current: { kind: 'absent' } });
+      expect(await observe('guard')).toEqual({ config: 'present', current: { kind: 'absent' } });
+    });
+
+    it('reports a settings file that does not exist as missing', async () => {
+      await install();
+      await rm(settings());
+      expect(await observe()).toEqual({ config: 'missing', current: { kind: 'absent' } });
+    });
+
+    it('reports a settings file that is not valid JSON, or has the wrong shape, as unreadable', async () => {
+      await install();
+      await writeFile(settings(), '{ "hooks": ');
+      expect(await observe()).toEqual({ config: 'unreadable', current: { kind: 'unreadable' } });
+      await writeFile(settings(), JSON.stringify({ hooks: { PostToolUse: 'nope' } }));
+      expect(await observe()).toEqual({ config: 'unreadable', current: { kind: 'unreadable' } });
+    });
+
+    it('reads each settings file once for many hooks', async () => {
+      await install('project', ['fmt', 'guard']);
+      const reads: string[] = [];
+      const counting: FileSystem = new Proxy(deps.fs, {
+        get: (target, prop, receiver) => {
+          if (prop !== 'readText') return Reflect.get(target, prop, receiver) as unknown;
+          return (path: string) => {
+            reads.push(path);
+            return target.readText(path);
+          };
+        },
+      });
+      const items = deriveOwnedItems(await loadManifest(deps.fs, tmp.homeDir));
+      const observeAll = observeInstalled({ fs: counting, target: claudeCodeTarget });
+      await Promise.all(items.map((i) => observeAll(i)));
+      expect(items).toHaveLength(2);
+      expect(reads).toEqual([settings()]);
+    });
+  });
+
+  describe('desiredFor', () => {
+    const item = (name: string) => ({ ...owned('hook', name, settings()) });
+    const entry = (hook: typeof FMT_V1) =>
+      hashEntry({ event: hook.event, matcher: hook.matcher ?? null, handler: claudeCodeTarget.toHookHandler(hook) });
+
+    it('hashes the catalog hook as event, matcher and handler, and is absent when it is no longer offered', () => {
+      const withHooks = { ...catalog, hooks: [FMT_V1, GUARD] };
+      expect(desiredFor(withHooks, claudeCodeTarget, item('fmt'))).toEqual({ kind: 'hash', hash: entry(FMT_V1) });
+      expect(desiredFor(withHooks, claudeCodeTarget, item('guard'))).toEqual({ kind: 'hash', hash: entry(GUARD) });
+      expect(desiredFor(withHooks, claudeCodeTarget, item('gone'))).toEqual({ kind: 'absent' });
+    });
+
+    it('differs when only the matcher or the event changed in the catalog', () => {
+      const moved = { ...catalog, hooks: [{ ...FMT_V1, matcher: 'Bash' }] };
+      const renamed = { ...catalog, hooks: [{ ...FMT_V1, event: 'PreToolUse' }] };
+      expect(desiredFor(moved, claudeCodeTarget, item('fmt'))).not.toEqual({ kind: 'hash', hash: entry(FMT_V1) });
+      expect(desiredFor(renamed, claudeCodeTarget, item('fmt'))).not.toEqual({ kind: 'hash', hash: entry(FMT_V1) });
+    });
+  });
+
+  describe('getStatus', () => {
+    it('lists installed hooks with kind hook and the settings file as path', async () => {
+      await install();
+      expect((await status()).items).toMatchObject([
+        { kind: 'hook', name: 'fmt', state: 'installed', scope: 'project', path: settings() },
+        { kind: 'hook', name: 'guard', state: 'installed', scope: 'project', path: settings() },
+      ]);
+    });
+
+    it('reports an edited or deleted handler as missing, never installed', async () => {
+      await install();
+      await edit((doc) => {
+        doc.hooks.PostToolUse![0]!.hooks = [{ type: 'command', command: 'prettier -w src' }];
+      });
+      expect(await states()).toEqual([
+        ['fmt', 'missing'],
+        ['guard', 'installed'],
+      ]);
+      await edit((doc) => {
+        delete doc.hooks.Stop;
+      });
+      expect(await states()).toEqual([
+        ['fmt', 'missing'],
+        ['guard', 'missing'],
+      ]);
+    });
+
+    it('reports out-of-date and missing-from-catalog', async () => {
+      await install();
+      expect(await states(hookSource([FMT_V2]))).toEqual([
+        ['fmt', 'out-of-date'],
+        ['guard', 'missing-from-catalog'],
+      ]);
+    });
+
+    it('reports every hook of an unparseable settings file as modified and still classifies the other scope', async () => {
+      await install('project');
+      await install('user');
+      await writeFile(settings(), '{ "hooks": ');
+      const items = (await status()).items.map((i) => [i.scope, i.name, i.state]);
+      expect(items).toEqual([
+        ['project', 'fmt', 'modified'],
+        ['project', 'guard', 'modified'],
+        ['user', 'fmt', 'installed'],
+        ['user', 'guard', 'installed'],
+      ]);
+    });
+
+    it('ignores unrelated settings changes and user hooks, keeps scopes distinct, and writes nothing', async () => {
+      await install('project');
+      await install('user');
+      await edit((doc) => {
+        Object.assign(doc, { model: 'opus' });
+        doc.hooks.PostToolUse![0]!.hooks.unshift({ type: 'command', command: 'echo mine' });
+        doc.hooks.PreToolUse = [{ hooks: [{ type: 'command', command: 'echo user' }] }];
+      });
+      const before = await readFile(settings(), 'utf8');
+      const items = (await status()).items;
+      expect(items.map((i) => [i.scope, i.name, i.state])).toEqual([
+        ['project', 'fmt', 'installed'],
+        ['project', 'guard', 'installed'],
+        ['user', 'fmt', 'installed'],
+        ['user', 'guard', 'installed'],
+      ]);
+      expect(await readFile(settings(), 'utf8')).toBe(before);
+    });
   });
 });

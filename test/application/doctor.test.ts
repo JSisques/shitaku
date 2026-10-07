@@ -6,10 +6,12 @@ import { NodeFileSystem } from '@/adapters/fs/node-fs.js';
 import { getDiagnosis } from '@/application/doctor.js';
 import { initMcps, type InitDeps } from '@/application/init-mcps.js';
 import { undoInstall } from '@/application/undo-install.js';
+import type { HookItem } from '@/domain/catalog/hook.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
 import type { LoadedCatalog } from '@/ports/catalog-source.js';
 import { REVIEW_V1 } from '@test/helpers/commands.js';
+import { FMT_V1, GUARD } from '@test/helpers/hooks.js';
 import { DEMO_V1, DEMO_V2 } from '@test/helpers/skills.js';
 import { SCRIPT_V1 } from '@test/helpers/scripts.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
@@ -221,5 +223,80 @@ describe('getDiagnosis', () => {
     expect(missing).toHaveLength(5);
     expect(missing.map((f) => f.tool).sort()).toEqual([...tools].sort());
     expect(missing.every((f) => f.severity === 'info' && f.name === 'complexity')).toBe(true);
+  });
+});
+
+describe('getDiagnosis (hooks)', () => {
+  let tmp: TmpPaths;
+  const fs = new NodeFileSystem();
+  const PROJ: HookItem = { ...GUARD, name: 'proj', event: 'SessionStart', command: '${CLAUDE_PROJECT_DIR}/guard.sh' };
+  const source = {
+    ref: () => ({ kind: 'folder' as const, location: '/catalog' }),
+    load: () =>
+      Promise.resolve({
+        mcps: [],
+        skills: [],
+        scripts: [],
+        commands: [],
+        hooks: [FMT_V1, GUARD, PROJ],
+        profiles: [],
+        issues: [],
+      } satisfies LoadedCatalog),
+  };
+  const deps = (): InitDeps => ({
+    source,
+    fs,
+    target: claudeCodeTarget,
+    paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+    env: {},
+  });
+  const settings = () => join(tmp.cwd, '.claude', 'settings.json');
+  const install = () => initMcps(deps(), { mcps: [], hooks: ['fmt', 'guard', 'proj'], scope: 'project' });
+  const diagnose = () => getDiagnosis(deps(), {});
+  const edit = async (change: (doc: { hooks: Record<string, { hooks: object[] }[]> }) => void) => {
+    const doc = JSON.parse(await readFile(settings(), 'utf8')) as { hooks: Record<string, { hooks: object[] }[]> };
+    change(doc);
+    await writeFile(settings(), JSON.stringify(doc, null, 2));
+  };
+
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('reports nothing for healthy hooks, even when a command names an unset variable', async () => {
+    await install();
+    expect((await diagnose()).findings).toEqual([]);
+  });
+
+  it('reports a deleted or edited hook as hook-missing naming the hook, event and path, and writes nothing', async () => {
+    await install();
+    await edit((doc) => {
+      doc.hooks.PostToolUse![0]!.hooks = [{ type: 'command', command: 'prettier -w src' }];
+      delete doc.hooks.Stop;
+    });
+    const before = await readFile(settings(), 'utf8');
+    const { findings } = await diagnose();
+    expect(findings.map((f) => [f.severity, f.code, f.kind, f.name, f.path])).toEqual([
+      ['problem', 'hook-missing', 'hook', 'fmt', settings()],
+      ['problem', 'hook-missing', 'hook', 'guard', settings()],
+    ]);
+    expect(findings.map((f) => f.message).join('\n')).toMatch(/PostToolUse[\s\S]*Stop/);
+    expect(await readFile(settings(), 'utf8')).toBe(before);
+  });
+
+  it('reports a malformed settings file once as config-unreadable and no hook-missing', async () => {
+    await install();
+    await writeFile(settings(), '{ "hooks": ');
+    const { findings } = await diagnose();
+    expect(findings.map((f) => [f.code, f.kind, f.name, f.path])).toEqual([
+      ['config-unreadable', 'hook', null, settings()],
+    ]);
+  });
+
+  it('reports a deleted settings file as config-missing', async () => {
+    await install();
+    await rm(settings());
+    expect((await diagnose()).findings.map((f) => [f.code, f.name])).toEqual([['config-missing', null]]);
   });
 });

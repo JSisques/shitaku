@@ -125,6 +125,11 @@ function locate(root: JsonObject, file: string, spec: HookSpec): Located | undef
   return undefined;
 }
 
+/** Whether the handler is present, located by exact content. Read-only; fails closed like the edits on bad shapes. */
+export function hasHook(text: string, file: string, spec: HookSpec): boolean {
+  return locate(parseRoot(text, file), file, spec) !== undefined;
+}
+
 /** Removes the handler. Its group and event are dropped only when shitaku created them and they are now empty. */
 export function removeHook(text: string, file: string, spec: HookSpec, created: CreatedFlags): RemoveHookResult {
   const root = parseRoot(text, file);
