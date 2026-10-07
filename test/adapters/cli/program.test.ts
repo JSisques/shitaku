@@ -18,7 +18,7 @@ const TOKEN = 'abc123-secret-value';
 
 /** Scripted prompter; any call it was not scripted for fails the test. */
 function fakePrompter(
-  script: Partial<Record<'mcps' | 'skills' | 'scripts' | 'scope' | 'confirm', unknown>> & {
+  script: Partial<Record<'mcps' | 'skills' | 'scripts' | 'commands' | 'scope' | 'confirm', unknown>> & {
     conflict?: 'overwrite' | 'skip';
   } = {},
 ) {
@@ -39,6 +39,10 @@ function fakePrompter(
     selectScripts: () => (
       calls.push('scripts'),
       Promise.resolve((script.scripts as string[] | undefined) ?? unscripted('scripts'))
+    ),
+    selectCommands: () => (
+      calls.push('commands'),
+      Promise.resolve((script.commands as string[] | undefined) ?? unscripted('commands'))
     ),
     selectScope: () => (
       calls.push('scope'),
@@ -510,6 +514,118 @@ describe('runCli', () => {
     });
   });
 
+  describe('commands', () => {
+    const commandFile = (root = tmp.cwd) => join(root, '.claude', 'commands', 'review.md');
+    const REVIEW = '---\ndescription: Review a diff\nargument-hint: [path]\n---\nReview $ARGUMENTS\n';
+    /** A folder catalog that offers `review` (and `lint` when asked) as slash commands only. */
+    const writeCommandCatalog = async (names: string[] = ['review']): Promise<string> => {
+      const dir = join(tmp.root, 'commands-catalog');
+      await mkdir(join(dir, 'commands'), { recursive: true });
+      await writeFile(
+        join(dir, 'catalog.json'),
+        JSON.stringify({ version: 1, items: { mcps: [], skills: [], scripts: [], commands: names, profiles: [] } }),
+      );
+      for (const name of names) {
+        const body = name === 'review' ? REVIEW : `---\ndescription: ${name} things\n---\nRun ${name}\n`;
+        await writeFile(join(dir, 'commands', `${name}.md`), body);
+      }
+      return dir;
+    };
+
+    it('lists --commands in init help', async () => {
+      expect(await run('init', '--help')).toBe(0);
+      expect(text()).toContain('--commands');
+    });
+
+    it('installs only the selected command, without prompts, and undo reverts it', async () => {
+      const dir = await writeCommandCatalog(['review', 'lint']);
+      expect(await run('init', '--commands', 'review', '--scope', 'project', '--source', dir)).toBe(0);
+      expect(await readFile(commandFile(), 'utf8')).toBe(REVIEW);
+      expect(await readdir(join(tmp.cwd, '.claude', 'commands'))).toEqual(['review.md']);
+      await expect(readFile(mcpFile(), 'utf8')).rejects.toThrow();
+      expect(calls).toEqual([]);
+      expect(text()).toContain(commandFile());
+      expect(await run('undo')).toBe(0);
+      await expect(readdir(join(tmp.cwd, '.claude'))).rejects.toThrow();
+    });
+
+    it('installs at user scope', async () => {
+      const dir = await writeCommandCatalog();
+      expect(await run('init', '--commands', 'review', '--scope', 'user', '--source', dir)).toBe(0);
+      expect(await readFile(commandFile(tmp.homeDir), 'utf8')).toBe(REVIEW);
+    });
+
+    it('prints the plan and writes nothing on --dry-run', async () => {
+      const dir = await writeCommandCatalog();
+      expect(await run('init', '--commands', 'review', '--scope', 'project', '--dry-run', '--source', dir)).toBe(0);
+      expect(out).toContain(`project scope: ${commandFile()}`);
+      expect(out).toContain('  review: create');
+      await expect(readdir(join(tmp.cwd, '.claude'))).rejects.toThrow();
+    });
+
+    it('exits 1 naming an unknown command and writes nothing', async () => {
+      const dir = await writeCommandCatalog();
+      expect(await run('init', '--commands', 'ghost', '--scope', 'project', '--source', dir)).toBe(1);
+      expect(err.join('\n')).toMatch(/^error: .*ghost/);
+      expect(await readdir(tmp.cwd)).toEqual([]);
+    });
+
+    it('exits 2 on a conflict without --force, and --force replaces the file', async () => {
+      const dir = await writeCommandCatalog();
+      await mkdir(join(tmp.cwd, '.claude', 'commands'), { recursive: true });
+      await writeFile(commandFile(), 'mine\n');
+      expect(await run('init', '--yes', '--commands', 'review', '--scope', 'project', '--source', dir)).toBe(2);
+      expect(err).toContain("conflict: command 'review' already exists with different content");
+      expect(await readFile(commandFile(), 'utf8')).toBe('mine\n');
+      expect(await run('init', '--yes', '--commands', 'review', '--scope', 'project', '--force', '--source', dir)).toBe(
+        0,
+      );
+      expect(await readFile(commandFile(), 'utf8')).toBe(REVIEW);
+    });
+
+    it('asks for commands when the catalog has some, and installs the selection', async () => {
+      const dir = await writeCommandCatalog();
+      usePrompter({ mcps: [], commands: ['review'], scope: 'project', confirm: true });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(calls).toEqual(['mcps', 'commands', 'scope', 'confirm']);
+      expect(await readFile(commandFile(), 'utf8')).toBe(REVIEW);
+    });
+
+    it('does not ask for commands when the catalog has none', async () => {
+      usePrompter({ mcps: ['context7'], skills: [], scripts: [], scope: 'project', confirm: true });
+      expect(await run('init')).toBe(0);
+      expect(calls).toEqual(['mcps', 'skills', 'scripts', 'scope', 'confirm']);
+    });
+
+    it('resolves an interactive command conflict: skip keeps the file, overwrite replaces it', async () => {
+      const dir = await writeCommandCatalog();
+      await mkdir(join(tmp.cwd, '.claude', 'commands'), { recursive: true });
+      await writeFile(commandFile(), 'mine\n');
+      usePrompter({ mcps: [], commands: ['review'], scope: 'project', conflict: 'skip', confirm: true });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(conflicts).toEqual([expect.objectContaining({ kind: 'command', name: 'review' })]);
+      expect(await readFile(commandFile(), 'utf8')).toBe('mine\n');
+      usePrompter({ mcps: [], commands: ['review'], scope: 'project', conflict: 'overwrite', confirm: true });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(await readFile(commandFile(), 'utf8')).toBe(REVIEW);
+    });
+
+    it('uninstalls a command with --kind command and undo brings it back', async () => {
+      const dir = await writeCommandCatalog();
+      await run('init', '--commands', 'review', '--scope', 'project', '--source', dir);
+      expect(await run('uninstall', 'review', '--kind', 'command')).toBe(0);
+      expect(text()).toMatch(/uninstalled command 'review' \(project scope\)/);
+      await expect(readFile(commandFile(), 'utf8')).rejects.toThrow();
+      expect(await run('undo')).toBe(0);
+      expect(await readFile(commandFile(), 'utf8')).toBe(REVIEW);
+    });
+
+    it('rejects --kind widget with the allowed choices', async () => {
+      expect(await run('uninstall', 'review', '--kind', 'widget')).toBe(1);
+      expect(err.join('\n')).toContain('Allowed choices are mcp, skill, script, command');
+    });
+  });
+
   describe('uninstall', () => {
     const skillDir = () => join(tmp.cwd, '.claude', 'skills', 'example-skill');
     const userFile = () => join(tmp.homeDir, '.claude.json');
@@ -731,10 +847,10 @@ describe('runCli', () => {
     /** Writes a folder catalog; profiles have no skills or MCPs of their own, so they always resolve. */
     const writeCatalog = async (
       name: string,
-      items: { mcps?: Entry[]; skills?: Entry[]; scripts?: Entry[]; profiles?: Entry[] },
+      items: { mcps?: Entry[]; skills?: Entry[]; scripts?: Entry[]; commands?: Entry[]; profiles?: Entry[] },
     ): Promise<string> => {
       const dir = join(tmp.root, name);
-      const { mcps = [], skills = [], scripts = [], profiles = [] } = items;
+      const { mcps = [], skills = [], scripts = [], commands = [], profiles = [] } = items;
       await mkdir(join(dir, 'mcps'), { recursive: true });
       await mkdir(join(dir, 'profiles'), { recursive: true });
       await writeFile(
@@ -745,6 +861,7 @@ describe('runCli', () => {
             mcps: mcps.map((m) => m.name),
             skills: skills.map((s) => s.name),
             scripts: scripts.map((s) => s.name),
+            commands: commands.map((c) => c.name),
             profiles: profiles.map((p) => p.name),
           },
         }),
@@ -768,6 +885,10 @@ describe('runCli', () => {
         );
         await writeFile(join(dir, 'scripts', s.name, 'index.mjs'), 'export default {};\n');
       }
+      for (const c of commands) {
+        await mkdir(join(dir, 'commands'), { recursive: true });
+        await writeFile(join(dir, 'commands', `${c.name}.md`), `---\ndescription: ${c.description ?? ''}\n---\nBody\n`);
+      }
       for (const p of profiles) await writeFile(join(dir, 'profiles', `${p.name}.json`), JSON.stringify(p));
       return dir;
     };
@@ -784,6 +905,12 @@ describe('runCli', () => {
     it('rejects an invalid kind with the allowed choices, exit 1 and empty stdout', async () => {
       expect(await run('list', 'bogus')).toBe(1);
       expect(err.join('\n')).toContain('Allowed choices');
+      expect(out).toEqual([]);
+    });
+
+    it('rejects the unknown kind widgets and offers commands among the choices', async () => {
+      expect(await run('list', 'widgets')).toBe(1);
+      expect(err.join('\n')).toContain('Allowed choices are mcps, skills, profiles, scripts, commands');
       expect(out).toEqual([]);
     });
 
@@ -834,6 +961,41 @@ describe('runCli', () => {
           'skills:',
           '  demo  Skill',
         ]);
+      });
+
+      it('lists only commands when asked', async () => {
+        const dir = await writeCatalog('with-commands', {
+          skills: [{ name: 'demo', description: 'Skill' }],
+          commands: [{ name: 'review', description: 'Review a diff' }],
+        });
+        expect(await run('list', 'commands', '--source', dir)).toBe(0);
+        expect(out).toEqual(['commands:', '  review  Review a diff']);
+      });
+
+      it('lists all five kinds together, commands first alphabetically', async () => {
+        const dir = await writeCatalog('five-kinds', {
+          mcps: [{ name: 'fs', description: 'Files' }],
+          skills: [{ name: 'demo', description: 'Skill' }],
+          scripts: [{ name: 'lint', description: 'Run lint' }],
+          commands: [{ name: 'review', description: 'Review a diff' }],
+          profiles: [{ name: 'base' }],
+        });
+        expect(await run('list', '--source', dir)).toBe(0);
+        expect(out.filter((l) => !l.startsWith(' '))).toEqual([
+          'commands:',
+          'mcps:',
+          'profiles:',
+          'scripts:',
+          'skills:',
+        ]);
+      });
+
+      it('prints no matching items for commands when the catalog has none', async () => {
+        expect(await run('list', 'commands', '--source', await fullCatalog())).toBe(0);
+        expect(out).toEqual(['no matching items']);
+        out = [];
+        expect(await run('list', 'commands')).toBe(0);
+        expect(out).toEqual(['no matching items']);
       });
 
       it('lists only profiles when asked, printing a profile without description as its name', async () => {
@@ -1021,7 +1183,10 @@ describe('runCli', () => {
     it('keeps the exit code of a failing command and still prints the notice', async () => {
       useUpdates('0.3.0');
       expect(await run('init', '--yes')).toBe(1);
-      expect(err).toEqual(['error: select at least one kind: pass --mcps, --skills and/or --scripts', NOTICE]);
+      expect(err).toEqual([
+        'error: select at least one kind: pass --mcps, --skills, --scripts and/or --commands',
+        NOTICE,
+      ]);
     });
 
     it('does not check without updates settings', async () => {
