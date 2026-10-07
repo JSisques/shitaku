@@ -245,3 +245,61 @@ describe('hasHook', () => {
     expect(() => hasHook('[]', FILE, spec)).toThrow(`${FILE}: config root must be a JSON object`);
   });
 });
+
+describe('file fidelity of an edit', () => {
+  const BOM = String.fromCodePoint(0xfeff);
+  const crlf = (text: string): string => text.replaceAll('\n', '\r\n');
+
+  it('keeps CRLF line endings on add, update and remove', () => {
+    const before = crlf(json({ theme: 'dark' }, 4));
+    const added = addHook(before, FILE, spec).text;
+    expect(added).toBe(
+      crlf(json({ theme: 'dark', hooks: { PostToolUse: [{ matcher: 'Edit|Write', hooks: [handler] }] } }, 4)),
+    );
+    expect(added.replaceAll('\r\n', '')).not.toContain('\n');
+    const next = { ...handler, timeout: 60 };
+    const updated = updateHook(added, FILE, spec, next).text;
+    expect(updated.replaceAll('\r\n', '')).not.toContain('\n');
+    expect(updated).toContain('"timeout": 60');
+    const created = { createdEvent: true, createdGroup: true };
+    const removed = removeHook(updated, FILE, { ...spec, handler: next }, created).text;
+    expect(removed).toBe(crlf(json({ theme: 'dark', hooks: {} }, 4)));
+  });
+
+  it('keeps CRLF without a trailing newline, and does not add CR to an LF file', () => {
+    const noTrailing = addHook(crlf(json({ a: 1 }, 2, '')), FILE, spec).text;
+    expect(noTrailing.endsWith('}')).toBe(true);
+    expect(noTrailing).toContain('\r\n');
+    expect(noTrailing.replaceAll('\r\n', '')).not.toContain('\n');
+    expect(addHook(json({ a: 1 }), FILE, spec).text).not.toContain('\r');
+  });
+
+  it('refuses a byte order mark with a ConfigError naming the file', () => {
+    const attempt = () => addHook(`${BOM}${json({ a: 1 })}`, FILE, spec);
+    expect(attempt).toThrow(ConfigError);
+    expect(attempt).toThrow(FILE);
+    expect(attempt).toThrow('byte order mark');
+  });
+
+  it.each([
+    ['empty', ''],
+    ['whitespace-only', ' \n\t\r\n'],
+  ])('refuses an %s file with a message that says so', (_label, text) => {
+    const attempt = () => addHook(text, FILE, spec);
+    expect(attempt).toThrow(ConfigError);
+    expect(attempt).toThrow(`${FILE}: config file is empty`);
+  });
+
+  it('keeps the last value of a duplicate key, as JSON.parse does', () => {
+    const before = '{\n  "model": "sonnet",\n  "model": "opus"\n}\n';
+    expect(parse(addHook(before, FILE, spec).text).model).toBe('opus');
+  });
+
+  it('wraps a document nested too deeply to serialize into a ConfigError naming the file', () => {
+    const depth = 200_000;
+    const before = `{"deep": ${'['.repeat(depth)}${']'.repeat(depth)}}`;
+    const attempt = () => addHook(before, FILE, spec);
+    expect(attempt).toThrow(ConfigError);
+    expect(attempt).toThrow(FILE);
+  });
+});

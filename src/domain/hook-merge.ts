@@ -29,6 +29,8 @@ const fail = (file: string, reason: string): never => {
 
 function parseRoot(text: string | null, file: string): JsonObject {
   if (text === null) return {};
+  if (text.trim() === '') return fail(file, 'config file is empty; delete it or write a JSON object such as {}');
+  if (text.startsWith('\uFEFF')) return fail(file, 'config starts with a byte order mark (BOM); save it without one');
   let doc: unknown;
   try {
     doc = JSON.parse(text);
@@ -64,9 +66,20 @@ function readGroups(hooks: JsonObject, event: string, file: string): JsonObject[
 
 const matcherOf = (group: JsonObject): string | null => (typeof group.matcher === 'string' ? group.matcher : null);
 
-const serialize = (root: JsonObject, original: string | null): string =>
-  JSON.stringify(root, null, original === null ? 2 : detectIndent(original)) +
-  (original === null || original.endsWith('\n') ? '\n' : '');
+/**
+ * Re-serializes the document with the indentation, line endings (LF or CRLF) and trailing newline of the
+ * original. JSON.stringify emits only structural newlines, so switching them to CRLF cannot touch a string.
+ */
+function serialize(root: JsonObject, original: string | null, file: string): string {
+  let body: string;
+  try {
+    body = JSON.stringify(root, null, original === null ? 2 : detectIndent(original));
+  } catch (e) {
+    return fail(file, `config cannot be re-serialized: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const text = body + (original === null || original.endsWith('\n') ? '\n' : '');
+  return original?.includes('\r\n') ? text.replaceAll('\n', '\r\n') : text;
+}
 
 /** Appends the handler to the first group with an equal matcher. A deep-equal handler is a no-op `skip`. */
 export function addHook(text: string | null, file: string, spec: HookSpec): AddHookResult {
@@ -85,7 +98,12 @@ export function addHook(text: string | null, file: string, spec: HookSpec): AddH
   else groups.push({ ...(spec.matcher === null ? {} : { matcher: spec.matcher }), hooks: [spec.handler] });
   hooks[spec.event] = groups;
   root.hooks = hooks;
-  return { text: serialize(root, text), action: 'create', createdEvent: existing === undefined, createdGroup: !target };
+  return {
+    text: serialize(root, text, file),
+    action: 'create',
+    createdEvent: existing === undefined,
+    createdGroup: !target,
+  };
 }
 
 export interface RemoveHookResult {
@@ -139,7 +157,7 @@ export function removeHook(text: string, file: string, spec: HookSpec, created: 
   (group.hooks as unknown[]).splice(index, 1);
   if (created.createdGroup && (group.hooks as unknown[]).length === 0) groups.splice(groups.indexOf(group), 1);
   if (created.createdEvent && groups.length === 0) delete hooks[spec.event];
-  return { text: serialize(root, text), removed: true };
+  return { text: serialize(root, text, file), removed: true };
 }
 
 /** Replaces the handler in `spec` with `next`, in place. Reports `updated: false` when it cannot be located. */
@@ -148,5 +166,5 @@ export function updateHook(text: string | null, file: string, spec: HookSpec, ne
   const found = locate(root, file, spec);
   if (text === null || !found) return { text: text ?? '', updated: false };
   (found.group.hooks as unknown[])[found.index] = next;
-  return { text: serialize(root, text), updated: true };
+  return { text: serialize(root, text, file), updated: true };
 }
