@@ -1264,4 +1264,51 @@ describe('initMcps (hooks)', () => {
     expect(await readFile(settings(), 'utf8')).toBe(original);
     await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
   });
+
+  it('leaves .claude/settings.local.json byte-identical on a project install', async () => {
+    const local = join(tmp.cwd, '.claude', 'settings.local.json');
+    const bytes = '{\r\n\t"permissions": { "allow": ["Bash(ls)"] },\r\n\t"hooks": { "Stop": [] }\r\n}';
+    await mkdir(dirname(local), { recursive: true });
+    await writeFile(local, bytes);
+    await install({ hooks: ['fmt', 'guard'] });
+    expect(await readFile(local, 'utf8')).toBe(bytes);
+    expect(await readdir(dirname(local))).toEqual(['settings.json', 'settings.local.json']);
+  });
+
+  it('leaves a project settings.local.json byte-identical on a user install, and vice versa', async () => {
+    const projectLocal = join(tmp.cwd, '.claude', 'settings.local.json');
+    const userLocal = join(tmp.homeDir, '.claude', 'settings.local.json');
+    for (const file of [projectLocal, userLocal]) {
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, '{"model":"opus"}');
+    }
+    await install({ scope: 'user' });
+    await install({ scope: 'project' });
+    expect(await readFile(projectLocal, 'utf8')).toBe('{"model":"opus"}');
+    expect(await readFile(userLocal, 'utf8')).toBe('{"model":"opus"}');
+  });
+
+  it('keeps CRLF line endings of an existing settings file', async () => {
+    await mine('{\r\n  "model": "opus"\r\n}\r\n');
+    await install();
+    const text = await readFile(settings(), 'utf8');
+    expect(text.replaceAll('\r\n', '')).not.toContain('\n');
+    expect(text.endsWith('}\r\n')).toBe(true);
+    expect(await read()).toMatchObject({ model: 'opus', hooks: { PostToolUse: [{ hooks: [FMT] }] } });
+  });
+
+  it('refuses a settings file with a byte order mark, naming it and writing nothing', async () => {
+    const original = '\uFEFF{"model":"opus"}\n';
+    await mine(original);
+    await expect(install()).rejects.toThrow(ConfigError);
+    await expect(install()).rejects.toThrow(settings());
+    expect(await readFile(settings(), 'utf8')).toBe(original);
+    await expect(readFile(manifestPath(tmp.homeDir), 'utf8')).rejects.toThrow();
+  });
+
+  it('keeps the last value of a duplicate key in the settings file', async () => {
+    await mine('{"model":"sonnet","model":"opus"}\n');
+    await install();
+    expect((await read()).model).toBe('opus');
+  });
 });
