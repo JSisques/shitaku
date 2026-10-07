@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   deriveCommandOwnership,
+  deriveHookOwnership,
   deriveOwnedItems,
   deriveOwnership,
   deriveScriptOwnership,
@@ -480,5 +481,128 @@ describe('deriveCommandOwnership', () => {
     expect(deriveOwnedItems(manifest([commandInstall('a', path, 'h1')]))).toEqual([
       { kind: 'command', scope: 'project', path, name: 'review', hash: 'h1', installId: 'a' },
     ]);
+  });
+});
+
+type HookItem = Extract<Install['files'][number]['items'][number], { kind: 'hook' }>;
+
+const settings = '/w/.claude/settings.json';
+const handler = { type: 'command', command: 'pnpm run fmt', timeout: 30 };
+
+const hookItem = (over: Partial<HookItem> = {}): HookItem => ({
+  kind: 'hook',
+  name: 'fmt',
+  action: 'create',
+  entryHash: 'hh1',
+  event: 'PostToolUse',
+  matcher: 'Edit|Write',
+  handler,
+  createdEvent: true,
+  createdGroup: true,
+  ...over,
+});
+
+const hookInstall = (id: string, item: HookItem, over: Partial<Install> = {}): Install => ({
+  id,
+  createdAt: '2026-10-02T10:15:00.000Z',
+  undoneAt: null,
+  source: { kind: 'bundled', location: '/catalog', catalogVersion: 1 },
+  files: [{ path: settings, scope: 'project', backup: null, beforeHash: null, afterHash: 'after', items: [item] }],
+  createdDirs: [],
+  ...over,
+});
+
+describe('hook items', () => {
+  it('round-trips a hook item with event, matcher, handler and the created flags', () => {
+    const m = manifest([hookInstall('a', hookItem())]);
+    const parsed = parseManifest(JSON.stringify(m));
+    expect(parsed).toEqual(m);
+    expect(parsed.version).toBe(1);
+  });
+
+  it('stores a null matcher for a hook declared without one', () => {
+    const m = manifest([hookInstall('a', hookItem({ matcher: null, createdGroup: false }))]);
+    expect(parseManifest(JSON.stringify(m)).installs[0]?.files[0]?.items[0]).toMatchObject({ matcher: null });
+  });
+
+  it('keeps the replaced handler of an update', () => {
+    const previous = { type: 'command', command: 'pnpm run fmt:old' };
+    const m = manifest([hookInstall('a', hookItem({ action: 'update', previous }))]);
+    expect(parseManifest(JSON.stringify(m)).installs[0]?.files[0]?.items[0]).toMatchObject({ previous });
+  });
+
+  it('rejects a hook item without an event', () => {
+    const text = JSON.stringify(manifest([hookInstall('a', hookItem())])).replace('"event":"PostToolUse",', '');
+    expect(text).not.toContain('"event"');
+    expect(() => parseManifest(text)).toThrow(ManifestError);
+  });
+
+  it('rejects a null afterHash on a hook file: an install never deletes the settings file', () => {
+    const base = hookInstall('a', hookItem());
+    const file = { ...base.files[0]!, afterHash: null };
+    expect(() => parseManifest(JSON.stringify(manifest([{ ...base, files: [file] }])))).toThrow(ManifestError);
+  });
+
+  it('parses a manifest that has no hook items and replays it unchanged', () => {
+    const text = `{"version":1,"installs":[{"id":"20260101T000000-ab12","createdAt":"2026-01-01T00:00:00.000Z",
+      "undoneAt":null,"source":{"kind":"bundled","location":"/c","catalogVersion":1},
+      "files":[{"path":"/p/.mcp.json","scope":"project","backup":null,"beforeHash":null,"afterHash":"h",
+      "items":[{"kind":"mcp","name":"github","action":"create","entryHash":"e"}]}]}]}`;
+    const parsed = parseManifest(text);
+    expect(deriveHookOwnership(parsed)).toEqual({});
+    expect(deriveOwnedItems(parsed).map((o) => o.kind)).toEqual(['mcp']);
+  });
+});
+
+describe('deriveHookOwnership', () => {
+  const owned = (over: Partial<HookItem> = {}) => ({
+    entryHash: 'hh1',
+    event: 'PostToolUse',
+    matcher: 'Edit|Write',
+    handler,
+    createdEvent: true,
+    createdGroup: true,
+    ...over,
+  });
+
+  it('maps settings path and hook name to what shitaku last wrote', () => {
+    expect(deriveHookOwnership(manifest([hookInstall('a', hookItem())]))).toEqual({ [settings]: { fmt: owned() } });
+  });
+
+  it('lets a later install replace the entry and ignores undone installs', () => {
+    const later = hookItem({ action: 'update', entryHash: 'hh2', createdEvent: false, createdGroup: false });
+    const undone = hookInstall('c', hookItem({ entryHash: 'hh3' }), { undoneAt: '2026-10-03T00:00:00.000Z' });
+    const m = manifest([hookInstall('a', hookItem()), hookInstall('b', later), undone]);
+    expect(deriveHookOwnership(m)[settings]?.fmt).toMatchObject({ entryHash: 'hh2', createdEvent: false });
+  });
+
+  it('a remove drops the hook and the file entry once empty; reinstalling owns it again', () => {
+    const removed = hookInstall('b', hookItem({ action: 'remove' }));
+    expect(deriveHookOwnership(manifest([hookInstall('a', hookItem()), removed]))).toEqual({});
+    const again = hookInstall('c', hookItem({ entryHash: 'hh4' }));
+    expect(deriveHookOwnership(manifest([hookInstall('a', hookItem()), removed, again]))[settings]?.fmt).toMatchObject({
+      entryHash: 'hh4',
+    });
+  });
+
+  it('ignores MCP, skill and command items', () => {
+    const m = manifest([install('a', 'github', 'h1'), commandInstall('b', '/w/.claude/commands/x.md', 'h2')]);
+    expect(deriveHookOwnership(m)).toEqual({});
+  });
+
+  it('keeps hooks out of the MCP, skill and command ownership maps', () => {
+    const m = manifest([hookInstall('a', hookItem())]);
+    expect(deriveOwnership(m)).toEqual({});
+    expect(deriveCommandOwnership(m)).toEqual({});
+    expect(deriveSkillOwnership(m)).toEqual({});
+  });
+
+  it('lists a hook in owned items by its settings file path with kind hook', () => {
+    expect(deriveOwnedItems(manifest([hookInstall('a', hookItem())]))).toEqual([
+      { kind: 'hook', scope: 'project', path: settings, name: 'fmt', hash: 'hh1', installId: 'a' },
+    ]);
+    expect(
+      deriveOwnedItems(manifest([hookInstall('a', hookItem()), hookInstall('b', hookItem({ action: 'remove' }))])),
+    ).toEqual([]);
   });
 });

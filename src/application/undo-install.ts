@@ -50,7 +50,9 @@ const treeRoots = (install: Install): Set<string> =>
 
 /** Every rooted item: tree directories plus command files. LIFO and pruning key on these; a command root is a file, so never list it. */
 const itemRoots = (install: Install): Set<string> =>
-  new Set(install.files.flatMap((f) => f.items.flatMap((i) => (i.kind === 'mcp' ? [] : [i.root]))));
+  new Set(
+    install.files.flatMap((f) => f.items.flatMap((i) => (i.kind === 'mcp' || i.kind === 'hook' ? [] : [i.root]))),
+  );
 
 /** Script install roots only — ADR-2 cleans runtime `node_modules` here, not under skills. */
 const scriptRoots = (install: Install): Set<string> =>

@@ -180,6 +180,9 @@ async function applyUninstall(deps: UninstallDeps, plan: Plan): Promise<string> 
   const files: Install['files'] = [];
   const undo: (() => Promise<void>)[] = [];
 
+  // Temporary (PR 3 of catalog-add-hooks): no install records a hook yet; PR 6 adds the hook uninstall branches.
+  if (item.kind === 'hook') throw new Error('uninstalling a hook is not supported yet');
+
   if (item.kind === 'mcp') {
     const before = plan.text!;
     const backup = backupPath(id, 0, item.path);
