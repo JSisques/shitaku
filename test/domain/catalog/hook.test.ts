@@ -73,6 +73,8 @@ describe('HookItemSchema', () => {
     ['a literal env assignment', 'API_TOKEN=abc123def456 run'],
     ['a literal bearer header', 'curl -H "Authorization: Bearer abc123def456ghi" https://example.com'],
     ['a literal password flag', 'tool PASSWORD=hunter2hunter2'],
+    ['a literal assignment after a safe reference', 'API_TOKEN=${A} run DB_PASSWORD=hunter2hunter2'],
+    ['a literal bearer after a safe reference', 'echo Bearer $T then Bearer abcdef123456'],
   ])('rejects a command containing %s', (_title, command) => {
     expect(messageOf({ ...fmt, command })).toContain('literal secret');
   });
@@ -86,6 +88,8 @@ describe('HookItemSchema', () => {
     'curl -H "Authorization: Bearer ${GITHUB_TOKEN}" https://example.com',
     'API_TOKEN="$API_TOKEN" run',
     'prettier --write "$CLAUDE_PROJECT_DIR"',
+    'API_TOKEN=${A} DB_PASSWORD=$B run',
+    'echo Bearer $T then Bearer ${U}',
   ])('allows placeholders and variable references in %s', (command) => {
     expect(HookItemSchema.safeParse({ ...fmt, command }).success).toBe(true);
   });

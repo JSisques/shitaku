@@ -18,18 +18,18 @@ const TOKEN_SHAPES: readonly RegExp[] = [
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./,
 ];
 // `KEY=value` where the name looks like a credential and the value is not a variable reference.
-const SECRET_ASSIGNMENT = /\b[A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY)[A-Za-z0-9_]*=["']?([^\s"']+)/i;
-const BEARER = /\bBearer\s+["']?([^\s"']+)/i;
+const SECRET_ASSIGNMENT = /\b[A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY)[A-Za-z0-9_]*=["']?([^\s"']+)/gi;
+const BEARER = /\bBearer\s+["']?([^\s"']+)/gi;
 
 const isReference = (value: string): boolean => value.startsWith('$');
 
 /** True when the text carries a credential-shaped literal. `${VAR}` and `$VAR` references are never secrets. */
 export function hasLiteralSecret(text: string): boolean {
   if (TOKEN_SHAPES.some((shape) => shape.test(text))) return true;
-  return [SECRET_ASSIGNMENT, BEARER].some((pattern) => {
-    const value = pattern.exec(text)?.[1];
-    return value !== undefined && !isReference(value);
-  });
+  // Every match is checked: a safe reference must not mask a later literal.
+  return [SECRET_ASSIGNMENT, BEARER].some((pattern) =>
+    [...text.matchAll(pattern)].some((match) => !isReference(match[1] ?? '')),
+  );
 }
 
 const noSecret = (field: string) => ({ error: `${field} contains a literal secret` });
