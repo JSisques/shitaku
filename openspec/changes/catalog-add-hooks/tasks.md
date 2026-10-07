@@ -84,6 +84,18 @@ Every PR: RED test first, then GREEN, then REFACTOR; tests and docs stay with co
 - [x] 8.2 GREEN: `scripts/generate-catalog-table.mjs`, `scripts/generate-website-catalog.mjs`
 - [x] 8.3 Docs: README, CONTRIBUTING, security page en/es, flags, `/config` note
 
+## PR 9: Remediation of the full verify
+
+- [x] 9.1 Specs: edited hook is treated as absent (item-uninstall, install-status, hooks-install, task 6.1) (W1)
+- [x] 9.2 RED/GREEN: `writeAtomic` resolves a symlinked target and keeps the link (`test/adapters/fs/node-fs.test.ts`) (W3)
+- [x] 9.3 RED/GREEN: hook edits keep CRLF; BOM, empty file and too-deep document fail with a ConfigError; duplicate keys pinned (`test/domain/hook-merge.test.ts`) (W2, S1, S2)
+- [x] 9.4 Test: a hook install leaves `settings.local.json` byte-identical, plus CRLF, BOM and duplicate keys end to end (`test/application/init-mcps.test.ts`) (CRITICAL)
+- [x] 9.5 RED/GREEN: gate preview escapes control characters (`test/adapters/cli/hook-preview.test.ts`) (W4)
+- [x] 9.6 Test: a name that is both a command and a hook needs `--kind` (`test/application/uninstall-item.test.ts`) (W6)
+- [x] 9.7 Test: security note tokens exist in README, CONTRIBUTING and security en/es (`test/hooks-docs.test.ts`) (W7)
+- [x] 9.8 Docs: what a hook install keeps and normalizes, and the re-plan wording on the security pages (W2, W5)
+- Not done: S3 (secret heuristic gaps), S4 (position of a re-added handler), S5 (TDD evidence table of earlier PRs).
+
 ## Key Learnings
 
 1. Keeping the hooks flag and its confirmation gate in one PR avoids an unguarded install path.

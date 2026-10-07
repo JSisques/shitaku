@@ -292,3 +292,37 @@ The task named `test/tooling.test.ts`, but the generator drift tests live in `te
 - Facts documented were checked against the built CLI (help text, gate, status, doctor, list) and research.md (strict JSON, live reload, `/config` writes, precedence, full user permissions). Timeout unit is shown only as the plain number on pages; the CLI preview prints `Ns`.
 - Not documented: unknown handler keys behavior and Claude Code's own write mechanism (research gaps).
 - No design deviation. The edited-hook uninstall refusal (spec) stays unreachable by design (see PR 6); docs state it reports already absent.
+
+## PR 9 (remediation of the full verify, branch feat/hooks-9-remediation)
+
+Strict TDD. Fixes the CRITICAL and W1-W7 of the full verify (S1 and S2 done; S3-S5 not done). Tasks 9.1-9.8 are `[x]`.
+
+| Task | Test file                                 | RED                                                       | GREEN                  | Notes                                                                              |
+| ---- | ----------------------------------------- | --------------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------- |
+| 9.2  | `test/adapters/fs/node-fs.test.ts`        | 2 failed of 3 new (link kept, chain)                      | 19 passed              | dangling link test passed at once (coverage)                                       |
+| 9.3  | `test/domain/hook-merge.test.ts`          | 6 failed of 7 new (CRLF x2, BOM, empty, whitespace, deep) | 40 passed              | duplicate-key test passed at once (pins existing behavior)                         |
+| 9.4  | `test/application/init-mcps.test.ts`      | none: 5 tests passed at once                              | 90 passed              | settings.local.json test is coverage of existing behavior; CRLF case relies on 9.3 |
+| 9.5  | `test/adapters/cli/hook-preview.test.ts`  | 6 failed of 7 new                                         | 7 passed (cli dir 266) | backslash is escaped too, so `\n` text and a newline differ                        |
+| 9.6  | `test/application/uninstall-item.test.ts` | none: passed at once                                      | 56 passed              | coverage                                                                           |
+| 9.7  | `test/hooks-docs.test.ts`                 | none: guard over existing docs, 17 passed                 | 17 passed              | coverage                                                                           |
+
+### Work Unit Evidence (PR 9)
+
+| Evidence          | Value                                                                                                                                                                         |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused test      | per-file runs above; full `pnpm run test`: 57 files, 1291 passed                                                                                                              |
+| Runtime harness   | built CLI in a scratch project with a symlinked CRLF `settings.json` and a `--source` hook: install kept the link and CRLF, `undo` restored the exact bytes and kept the link |
+| Rollback boundary | one revert per commit: specs, fs, hook-merge, init test, preview, uninstall test, docs test, docs prose                                                                       |
+
+### Validation
+
+`typecheck`, `lint`, `format:check`, `test`, `build`, `docs:catalog:check`, `docs:website-catalog:check` all exit 0. Hand-written code and docs: 343 added/33 deleted before this openspec commit (`git diff --shortstat 6f3203b...HEAD`), under the 400 budget; no size:exception.
+
+### Notes and Deviations
+
+- W1 spec text was written from the verify summary (the findings observation holds no verbatim wording): edited equals absent, exit 0, nothing written, `--force` has no effect, a hook is never `modified`.
+- W3 scope: only `writeAtomic` follows a symlink (`writeBytes` for skills, scripts and commands is unchanged); a dangling or looping link is replaced by a regular file as before.
+- W4 escapes C0, DEL, C1, U+2028/2029 and the backslash with JSON-style escapes in name, event, matcher and command.
+- W2 documents what cannot be preserved (one-line arrays, integer-like key order, integers above 2^53, `\u` escapes); CRLF is now preserved. The Spanish security text was written in neutral register.
+- S1: empty or whitespace-only settings fail closed with `config file is empty`. S2: serialization failures (deep nesting RangeError) become a ConfigError naming the file.
+- Next: re-run sdd-verify, then archive.
