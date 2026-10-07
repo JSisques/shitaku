@@ -162,3 +162,34 @@ Branch `feat/hooks-4-init-apply` (stacked on #217, not pushed). Commits: `feat(c
 - API: `InitRequest.hooks?: string[]`, `UnknownHookError`; `planInit` yields one `HookFileChange` per scope settings file; `applyPlan` refreshes (re-read, replan, `StaleFileError` when actions differ), backs up with the MCP backup counter, writes with `writeAtomic`, journals `hook` items (skips excluded, `previous` only on update) and records the created `.claude/` through `missingDirs`.
 - No CLI flag or prompter selects hooks (PR 7). Until PR 5/6, undo, uninstall, status and doctor still fall through for hook items; reachable only via the use case API.
 - Deviation: none from design.
+
+## PR 5: Undo (tasks 5.1-5.2)
+
+Branch `feat/hooks-5-undo` (stacked on #218, not pushed). Commits: `feat(undo)` undo installed hooks with a targeted reverse, plus this `docs(openspec)` commit. Strict TDD.
+
+### TDD Cycle Evidence (PR 5)
+
+| Task    | Test file                               | RED                                                                                                                                  | GREEN                              | Triangulate                                                                                                                                                                                                                                                                                                                                   | Refactor |
+| ------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| 5.1/5.2 | `test/application/undo-install.test.ts` | 7 failed of 45 (safety net 33 passed before the new block): `.claude/` not pruned, symlink drift, no targeted reverse, no precompute | 45 passed (full suite 1183 passed) | byte restore, created file + `.claude/` deleted, pre-existing `.claude/` kept, user file keeps `.claude/`, symlink to identical content is not drift, refused exit 3, `--force` keeps user hooks, shared group kept in order, update puts `previous` back, removal re-added, deleted file left alone, corrupt settings fails before any write | n/a      |
+
+### Work Unit Evidence (PR 5)
+
+| Evidence          | Value                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------- |
+| Focused test      | `pnpm vitest run test/application/undo-install.test.ts`: 45 passed; full suite 1183 passed                    |
+| Runtime harness   | Real `NodeFileSystem` in a temp HOME/cwd: `initMcps` installs hooks, `undoInstall` reverses them              |
+| Rollback boundary | revert the `feat(undo)` commit: `src/application/undo-install.ts` and `test/application/undo-install.test.ts` |
+
+### Validation
+
+`pnpm run typecheck`, `lint`, `format:check`, `test`, `build` all exit 0. Budget: 224 added / 10 deleted lines vs `2fc72a0` (src + test), under 400.
+
+### Notes
+
+- `isByteFile` is false for `hook` and `mcp` files, so a symlinked settings.json is read as text and not reported as drift.
+- A drifted hook-only file is reversed by `reverseHooks` (newest item first: create -> `removeHook` with the created flags, update -> `updateHook` back to `previous`, remove -> `addHook`), computed for all files before the first write; a missing settings file is left untouched. Backups are only required for files that are restored whole.
+- `prunableDirs` anchors on settings file paths as well as item roots, so the `.claude/` the install created is pruned when empty.
+- The `itemRoots` hook exclusion from PR 3 is NOT removed: it is a type-level necessity (hook items have no `root`), not a temporary measure. LIFO per file path already covers hooks.
+- Uninstall, status and doctor are untouched (PR 6).
+- Deviation: none from design.
