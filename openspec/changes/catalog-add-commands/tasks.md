@@ -55,15 +55,15 @@ Commit scopes: PR 1 `feat(catalog)`; 2a `feat(plan)`; 2b `feat(init)`; 2c `feat(
 
 ## PR 2a: Domain install model
 
-- [ ] 2a.1 RED: create `test/domain/plan/classify.test.ts` (create/skip/update-owned/force/conflict, noun in reason); keep `skill-plan.test.ts` and `script-plan.test.ts` green.
-- [ ] 2a.2 GREEN: create `src/domain/plan/classify.ts` (`classifyOwned(present, desired, owned, force, noun)`); modify `skill-plan.ts`, `script-plan.ts` so `classifySkill`/`classifyScript` delegate (exports kept). REFACTOR: confirm no duplicated classifier.
-- [ ] 2a.3 RED: create `test/domain/plan/flat-file-plan.test.ts`: absent=`create`; identical=`skip`; owned+unchanged+catalog changed=`update`; unmanaged different=`conflict`; `--force`=`update`; hashes are `sha256(bytes)`. [Commands Install: Plan classification]
-- [ ] 2a.4 GREEN: create `src/domain/plan/flat-file-plan.ts` (`FlatFileChange`, `buildFlatFilePlan`); modify `change-plan.ts` (`ChangePlan.commands`).
-- [ ] 2a.5 RED: extend `test/domain/manifest.test.ts`: `kind: 'command'` parses with `root` = file path; `afterHash: null` allowed for command; `deriveCommandOwnership`; old manifest without commands loads, version unchanged. [Install Safety: Manifest; Commands Install: Old manifest]
-- [ ] 2a.6 GREEN: modify `src/domain/manifest.ts` (`TreeItemSchema.extend({ kind: 'command' })`, refine for skill|script|command, `deriveCommandOwnership`, `OwnedItem.kind`).
-- [ ] 2a.7 RED: extend `test/adapters/claude-code/target.test.ts`: `commandsDir` is `~/.claude/commands` (user) and `<cwd>/.claude/commands` (project). [Commands Install: Command install roots]
-- [ ] 2a.8 GREEN: modify `src/ports/agent-target.ts`, `src/adapters/claude-code/target.ts` (`commandsDir`); update fake targets in `test/helpers/`.
-- [ ] 2a.9 Gate: typecheck, lint, format:check, test, build.
+- [x] 2a.1 RED: create `test/domain/plan/classify.test.ts` (create/skip/update-owned/force/conflict, noun in reason); keep `skill-plan.test.ts` and `script-plan.test.ts` green.
+- [x] 2a.2 GREEN: create `src/domain/plan/classify.ts` (`classifyOwned(present, desired, owned, force, noun)`); modify `skill-plan.ts`, `script-plan.ts` so `classifySkill`/`classifyScript` delegate (exports kept). REFACTOR: confirm no duplicated classifier.
+- [x] 2a.3 RED: create `test/domain/plan/flat-file-plan.test.ts`: absent=`create`; identical=`skip`; owned+unchanged+catalog changed=`update`; unmanaged different=`conflict`; `--force`=`update`; hashes are `sha256(bytes)`. [Commands Install: Plan classification]
+- [x] 2a.4 GREEN: create `src/domain/plan/flat-file-plan.ts` (`FlatFileChange`, `buildFlatFilePlan`); modify `change-plan.ts` (`ChangePlan.commands`).
+- [x] 2a.5 RED: extend `test/domain/manifest.test.ts`: `kind: 'command'` parses with `root` = file path; `afterHash: null` allowed for command; `deriveCommandOwnership`; old manifest without commands loads, version unchanged. [Install Safety: Manifest; Commands Install: Old manifest]
+- [x] 2a.6 GREEN: modify `src/domain/manifest.ts` (`TreeItemSchema.extend({ kind: 'command' })`, refine for skill|script|command, `deriveCommandOwnership`, `OwnedItem.kind`).
+- [x] 2a.7 RED: extend `test/adapters/claude-code/target.test.ts`: `commandsDir` is `~/.claude/commands` (user) and `<cwd>/.claude/commands` (project). [Commands Install: Command install roots]
+- [x] 2a.8 GREEN: modify `src/ports/agent-target.ts`, `src/adapters/claude-code/target.ts` (`commandsDir`); update fake targets in `test/helpers/`.
+- [x] 2a.9 Gate: typecheck, lint, format:check, test, build.
 
 ## PR 2b: `init` apply + undo
 
