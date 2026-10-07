@@ -1,4 +1,6 @@
+import type { HookItem } from '@/domain/catalog/hook.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
+import type { HookHandler } from '@/domain/hook-merge.js';
 import type { Paths } from './paths.js';
 
 export type Scope = 'project' | 'user';
@@ -16,4 +18,8 @@ export interface AgentTarget {
   skillsDir(scope: Scope, paths: Paths): string;
   /** Directory that holds one flat `.md` file per installed command. */
   commandsDir(scope: Scope, paths: Paths): string;
+  /** The settings file whose `hooks` key holds the installed hooks. */
+  settingsPath(scope: Scope, paths: Paths): string;
+  /** The handler written under `hooks.<event>` for a catalog hook. */
+  toHookHandler(hook: HookItem): HookHandler;
 }

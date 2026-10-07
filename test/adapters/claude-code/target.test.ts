@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { claudeCodeTarget as target } from '@/adapters/claude-code/target.js';
+import { HookItemSchema } from '@/domain/catalog/hook.js';
 import { McpItemSchema } from '@/domain/catalog/schema.js';
 
 const http = McpItemSchema.parse({
@@ -58,5 +59,35 @@ describe('claude-code target', () => {
 
   it('puts commands under ./.claude/commands for project scope', () => {
     expect(target.commandsDir('project', paths)).toBe('/w/.claude/commands');
+  });
+
+  it('puts user settings at ~/.claude/settings.json', () => {
+    expect(target.settingsPath('user', paths)).toBe('/h/.claude/settings.json');
+  });
+
+  it('puts project settings at ./.claude/settings.json', () => {
+    expect(target.settingsPath('project', paths)).toBe('/w/.claude/settings.json');
+  });
+
+  describe('toHookHandler', () => {
+    const hook = HookItemSchema.parse({
+      name: 'fmt',
+      description: 'd',
+      event: 'PostToolUse',
+      command: 'prettier -w .',
+    });
+
+    it('writes a command handler without a timeout when the hook has none', () => {
+      expect(target.toHookHandler(hook)).toEqual({ type: 'command', command: 'prettier -w .' });
+      expect(Object.keys(target.toHookHandler(hook))).toEqual(['type', 'command']);
+    });
+
+    it('carries the timeout through when the hook sets one', () => {
+      expect(target.toHookHandler({ ...hook, timeout: 30 })).toEqual({
+        type: 'command',
+        command: 'prettier -w .',
+        timeout: 30,
+      });
+    });
   });
 });
