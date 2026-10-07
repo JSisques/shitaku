@@ -1,4 +1,4 @@
-import { hashEntry, treeHash } from '@/domain/hash.js';
+import { hashEntry, sha256, treeHash } from '@/domain/hash.js';
 import { ConfigError, readAtPath } from '@/domain/json-merge.js';
 import type { OwnedItem } from '@/domain/manifest.js';
 import type { Desired, Observed } from '@/domain/plan/status-plan.js';
@@ -12,7 +12,7 @@ export interface InstalledDeps {
   target: AgentTarget;
 }
 
-/** What is on disk for one owned item. `config` describes the MCP config file; skills/scripts always report `present`. */
+/** What is on disk for one owned item. `config` describes the MCP config file; skills/scripts/commands always report `present`. */
 export interface InstalledObservation {
   config: 'present' | 'missing' | 'unreadable';
   current: Observed;
@@ -81,7 +81,19 @@ export function observeInstalled(deps: InstalledDeps): (item: OwnedItem) => Prom
     }
   };
 
-  return (item) => (item.kind === 'mcp' ? observeMcp(item) : observeTree(item));
+  /** A command is one file: read as bytes, never walked as a tree, so a directory or symlink there is only `unreadable`. */
+  const observeFile = async (item: OwnedItem): Promise<InstalledObservation> => {
+    try {
+      const bytes = await deps.fs.readBytes(item.path);
+      return { config: 'present', current: bytes === null ? ABSENT : { kind: 'hash', hash: sha256(bytes) } };
+    } catch (error) {
+      if (isUnreadable(error)) return { config: 'present', current: UNREADABLE };
+      throw error;
+    }
+  };
+
+  return (item) =>
+    item.kind === 'mcp' ? observeMcp(item) : item.kind === 'command' ? observeFile(item) : observeTree(item);
 }
 
 /** What the catalog says the item should currently be, or `unavailable` when the catalog could not be loaded. */
@@ -92,6 +104,10 @@ export function desiredFor(catalog: LoadedCatalog | null, target: AgentTarget, i
     return mcp !== undefined && target.supports(mcp)
       ? { kind: 'hash', hash: hashEntry(target.toEntry(mcp)) }
       : { kind: 'absent' };
+  }
+  if (item.kind === 'command') {
+    const command = catalog.commands.find((c) => c.name === item.name);
+    return command === undefined ? { kind: 'absent' } : { kind: 'hash', hash: sha256(command.bytes) };
   }
   if (item.kind === 'script') {
     const hash = treeHash(catalog.scripts.find((s) => s.name === item.name)?.files ?? []);
