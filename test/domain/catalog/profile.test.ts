@@ -9,6 +9,7 @@ const p = (
   skills: string[] = [],
   scripts: string[] = [],
   commands: string[] = [],
+  hooks: string[] = [],
 ): Profile => ({
   name,
   mcps,
@@ -16,11 +17,13 @@ const p = (
   skills,
   scripts,
   commands,
+  hooks,
 });
 const MCPS = ['github', 'context7'];
 const SKILLS = ['review', 'plan'];
 const SCRIPTS = ['lint', 'format'];
 const COMMANDS = ['review', 'plan-cmd'];
+const HOOKS = ['fmt', 'guard'];
 
 describe('resolveProfile', () => {
   it('merges parents first and de-duplicates', () => {
@@ -30,6 +33,7 @@ describe('resolveProfile', () => {
       skills: [],
       scripts: [],
       commands: [],
+      hooks: [],
     });
   });
 
@@ -40,6 +44,7 @@ describe('resolveProfile', () => {
       skills: ['review', 'plan'],
       scripts: [],
       commands: [],
+      hooks: [],
     });
   });
 
@@ -50,6 +55,7 @@ describe('resolveProfile', () => {
       skills: [],
       scripts: ['lint', 'format'],
       commands: [],
+      hooks: [],
     });
   });
 
@@ -60,7 +66,23 @@ describe('resolveProfile', () => {
       skills: [],
       scripts: [],
       commands: ['review', 'plan-cmd'],
+      hooks: [],
     });
+  });
+
+  it('merges hooks through extends and de-duplicates', () => {
+    const profiles = [p('base', [], [], [], [], [], ['fmt']), p('web', [], ['base'], [], [], [], ['guard', 'fmt'])];
+    expect(resolveProfile('web', profiles, MCPS, SKILLS, SCRIPTS, COMMANDS, HOOKS).hooks).toEqual(['fmt', 'guard']);
+  });
+
+  it('resolves a profile without hooks to an empty hook list', () => {
+    expect(resolveProfile('a', [p('a', ['github'])], MCPS, SKILLS, SCRIPTS, COMMANDS, HOOKS).hooks).toEqual([]);
+  });
+
+  it('fails on an unknown hook', () => {
+    expect(() =>
+      resolveProfile('a', [p('a', [], [], [], [], [], ['ghost'])], MCPS, SKILLS, SCRIPTS, COMMANDS, HOOKS),
+    ).toThrow("profile 'a' references unknown hook 'ghost'");
   });
 
   it('resolves a profile without commands to an empty command list', () => {

@@ -46,6 +46,39 @@ const command = (name: string, state: StatusState = 'installed', scope: Scope = 
   state,
 });
 
+const HOOK_FILE = '/repo/.claude/settings.json';
+
+const hook = (
+  name: string,
+  state: StatusState = 'installed',
+  config: ItemObservation['config'] = 'present',
+): ItemObservation => ({
+  item: {
+    kind: 'hook',
+    scope: 'project',
+    path: HOOK_FILE,
+    name,
+    hash: 'h',
+    installId: 'i1',
+    hook: {
+      entryHash: 'h',
+      event: 'PostToolUse',
+      matcher: 'Edit|Write',
+      handler: { type: 'command', command: '${CLAUDE_PROJECT_DIR}/fmt.sh' },
+      createdEvent: true,
+      createdGroup: true,
+    },
+  },
+  config,
+  current:
+    state === 'missing'
+      ? { kind: 'absent' }
+      : config === 'unreadable'
+        ? { kind: 'unreadable' }
+        : { kind: 'hash', hash: 'h' },
+  state,
+});
+
 const script = (
   name: string,
   o: {
@@ -256,6 +289,40 @@ describe('diagnose: info findings and sorting', () => {
       ['problem', 'user', 'skill', 'b', 'skill-missing', undefined],
       ['info', 'project', 'skill', 'z', 'modified', undefined],
       ['info', 'user', 'skill', 'a', 'modified', undefined],
+    ]);
+  });
+});
+
+describe('diagnose: hooks', () => {
+  it('reports a missing hook as a problem naming the hook, its event and the settings path', () => {
+    const [finding, ...rest] = run([hook('fmt', 'missing')]);
+    expect(rest).toEqual([]);
+    expect(finding).toMatchObject({
+      severity: 'problem',
+      code: 'hook-missing',
+      scope: 'project',
+      kind: 'hook',
+      name: 'fmt',
+      path: HOOK_FILE,
+    });
+    expect(finding?.message).toContain('PostToolUse');
+    expect(finding?.message).toContain(HOOK_FILE);
+  });
+
+  it('reports nothing for a healthy hook, and never an env-unset for a variable in its command', () => {
+    expect(run([hook('fmt')])).toEqual([]);
+  });
+
+  it('reports an unreadable settings file once as config-unreadable, not once per hook', () => {
+    const findings = run([hook('a', 'modified', 'unreadable'), hook('b', 'modified', 'unreadable')]);
+    expect(findings.map((f) => [f.code, f.kind, f.name, f.path])).toEqual([
+      ['config-unreadable', 'hook', null, HOOK_FILE],
+    ]);
+  });
+
+  it('reports an out-of-date hook as info', () => {
+    expect(run([hook('fmt', 'out-of-date')]).map((f) => [f.severity, f.code, f.name])).toEqual([
+      ['info', 'out-of-date', 'fmt'],
     ]);
   });
 });

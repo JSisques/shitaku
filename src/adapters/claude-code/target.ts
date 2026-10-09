@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import type { HookItem } from '@/domain/catalog/hook.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { AgentTarget, McpServerEntry } from '@/ports/agent-target.js';
 
@@ -16,6 +17,10 @@ export const claudeCodeTarget: AgentTarget = {
   skillsDir: (scope, paths) => join(scope === 'user' ? paths.homeDir : paths.cwd, '.claude', 'skills'),
 
   commandsDir: (scope, paths) => join(scope === 'user' ? paths.homeDir : paths.cwd, '.claude', 'commands'),
+
+  settingsPath: (scope, paths) => join(scope === 'user' ? paths.homeDir : paths.cwd, '.claude', 'settings.json'),
+
+  toHookHandler: ({ command, timeout }: HookItem) => ({ type: 'command', command, ...(timeout && { timeout }) }),
 
   toEntry({ server }: McpItem): McpServerEntry {
     if (server.type === 'stdio') {

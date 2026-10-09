@@ -1,6 +1,8 @@
 import { hashEntry, sha256, treeHash } from '@/domain/hash.js';
+import { hasHook } from '@/domain/hook-merge.js';
 import { ConfigError, readAtPath } from '@/domain/json-merge.js';
 import type { OwnedItem } from '@/domain/manifest.js';
+import { hookEntryHash } from '@/domain/plan/hook-plan.js';
 import type { Desired, Observed } from '@/domain/plan/status-plan.js';
 import type { AgentTarget } from '@/ports/agent-target.js';
 import type { LoadedCatalog } from '@/ports/catalog-source.js';
@@ -12,7 +14,7 @@ export interface InstalledDeps {
   target: AgentTarget;
 }
 
-/** What is on disk for one owned item. `config` describes the MCP config file; skills/scripts/commands always report `present`. */
+/** What is on disk for one owned item. `config` describes the MCP config or hook settings file; skills/scripts/commands always report `present`. */
 export interface InstalledObservation {
   config: 'present' | 'missing' | 'unreadable';
   current: Observed;
@@ -22,6 +24,9 @@ export interface InstalledObservation {
 
 /** The servers object of a config file, `missing` when the file does not exist, or `unreadable` when it cannot be parsed. */
 type ConfigEntries = Record<string, unknown> | 'missing' | 'unreadable';
+
+/** A hook settings file: its text, `null` when it does not exist, or `'unreadable'` (a path read failure). */
+type SettingsText = { text: string | null } | 'unreadable';
 
 const UNREADABLE: Observed = { kind: 'unreadable' };
 const ABSENT: Observed = { kind: 'absent' };
@@ -92,8 +97,50 @@ export function observeInstalled(deps: InstalledDeps): (item: OwnedItem) => Prom
     }
   };
 
+  const settings = new Map<string, Promise<SettingsText>>();
+  const readSettings = (item: OwnedItem): Promise<SettingsText> => {
+    const key = JSON.stringify([item.scope, item.path]);
+    let text = settings.get(key);
+    if (text === undefined) {
+      text = deps.fs.readText(item.path).then(
+        (read): SettingsText => ({ text: read }),
+        (error: unknown): SettingsText => {
+          if (isUnreadable(error)) return 'unreadable';
+          throw error;
+        },
+      );
+      settings.set(key, text);
+    }
+    return text;
+  };
+
+  /** Located by exact content, so an edited handler reads as absent. No `entry`: a hook command is never env-checked. */
+  const observeHook = async (item: OwnedItem): Promise<InstalledObservation> => {
+    const read = await readSettings(item);
+    if (read === 'unreadable') return { config: 'unreadable', current: UNREADABLE };
+    const { text } = read;
+    if (text === null) return { config: 'missing', current: ABSENT };
+    const { event, matcher, handler } = item.hook!;
+    try {
+      const found = hasHook(text, item.path, { event, matcher, handler });
+      return {
+        config: 'present',
+        current: found ? { kind: 'hash', hash: hookEntryHash({ event, matcher, handler }) } : ABSENT,
+      };
+    } catch (error) {
+      if (isUnreadable(error)) return { config: 'unreadable', current: UNREADABLE };
+      throw error;
+    }
+  };
+
   return (item) =>
-    item.kind === 'mcp' ? observeMcp(item) : item.kind === 'command' ? observeFile(item) : observeTree(item);
+    item.kind === 'mcp'
+      ? observeMcp(item)
+      : item.kind === 'hook'
+        ? observeHook(item)
+        : item.kind === 'command'
+          ? observeFile(item)
+          : observeTree(item);
 }
 
 /** What the catalog says the item should currently be, or `unavailable` when the catalog could not be loaded. */
@@ -104,6 +151,15 @@ export function desiredFor(catalog: LoadedCatalog | null, target: AgentTarget, i
     return mcp !== undefined && target.supports(mcp)
       ? { kind: 'hash', hash: hashEntry(target.toEntry(mcp)) }
       : { kind: 'absent' };
+  }
+  if (item.kind === 'hook') {
+    const hook = catalog.hooks.find((h) => h.name === item.name);
+    if (hook === undefined) return { kind: 'absent' };
+    const { event } = hook;
+    return {
+      kind: 'hash',
+      hash: hookEntryHash({ event, matcher: hook.matcher ?? null, handler: target.toHookHandler(hook) }),
+    };
   }
   if (item.kind === 'command') {
     const command = catalog.commands.find((c) => c.name === item.name);

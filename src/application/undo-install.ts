@@ -1,4 +1,5 @@
 import { sha256 } from '@/domain/hash.js';
+import { addHook, removeHook, updateHook } from '@/domain/hook-merge.js';
 import type { Install, InstalledFile, Manifest } from '@/domain/manifest.js';
 import { UnsafeTreeError, type FileSystem } from '@/ports/file-system.js';
 import type { Paths } from '@/ports/paths.js';
@@ -50,7 +51,13 @@ const treeRoots = (install: Install): Set<string> =>
 
 /** Every rooted item: tree directories plus command files. LIFO and pruning key on these; a command root is a file, so never list it. */
 const itemRoots = (install: Install): Set<string> =>
-  new Set(install.files.flatMap((f) => f.items.flatMap((i) => (i.kind === 'mcp' ? [] : [i.root]))));
+  new Set(
+    install.files.flatMap((f) => f.items.flatMap((i) => (i.kind === 'mcp' || i.kind === 'hook' ? [] : [i.root]))),
+  );
+
+/** Settings files of hook items. They have no root, but the directories above them are the install's to prune. */
+const hookFiles = (install: Install): string[] =>
+  install.files.filter((f) => f.items.some((i) => i.kind === 'hook')).map((f) => f.path);
 
 /** Script install roots only — ADR-2 cleans runtime `node_modules` here, not under skills. */
 const scriptRoots = (install: Install): Set<string> =>
@@ -72,8 +79,8 @@ function assertNewestPerFile(manifest: Manifest, install: Install): void {
 
 const hashOf = (data: string | Uint8Array | null): string | null => (data === null ? null : sha256(data));
 
-/** Skill, script and command files are raw bytes; MCP config files stay text. */
-const isByteFile = (file: InstalledFile): boolean => file.items.some((i) => i.kind !== 'mcp');
+/** Skill, script and command files are raw bytes; MCP config and hook settings files are text. */
+const isByteFile = (file: InstalledFile): boolean => file.items.some((i) => i.kind !== 'mcp' && i.kind !== 'hook');
 
 const currentHash = async (deps: UndoDeps, file: InstalledFile): Promise<string | null> =>
   hashOf(isByteFile(file) ? await deps.fs.readBytes(file.path) : await deps.fs.readText(file.path));
@@ -87,6 +94,26 @@ async function driftHash(deps: UndoDeps, file: InstalledFile): Promise<string | 
     if (e instanceof UnsafeTreeError) return UNSAFE;
     throw e;
   }
+}
+
+const isHookFile = (file: InstalledFile): boolean => file.items.every((i) => i.kind === 'hook');
+
+/**
+ * The settings text with only this install's hooks reversed, so edits made since survive. Items are undone newest first:
+ * a create is removed, an update gets its previous handler back and a removal is added again. `null` when the file is gone.
+ */
+async function reverseHooks(deps: UndoDeps, file: InstalledFile): Promise<string | null> {
+  let text = await deps.fs.readText(file.path);
+  if (text === null) return null;
+  for (const item of [...file.items].reverse()) {
+    if (item.kind !== 'hook') continue;
+    const { event, matcher, handler } = item;
+    if (item.action === 'create') text = removeHook(text, file.path, { event, matcher, handler }, item).text;
+    else if (item.action === 'update' && item.previous)
+      text = updateHook(text, file.path, { event, matcher, handler }, item.previous).text;
+    else if (item.action === 'remove') text = addHook(text, file.path, { event, matcher, handler }).text;
+  }
+  return text;
 }
 
 async function restore(deps: UndoDeps, file: InstalledFile): Promise<void> {
@@ -123,8 +150,8 @@ async function unrecordedFiles(deps: UndoDeps, install: Install): Promise<string
 }
 
 /** Every backup the undo reads must exist before the first mutation, so a refusal leaves everything in place. */
-async function assertBackupsPresent(deps: UndoDeps, install: Install): Promise<void> {
-  for (const file of install.files) {
+async function assertBackupsPresent(deps: UndoDeps, files: InstalledFile[]): Promise<void> {
+  for (const file of files) {
     if (file.backup === null) continue;
     if (!(await deps.fs.exists(`${stateDir(deps.paths.homeDir)}/${file.backup}`)))
       throw new UndoVerifyError(`backup for ${file.path} is missing; nothing was changed`);
@@ -132,12 +159,12 @@ async function assertBackupsPresent(deps: UndoDeps, install: Install): Promise<v
 }
 
 /**
- * Only directories the install can have created are pruned: a recorded skill/script/command root, one of its ancestors or one of
+ * Only directories the install can have created are pruned: a recorded skill/script/command root or settings file, one of its ancestors or one of
  * its subdirectories, that lies strictly inside the home or working directory. Anything else in a tampered manifest is ignored.
  */
 function prunableDirs(deps: UndoDeps, install: Install): string[] {
   const { homeDir, cwd } = deps.paths;
-  const roots = [...itemRoots(install)];
+  const roots = [...itemRoots(install), ...hookFiles(install)];
   const inside = (dir: string, base: string): boolean => dir.startsWith(`${base}/`);
   return install.createdDirs.filter(
     (dir) =>
@@ -159,13 +186,28 @@ export async function undoInstall(deps: UndoDeps, req: UndoRequest = {}): Promis
   assertNewestPerFile(manifest, install);
 
   const changed: string[] = [];
-  for (const file of install.files) if ((await driftHash(deps, file)) !== file.afterHash) changed.push(file.path);
+  const drifted = new Set<InstalledFile>();
+  for (const file of install.files)
+    if ((await driftHash(deps, file)) !== file.afterHash) {
+      changed.push(file.path);
+      drifted.add(file);
+    }
   changed.push(...(await unrecordedFiles(deps, install)));
   if (changed.length > 0 && !req.force) return result('refused', install, changed);
   if (req.dryRun) return result('dry-run', install, changed);
 
-  await assertBackupsPresent(deps, install);
-  for (const file of install.files) await restore(deps, file);
+  // A drifted settings file is reversed handler by handler, computed up front so a failure leaves nothing half-done.
+  const reversed = new Map<InstalledFile, string | null>();
+  for (const file of install.files)
+    if (drifted.has(file) && isHookFile(file)) reversed.set(file, await reverseHooks(deps, file));
+  await assertBackupsPresent(
+    deps,
+    install.files.filter((f) => !reversed.has(f)),
+  );
+  for (const file of install.files) {
+    if (!reversed.has(file)) await restore(deps, file);
+    else if (reversed.get(file) !== null) await deps.fs.writeAtomic(file.path, reversed.get(file)!);
+  }
   // ADR-2: drop runtime script deps so pruned roots are not blocked by node_modules.
   for (const root of scriptRoots(install)) await deps.fs.remove(`${root}/node_modules`);
   // Non-recursive and deepest first: a directory that still holds a user file is skipped, never emptied.

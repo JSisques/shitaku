@@ -12,6 +12,7 @@ import {
   planInit,
   StaleFileError,
   UnknownCommandError,
+  UnknownHookError,
   UnknownMcpError,
   UnknownScriptError,
   UnknownSkillError,
@@ -20,12 +21,14 @@ import {
 import { appendInstall, manifestPath, stateDir } from '@/application/journal.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
 import { hashEntry, sha256, treeHash } from '@/domain/hash.js';
+import { hookEntryHash } from '@/domain/plan/hook-plan.js';
 import type { CatalogSource } from '@/ports/catalog-source.js';
 import { UnsafeTreeError } from '@/ports/file-system.js';
 import { parseManifest, type Manifest } from '@/domain/manifest.js';
 import { DEMO_V1, DEMO_V2, faultyFs, skillSource } from '@test/helpers/skills.js';
 import { SCRIPT_V1, SCRIPT_V2, scriptSource } from '@test/helpers/scripts.js';
 import { commandSource, REVIEW_V1, REVIEW_V2 } from '@test/helpers/commands.js';
+import { FMT_V1, FMT_V2, GUARD, hookSource } from '@test/helpers/hooks.js';
 import type { Scope } from '@/ports/agent-target.js';
 import { parseDoc } from '@test/helpers/parse-doc.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
@@ -268,7 +271,7 @@ describe('planInit (skills)', () => {
   const v2: SkillItem = { ...v1, files: [{ path: 'SKILL.md', bytes: enc('two') }] };
   const source = (skills: SkillItem[]): CatalogSource => ({
     ref: () => ({ kind: 'bundled', location: '/catalog' }),
-    load: () => Promise.resolve({ mcps: [], skills, scripts: [], commands: [], profiles: [], issues: [] }),
+    load: () => Promise.resolve({ mcps: [], skills, scripts: [], commands: [], hooks: [], profiles: [], issues: [] }),
   });
 
   let tmp: TmpPaths;
@@ -1105,5 +1108,207 @@ describe('initMcps (commands)', () => {
     await mine();
     await expect(applyPlan(deps, plan)).rejects.toThrow(StaleFileError);
     expect(await readFile(file(), 'utf8')).toBe('mine');
+  });
+});
+
+describe('initMcps (hooks)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const real = new NodeFileSystem();
+  const settings = (scope: Scope = 'project') =>
+    join(scope === 'user' ? tmp.homeDir : tmp.cwd, '.claude', 'settings.json');
+  const read = async (scope: Scope = 'project') => parseDoc(await readFile(settings(scope), 'utf8'));
+  const manifest = async (): Promise<Manifest> => parseManifest(await readFile(manifestPath(tmp.homeDir), 'utf8'));
+  const install = (extra: { dryRun?: boolean; scope?: Scope; hooks?: string[] } = {}) =>
+    initMcps(deps, { mcps: [], hooks: extra.hooks ?? ['fmt'], scope: extra.scope ?? 'project', ...extra });
+  const mine = async (text: string) => {
+    await mkdir(dirname(settings()), { recursive: true });
+    await writeFile(settings(), text);
+  };
+  const FMT = { type: 'command', command: 'prettier -w .' };
+  const withFault = (fault: Parameters<typeof faultyFs>[1]) => {
+    deps = { ...deps, fs: faultyFs(real, fault) };
+  };
+  const isManifest = (path: string) => path === manifestPath(tmp.homeDir);
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: hookSource([FMT_V1, GUARD]),
+      fs: real,
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it.each<Scope>(['user', 'project'])('writes the hook into the %s settings file', async (scope) => {
+    expect((await install({ scope })).applied).toBe(true);
+    expect(await read(scope)).toEqual({ hooks: { PostToolUse: [{ matcher: 'Edit|Write', hooks: [FMT] }] } });
+  });
+
+  it('records a hook item with its flags and the .claude directory it created', async () => {
+    await install();
+    const [record] = (await manifest()).installs;
+    expect(record!.createdDirs).toEqual([join(tmp.cwd, '.claude')]);
+    expect(record!.files).toHaveLength(1);
+    expect(record!.files[0]).toMatchObject({ path: settings(), scope: 'project', backup: null, beforeHash: null });
+    expect(record!.files[0]!.items).toEqual([
+      {
+        kind: 'hook',
+        name: 'fmt',
+        action: 'create',
+        entryHash: hookEntryHash({ event: 'PostToolUse', matcher: 'Edit|Write', handler: FMT }),
+        event: 'PostToolUse',
+        matcher: 'Edit|Write',
+        handler: FMT,
+        createdEvent: true,
+        createdGroup: true,
+      },
+    ]);
+  });
+
+  it('keeps every other settings key and backs the original up byte-identical', async () => {
+    const original = '{\n    "model": "opus",\n    "hooks": { "Stop": [] }\n}\n';
+    await mine(original);
+    await install({ hooks: ['fmt', 'guard'] });
+    expect(await read()).toEqual({
+      model: 'opus',
+      hooks: {
+        Stop: [{ hooks: [{ type: 'command', command: './guard.sh' }] }],
+        PostToolUse: [{ matcher: 'Edit|Write', hooks: [FMT] }],
+      },
+    });
+    const [file] = (await manifest()).installs[0]!.files;
+    expect(file!.beforeHash).toBe(sha256(original));
+    expect(await readFile(join(stateDir(tmp.homeDir), file!.backup!), 'utf8')).toBe(original);
+  });
+
+  it('skips a hook that is already there, writing and journaling nothing', async () => {
+    await install();
+    const written = await readFile(settings(), 'utf8');
+    const second = await install();
+    expect(second.applied).toBe(false);
+    expect(second.plan.hooks[0]!.items[0]).toMatchObject({ name: 'fmt', action: 'skip' });
+    expect(await readFile(settings(), 'utf8')).toBe(written);
+    expect((await manifest()).installs).toHaveLength(1);
+  });
+
+  it('updates an owned hook in place when the catalog changed it', async () => {
+    await install();
+    deps = { ...deps, source: hookSource([FMT_V2]) };
+    const { plan, applied } = await install();
+    expect(applied).toBe(true);
+    expect(plan.hooks[0]!.items[0]).toMatchObject({ action: 'update', previous: FMT });
+    expect(await read()).toEqual({
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: 'Edit|Write',
+            hooks: [{ type: 'command', command: 'prettier -w . && eslint --fix .', timeout: 30 }],
+          },
+        ],
+      },
+    });
+  });
+
+  it('fails closed on malformed settings with a ConfigError naming the file, writing nothing', async () => {
+    await mine('{ not json');
+    await expect(install()).rejects.toThrow(ConfigError);
+    await expect(install()).rejects.toThrow(settings());
+    expect(await readFile(settings(), 'utf8')).toBe('{ not json');
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+
+  it('writes nothing on dry run', async () => {
+    const { plan, applied } = await install({ dryRun: true });
+    expect(plan.hooks[0]!.items[0]).toMatchObject({ action: 'create' });
+    expect(applied).toBe(false);
+    expect(await readdir(tmp.cwd)).toEqual([]);
+    expect(await readdir(tmp.homeDir)).toEqual([]);
+  });
+
+  it('rejects an unknown hook naming it, writing nothing', async () => {
+    await expect(install({ hooks: ['fmt', 'ghost'] })).rejects.toThrow(UnknownHookError);
+    await expect(install({ hooks: ['ghost'] })).rejects.toThrow('ghost');
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('aborts with StaleFileError when the settings gained the same hook between planning and applying', async () => {
+    const plan = await planInit(deps, { mcps: [], hooks: ['fmt'], scope: 'project' });
+    const text = JSON.stringify({ hooks: { PostToolUse: [{ matcher: 'Edit|Write', hooks: [FMT] }] } });
+    await mine(text);
+    await expect(applyPlan(deps, plan)).rejects.toThrow(StaleFileError);
+    expect(await readFile(settings(), 'utf8')).toBe(text);
+  });
+
+  it('re-plans once and writes when the settings changed but the actions did not', async () => {
+    const plan = await planInit(deps, { mcps: [], hooks: ['fmt'], scope: 'project' });
+    await mine('{ "model": "opus" }');
+    expect(await applyPlan(deps, plan)).toBe(true);
+    expect(await read()).toEqual({ model: 'opus', hooks: { PostToolUse: [{ matcher: 'Edit|Write', hooks: [FMT] }] } });
+  });
+
+  it('removes the settings file and the created .claude directory when recording the manifest fails', async () => {
+    withFault({ method: 'writeAtomic', nth: 1, match: isManifest });
+    await expect(install()).rejects.toThrow('injected writeAtomic failure');
+    expect(await readdir(tmp.cwd)).toEqual([]);
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+
+  it('restores the original settings byte-identical when the apply fails after the write', async () => {
+    const original = '{\n\t"model": "opus"\n}';
+    await mine(original);
+    withFault({ method: 'writeAtomic', nth: 1, match: isManifest });
+    await expect(install()).rejects.toThrow('injected writeAtomic failure');
+    expect(await readFile(settings(), 'utf8')).toBe(original);
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+
+  it('leaves .claude/settings.local.json byte-identical on a project install', async () => {
+    const local = join(tmp.cwd, '.claude', 'settings.local.json');
+    const bytes = '{\r\n\t"permissions": { "allow": ["Bash(ls)"] },\r\n\t"hooks": { "Stop": [] }\r\n}';
+    await mkdir(dirname(local), { recursive: true });
+    await writeFile(local, bytes);
+    await install({ hooks: ['fmt', 'guard'] });
+    expect(await readFile(local, 'utf8')).toBe(bytes);
+    expect(await readdir(dirname(local))).toEqual(['settings.json', 'settings.local.json']);
+  });
+
+  it('leaves a project settings.local.json byte-identical on a user install, and vice versa', async () => {
+    const projectLocal = join(tmp.cwd, '.claude', 'settings.local.json');
+    const userLocal = join(tmp.homeDir, '.claude', 'settings.local.json');
+    for (const file of [projectLocal, userLocal]) {
+      await mkdir(dirname(file), { recursive: true });
+      await writeFile(file, '{"model":"opus"}');
+    }
+    await install({ scope: 'user' });
+    await install({ scope: 'project' });
+    expect(await readFile(projectLocal, 'utf8')).toBe('{"model":"opus"}');
+    expect(await readFile(userLocal, 'utf8')).toBe('{"model":"opus"}');
+  });
+
+  it('keeps CRLF line endings of an existing settings file', async () => {
+    await mine('{\r\n  "model": "opus"\r\n}\r\n');
+    await install();
+    const text = await readFile(settings(), 'utf8');
+    expect(text.replaceAll('\r\n', '')).not.toContain('\n');
+    expect(text.endsWith('}\r\n')).toBe(true);
+    expect(await read()).toMatchObject({ model: 'opus', hooks: { PostToolUse: [{ hooks: [FMT] }] } });
+  });
+
+  it('refuses a settings file with a byte order mark, naming it and writing nothing', async () => {
+    const original = '\uFEFF{"model":"opus"}\n';
+    await mine(original);
+    await expect(install()).rejects.toThrow(ConfigError);
+    await expect(install()).rejects.toThrow(settings());
+    expect(await readFile(settings(), 'utf8')).toBe(original);
+    await expect(readFile(manifestPath(tmp.homeDir), 'utf8')).rejects.toThrow();
+  });
+
+  it('keeps the last value of a duplicate key in the settings file', async () => {
+    await mine('{"model":"sonnet","model":"opus"}\n');
+    await install();
+    expect((await read()).model).toBe('opus');
   });
 });

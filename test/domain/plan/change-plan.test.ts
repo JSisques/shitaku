@@ -16,6 +16,10 @@ const plan = (existing: string | null, env: Record<string, string | undefined> =
   buildPlan({ items: [github], target, scope: 'project', paths, existing, env, force });
 
 describe('buildPlan', () => {
+  it('plans no hook files for an MCP-only request', () => {
+    expect(plan(null).hooks).toEqual([]);
+  });
+
   it('creates the entry when the file is missing', () => {
     const { files } = plan(null);
     expect(files).toHaveLength(1);

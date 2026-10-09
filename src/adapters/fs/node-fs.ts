@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdir, open, readFile, rename, rm, rmdir, stat } from 'node:fs/promises';
+import { mkdir, open, readFile, realpath, rename, rm, rmdir, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { listTree, readFileNoFollow } from '@/adapters/fs/walk.js';
 import type { FileSystem } from '@/ports/file-system.js';
@@ -24,12 +24,17 @@ export class NodeFileSystem implements FileSystem {
     return listTree(dir);
   }
 
+  /**
+   * A symlinked target is resolved first, so the link itself is kept and the file it points to is
+   * rewritten. A missing path and a dangling or looping link are written as a regular file at `path`.
+   */
   async writeAtomic(path: string, data: string): Promise<void> {
-    const mode = await stat(path).then(
+    const target = await realpath(path).catch(() => path);
+    const mode = await stat(target).then(
       (s) => s.mode & 0o777,
       () => 0o644,
     );
-    await this.writeViaTemp(path, data, mode);
+    await this.writeViaTemp(target, data, mode);
   }
 
   /** Same temp-file-and-rename as writeAtomic, with a fixed mode of 0644. */

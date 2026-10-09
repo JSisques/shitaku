@@ -1,13 +1,16 @@
 import { dirname } from 'node:path';
 import { hashEntry, sha256 } from '@/domain/hash.js';
+import type { HookItem } from '@/domain/catalog/hook.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
-import type { Install, Manifest } from '@/domain/manifest.js';
+import type { Install, Manifest, OwnedHook } from '@/domain/manifest.js';
 import {
   deriveCommandOwnership,
+  deriveHookOwnership,
   deriveOwnership,
   deriveScriptOwnership,
   deriveSkillOwnership,
 } from '@/domain/manifest.js';
+import { buildHookPlan, writesHookFile, type HookFileChange, type HookPlanEntry } from '@/domain/plan/hook-plan.js';
 import {
   buildFlatFilePlan,
   writesFlatFile,
@@ -52,6 +55,8 @@ export interface InitRequest {
   scripts?: string[];
   /** Command names to install; defaults to none. */
   commands?: string[];
+  /** Hook names to install; defaults to none. */
+  hooks?: string[];
   scope: Scope;
   force?: boolean;
   dryRun?: boolean;
@@ -61,6 +66,7 @@ export class UnknownMcpError extends Error {}
 export class UnknownSkillError extends Error {}
 export class UnknownScriptError extends Error {}
 export class UnknownCommandError extends Error {}
+export class UnknownHookError extends Error {}
 export { StaleFileError };
 /** A resolved env value would be written to disk. */
 export class LeakError extends Error {}
@@ -80,6 +86,10 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
   const commandNames = [...new Set(req.commands ?? [])];
   const unknownCommands = commandNames.filter((name) => !catalog.commands.some((c) => c.name === name));
   if (unknownCommands.length > 0) throw new UnknownCommandError(`unknown command: ${unknownCommands.join(', ')}`);
+
+  const hookNames = [...new Set(req.hooks ?? [])];
+  const unknownHooks = hookNames.filter((name) => !catalog.hooks.some((h) => h.name === name));
+  if (unknownHooks.length > 0) throw new UnknownHookError(`unknown hook: ${unknownHooks.join(', ')}`);
 
   const manifest = await loadManifest(deps.fs, deps.paths.homeDir);
   const mcpPlan = await planMcps(deps, req, catalog.mcps, manifest);
@@ -131,7 +141,32 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
       noun: 'command',
       force: req.force,
     }),
+    hooks: await planHooks(
+      deps,
+      req.scope,
+      hookNames.map((name) => catalog.hooks.find((h) => h.name === name)!),
+      manifest,
+    ),
   };
+}
+
+/** All requested hooks go to the one settings file of the scope; malformed settings throw a ConfigError here. */
+async function planHooks(
+  deps: InitDeps,
+  scope: Scope,
+  hooks: HookItem[],
+  manifest: Manifest,
+): Promise<HookFileChange[]> {
+  if (hooks.length === 0) return [];
+  const path = deps.target.settingsPath(scope, deps.paths);
+  const entries: HookPlanEntry[] = hooks.map((hook) => ({
+    name: hook.name,
+    event: hook.event,
+    matcher: hook.matcher ?? null,
+    handler: deps.target.toHookHandler(hook),
+  }));
+  const owned = deriveHookOwnership(manifest)[path] ?? {};
+  return [buildHookPlan({ path, scope, existing: await deps.fs.readText(path), hooks: entries, owned })];
 }
 
 async function planMcps(
@@ -141,7 +176,7 @@ async function planMcps(
   manifest: Manifest,
 ): Promise<ChangePlan> {
   if (req.mcps.length === 0)
-    return { files: [], requiredEnv: [], declaredEnv: [], skills: [], scripts: [], commands: [] };
+    return { files: [], requiredEnv: [], declaredEnv: [], skills: [], scripts: [], commands: [], hooks: [] };
   const items = req.mcps.map((name) => catalogMcps.find((m) => m.name === name)!);
   const path = deps.target.configPath(req.scope, deps.paths);
   const existing = await deps.fs.readText(path);
@@ -157,7 +192,7 @@ async function planMcps(
   });
 }
 
-const actions = (file: FileChange): string => file.items.map((i) => `${i.name}:${i.action}`).join(',');
+const actions = (file: FileChange | HookFileChange): string => file.items.map((i) => `${i.name}:${i.action}`).join(',');
 
 /** Re-reads each file; re-plans once if it changed, aborting when the actions differ. */
 async function refresh(
@@ -170,6 +205,20 @@ async function refresh(
   if ((fresh === null ? null : sha256(fresh)) === file.beforeHash) return file;
   const replanned = replanFile(file, fresh, deps.target.serversKeyPath(file.scope), owned, force);
   if (actions(replanned) !== actions(file)) throw new StaleFileError(`${file.path} changed since planning, re-run`);
+  return replanned;
+}
+
+/** Re-reads the settings file; re-plans once if it changed, aborting when the actions differ. */
+async function refreshHooks(
+  deps: InitDeps,
+  change: HookFileChange,
+  owned: Record<string, OwnedHook>,
+): Promise<HookFileChange> {
+  const fresh = await deps.fs.readText(change.path);
+  if ((fresh === null ? null : sha256(fresh)) === change.beforeHash) return change;
+  const hooks = change.items.map(({ name, event, matcher, handler }) => ({ name, event, matcher, handler }));
+  const replanned = buildHookPlan({ path: change.path, scope: change.scope, existing: fresh, hooks, owned });
+  if (actions(replanned) !== actions(change)) throw new StaleFileError(`${change.path} changed since planning, re-run`);
   return replanned;
 }
 
@@ -341,7 +390,11 @@ export async function applyPlan(deps: InitDeps, plan: ChangePlan, opts: { force?
   const commands: FlatFileChange[] = [];
   for (const change of plan.commands.filter(writesFlatFile))
     commands.push(await refreshFlatFile(deps, change, commandOwners, force));
-  if (files.length === 0 && skills.length === 0 && scripts.length === 0 && commands.length === 0) return false;
+  const hookOwners = deriveHookOwnership(manifest);
+  const hooks: HookFileChange[] = [];
+  for (const change of plan.hooks.filter(writesHookFile))
+    hooks.push(await refreshHooks(deps, change, hookOwners[change.path] ?? {}));
+  if (files.length + skills.length + scripts.length + commands.length + hooks.length === 0) return false;
   assertNoLeak(plan, files, deps.env);
 
   const now = (deps.now ?? (() => new Date()))();
@@ -351,16 +404,16 @@ export async function applyPlan(deps: InitDeps, plan: ChangePlan, opts: { force?
     ...scripts.flatMap((c) => treeSteps(c, 'script')),
     ...commands.map(commandStep),
   ];
-  const createdDirs = await missingDirs(
-    deps.fs,
-    steps.filter((s) => s.after !== null).map((s) => s.path),
-  );
+  const createdDirs = await missingDirs(deps.fs, [
+    ...steps.filter((s) => s.after !== null).map((s) => s.path),
+    ...hooks.map((h) => h.path),
+  ]);
 
   let n = 0;
   const installed: Install['files'] = [];
   const state = stateDir(homeDir);
-  const mcpBackups = new Map<FileChange, string | null>();
-  for (const file of files) {
+  const mcpBackups = new Map<FileChange | HookFileChange, string | null>();
+  for (const file of [...files, ...hooks]) {
     const backup = file.before === null ? null : backupPath(id, n++, file.path);
     if (backup !== null) await deps.fs.writeAtomic(`${state}/${backup}`, file.before!);
     mcpBackups.set(file, backup);
@@ -390,6 +443,31 @@ export async function applyPlan(deps: InitDeps, plan: ChangePlan, opts: { force?
           action: i.action as 'create' | 'update',
           entryHash: hashEntry(i.entry),
         })),
+      });
+    }
+    for (const file of hooks) {
+      await deps.fs.writeAtomic(file.path, file.after);
+      undo.push(() => restoreText(deps.fs, file.path, file.before));
+      installed.push({
+        path: file.path,
+        scope: file.scope,
+        backup: mcpBackups.get(file)!,
+        beforeHash: file.beforeHash,
+        afterHash: sha256(file.after),
+        items: file.items
+          .filter((i) => i.action === 'create' || i.action === 'update')
+          .map(({ name, action, entryHash, event, matcher, handler, previous, createdEvent, createdGroup }) => ({
+            kind: 'hook',
+            name,
+            action: action as 'create' | 'update',
+            entryHash,
+            event,
+            matcher,
+            handler,
+            ...(previous && { previous }),
+            createdEvent,
+            createdGroup,
+          })),
       });
     }
     for (const step of steps) {

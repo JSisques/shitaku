@@ -18,11 +18,13 @@ description: Flags for shitaku init, undo, uninstall, status, list, and doctor.
 
 ## `init`
 
-| Flag               | Meaning                             |
-| ------------------ | ----------------------------------- |
-| `--mcps <a,b>`     | Comma-separated MCP names           |
-| `--skills <a,b>`   | Comma-separated skill names         |
-| `--commands <a,b>` | Comma-separated slash command names |
+| Flag               | Meaning                                                                      |
+| ------------------ | ---------------------------------------------------------------------------- |
+| `--mcps <a,b>`     | Comma-separated MCP names                                                    |
+| `--skills <a,b>`   | Comma-separated skill names                                                  |
+| `--commands <a,b>` | Comma-separated slash command names                                          |
+| `--hooks <a,b>`    | Comma-separated hook names                                                   |
+| `--allow-hooks`    | Install the selected hooks without the confirmation prompt; `--yes` does not |
 
 ## `undo`
 
@@ -32,9 +34,9 @@ description: Flags for shitaku init, undo, uninstall, status, list, and doctor.
 
 ## `uninstall`
 
-| Flag                                 | Meaning                                          |
-| ------------------------------------ | ------------------------------------------------ |
-| `--kind mcp\|skill\|script\|command` | Disambiguate when a name exists as several kinds |
+| Flag                                       | Meaning                                          |
+| ------------------------------------------ | ------------------------------------------------ |
+| `--kind mcp\|skill\|script\|command\|hook` | Disambiguate when a name exists as several kinds |
 
 ## `list`
 

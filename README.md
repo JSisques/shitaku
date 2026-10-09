@@ -59,7 +59,7 @@ After a global install the command is just `shitaku`. With `npx`, prefix every i
 
 Setting up an AI coding agent means hand-editing config files (`.mcp.json`, `~/.claude.json`, `~/.claude/skills/`) and repeating that on every machine and project. shitaku makes that setup portable and repeatable:
 
-- **One command** installs MCP servers, skills, scripts and slash commands from a curated catalog, at project or user scope.
+- **One command** installs MCP servers, skills, scripts, slash commands and hooks from a curated catalog, at project or user scope.
 - **Safe by default**: `--dry-run` previews the plan, conflicting entries are never overwritten silently, and secrets are written only as `${VAR}` placeholders, never as values.
 - **Reversible**: every change is backed up and recorded, so `shitaku undo` restores the previous state.
 - **Extensible**: point `--source` at your own catalog folder.
@@ -129,6 +129,16 @@ _No slash commands in the bundled catalog yet._
 
 <!-- catalog:commands:end -->
 
+### Hooks
+
+Installable Claude Code hooks live as single files under `catalog/hooks/<name>.json`. The bundled catalog ships none yet; the list below stays empty until one is added to `items.hooks`. Hooks run commands, so read [Hooks (install)](#hooks-install) before installing one.
+
+<!-- catalog:hooks:start -->
+
+_No hooks in the bundled catalog yet._
+
+<!-- catalog:hooks:end -->
+
 ## Usage
 
 Examples below use the global `shitaku` command. After a one-off run, substitute `npx @jsisques/shitaku` for `shitaku`.
@@ -145,6 +155,10 @@ shitaku init --skills example-skill --scope project
 shitaku init --mcps github --skills example-skill --scope project
 shitaku init --scripts my-script --scope project
 shitaku init --commands review --scope project
+shitaku init --hooks fmt --scope project
+
+# Hooks run commands: --yes alone is refused, pass --allow-hooks to skip the confirmation
+shitaku init --hooks fmt --scope project --yes --allow-hooks
 
 # Preview only: prints the plan, writes nothing (no backups, no manifest)
 shitaku init --mcps github --scope user --dry-run
@@ -153,10 +167,10 @@ shitaku init --mcps github --scope user --dry-run
 shitaku undo [--id <id>] [--force] [--dry-run]
 
 # Browse what a catalog offers (read-only)
-shitaku list [mcps|skills|profiles|scripts|commands] [--search <text>] [--source <folder>] [--json]
+shitaku list [mcps|skills|profiles|scripts|commands|hooks] [--search <text>] [--source <folder>] [--json]
 
-# Remove one installed MCP, skill, script or slash command (undo reverts it)
-shitaku uninstall <name> [--scope project|user] [--kind mcp|skill|script|command] [--force] [--dry-run]
+# Remove one installed MCP, skill, script, slash command or hook (undo reverts it)
+shitaku uninstall <name> [--scope project|user] [--kind mcp|skill|script|command|hook] [--force] [--dry-run]
 
 # Report what shitaku installed and whether it changed (read-only)
 shitaku status [--scope project|user] [--source <folder>] [--json]
@@ -177,9 +191,9 @@ shitaku --version
 shitaku upgrade
 ```
 
-Scopes: `project` writes MCPs to `./.mcp.json`, skills to `./.claude/skills/`, and scripts to `./.shitaku/scripts/`; `user` writes MCPs to `~/.claude.json`, skills to `~/.claude/skills/`, and scripts to `~/.claude/.shitaku/scripts/` (close Claude Code first when writing `~/.claude.json`). Slash commands go to `./.claude/commands/` (`project`) or `~/.claude/commands/` (`user`). Scripts never install into agent skill directories.
+Scopes: `project` writes MCPs to `./.mcp.json`, skills to `./.claude/skills/`, and scripts to `./.shitaku/scripts/`; `user` writes MCPs to `~/.claude.json`, skills to `~/.claude/skills/`, and scripts to `~/.claude/.shitaku/scripts/` (close Claude Code first when writing `~/.claude.json`). Slash commands go to `./.claude/commands/` (`project`) or `~/.claude/commands/` (`user`). Hooks are merged into `./.claude/settings.json` (`project`) or `~/.claude/settings.json` (`user`). Scripts never install into agent skill directories.
 
-Flags for `init`: `--mcps <a,b>`, `--skills <a,b>`, `--scripts <a,b>`, `--commands <a,b>`, `--scope project|user`, `--source <folder>`, `--dry-run`, `--yes` (skip confirmation, needs `--scope` and at least one of `--mcps`/`--skills`/`--scripts`/`--commands`), `--force` (overwrite entries, command files and skill/script directories that differ). The four selection flags are independent and optional, but at least one kind must be selected. Interactively, the skills, scripts or commands prompt appears only when the catalog has that kind.
+Flags for `init`: `--mcps <a,b>`, `--skills <a,b>`, `--scripts <a,b>`, `--commands <a,b>`, `--hooks <a,b>`, `--allow-hooks`, `--scope project|user`, `--source <folder>`, `--dry-run`, `--yes` (skip confirmation, needs `--scope` and at least one of `--mcps`/`--skills`/`--scripts`/`--commands`/`--hooks`; it never confirms hooks), `--force` (overwrite entries, command files and skill/script directories that differ). The five selection flags are independent and optional, but at least one kind must be selected. Interactively, the skills, scripts, commands or hooks prompt appears only when the catalog has that kind.
 
 Exit codes: `0` ok, `1` error, `2` unresolved conflicts (an existing entry with the same name differs; re-run with `--force`), `3` undo or uninstall refused because a file or item changed since the install (use `--force`), `4` `doctor` found problems.
 
@@ -232,6 +246,46 @@ Install behavior: `shitaku init --commands <name>` copies the file flat into `~/
 
 Before downgrading shitaku, run `shitaku undo` for any install that included commands: versions without command support throw a `ManifestError` on a manifest entry with `kind: 'command'`. Release notes are generated by semantic-release, so this note lives here rather than in `CHANGELOG.md`.
 
+### Hooks (install)
+
+A hook is one JSON file, `catalog/hooks/<name>.json`, that adds one `command` handler to the `hooks` key of a Claude Code `settings.json`. Fields:
+
+| Field         | Required | Notes                                                        |
+| ------------- | -------- | ------------------------------------------------------------ |
+| `name`        | yes      | Equal to the file name; matches `^[a-z0-9][a-z0-9-]*$`       |
+| `description` | yes      | Non-empty text                                               |
+| `event`       | yes      | A Claude Code hook event name such as `PostToolUse`          |
+| `command`     | yes      | The shell command Claude Code runs; no literal secrets       |
+| `matcher`     | no       | Which tool or source the event applies to; omitted means all |
+| `timeout`     | no       | Positive number, written to the handler as is                |
+| `type`        | no       | Only `command` is accepted                                   |
+
+Unknown fields, several handlers in one file, and a `command` or `matcher` that carries a literal secret are rejected. `${VAR}` references are allowed and are written unchanged; shitaku never expands them. List the hook under `items.hooks` in `catalog/catalog.json`; an unlisted or invalid file is skipped with a warning. Profiles can list `hooks` too, but they cannot be installed by name yet.
+
+**Hooks run code.** Claude Code runs a command hook with your full user permissions. shitaku never runs the command itself, but it writes it into a file Claude Code executes. Before writing, `init` shows the exact event, matcher and command of every hook it would add or change and asks you to confirm:
+
+- `--yes` is not consent: without `--allow-hooks`, a non-interactive run prints the commands on stderr, exits `1` and writes nothing, for every kind in that run.
+- `--allow-hooks` skips the confirmation, interactively or not. It is the only flag that does.
+- Declining drops only the hooks; other selections follow the usual flow. `--dry-run` prints the commands and never prompts. Hooks from `--source` go through the same gate.
+- Selecting a hook that is already installed unchanged is a no-op and is not gated.
+
+Install behavior: `shitaku init --hooks <name>` appends the handler to `hooks.<event>[]`, in the group whose `matcher` equals the hook's (an omitted matcher equals an omitted matcher), creating the event or group only when absent. A handler already present is not duplicated. The file is parsed and written back as JSON, so some of it is kept and some is normalized (see below). `settings.local.json`, managed settings and plugin `hooks/hooks.json` are never touched.
+
+- Settings files are strict JSON. A file with a comment, a trailing comma, a BOM, no content at all, a `hooks` that is not an object, or a target event that is not an array is refused with an error naming the file, and nothing is written.
+- Kept on install: every existing hook and key and their order, the indent width or tab, the line endings (LF or CRLF; a file that mixes both is written as LF) and whether the file ends with a newline. Normalized, because the file is re-serialized: arrays and objects written on one line are expanded one element per line; keys that look like integers (such as `"1"`) move to the front of their object; a duplicate key keeps only its last value; integers above 2^53 lose precision; and escape sequences such as `\u00e9` or `\/` are written as the plain character. `shitaku undo` with no later edits restores the exact original bytes.
+- shitaku writes no marker into your settings. It records the scope, file, event, matcher and handler in the manifest and finds the hook again by exact content.
+- Before writing, shitaku re-reads the file. If it changed, it plans again and aborts only when the planned actions differ; otherwise it backs up the original bytes and writes atomically. A symlinked settings file keeps its link and the file it points to is rewritten. If a write fails, it is rolled back.
+- Claude Code reloads `hooks` edits live and also writes `settings.json` itself (for example from `/config`). Avoid `/config` while an install or undo runs.
+- `shitaku undo` restores the original bytes, or deletes the file if the install created it, and removes `./.claude/` only if the install created it and it is empty. If the file changed afterwards, undo refuses (exit `3`); with `--force` it removes only the handlers it installed, newest first, and keeps everything else. A group or event is dropped only if the install created it and it is now empty. The `hooks` key itself is never dropped, so removing the hook whose install created it can leave `"hooks": {}` in the file; `undo` restores the exact bytes.
+- `shitaku uninstall <name> --kind hook` removes only that handler, matched by exact content. A hook you edited no longer matches, so `status` reports it `missing` (`doctor` code `hook-missing`) and `uninstall` reports it already absent. `--force` has no effect on hooks.
+- A settings file that cannot be parsed shows as `modified` in `status` (`config-unreadable` in `doctor`).
+
+Project-scope hooks live in `./.claude/settings.json`. If you commit that file, they run for every collaborator who opens the project.
+
+Secret detection in hook files is a heuristic: it recognizes common token shapes and `NAME=value` assignments, so it cannot prove a command is free of secrets. Keep credentials in the environment and reference them as `${VAR}`.
+
+Before downgrading shitaku, run `shitaku undo` or `shitaku uninstall` for any install that included hooks: versions without hook support throw a `ManifestError` on a manifest entry with `kind: 'hook'`.
+
 ### Run
 
 `shitaku run` lists or executes **installed** scripts (not the catalog browse list — use `shitaku list scripts` for that).
@@ -246,7 +300,7 @@ Resolution: project scope first, then user. Names must be bare catalog names —
 
 ### Uninstall
 
-`shitaku uninstall <name>` removes one MCP server, skill, script or slash command that shitaku installed. It never prompts, and it only touches items shitaku owns (see `shitaku status`): a name shitaku did not install exits `1` and nothing is written, even with `--force`.
+`shitaku uninstall <name>` removes one MCP server, skill, script, slash command or hook that shitaku installed. It never prompts, and it only touches items shitaku owns (see `shitaku status`): a name shitaku did not install exits `1` and nothing is written, even with `--force`.
 
 ```sh
 shitaku uninstall github                      # scope inferred when the name is owned in one scope
@@ -254,11 +308,12 @@ shitaku uninstall github --scope user         # narrow when it is owned in both
 shitaku uninstall demo --kind skill           # resolve a name that is both an MCP and a skill
 shitaku uninstall demo --kind script          # resolve a script when the name collides
 shitaku uninstall review --kind command       # remove one installed slash command file
+shitaku uninstall fmt --kind hook             # remove one installed hook handler
 shitaku uninstall github --dry-run            # print the plan, write nothing
 shitaku uninstall github --force              # remove even if the item changed since the install
 ```
 
-Flags: `--scope project|user`, `--kind mcp|skill|script|command`, `--dry-run`, `--force`. If the name matches several owned items, the command exits `1` and lists the candidates (kind and scope).
+Flags: `--scope project|user`, `--kind mcp|skill|script|command|hook`, `--dry-run`, `--force`. If the name matches several owned items, the command exits `1` and lists the candidates (kind and scope).
 
 Exit codes: `0` removed, already absent or dry run; `1` error (not installed, ambiguous, corrupt manifest); `3` refused because the item changed since the install. Refusal prints `changed since install: <path>` and a `--force` hint, writes nothing, and also applies to `--dry-run`, so a dry run reports exactly what a real run would do.
 
@@ -272,7 +327,7 @@ Behavior:
 
 ### Status
 
-`shitaku status` lists every item shitaku installed and has not undone, in both scopes unless `--scope` is given, and never writes anything. The text output is grouped by scope, then by kind (`mcps`, `skills`, `scripts`, `commands`), and each item shows its name, state and path:
+`shitaku status` lists every item shitaku installed and has not undone, in both scopes unless `--scope` is given, and never writes anything. The text output is grouped by scope, then by kind (`mcps`, `skills`, `scripts`, `commands`, `hooks`), and each item shows its name, state and path:
 
 ```
 target: claude-code
@@ -292,7 +347,7 @@ In `--json` every item carries `kind` instead. For an MCP only its own entry is 
 | `installed`            | on disk, as installed, and equal to the catalog                                           |
 | `modified`             | differs from what was installed; also an unreadable config file or a skill/script symlink |
 | `out-of-date`          | untouched, but the catalog has a newer version                                            |
-| `missing`              | the MCP entry or skill/script directory is gone                                           |
+| `missing`              | the MCP entry, hook handler or skill/script directory is gone                             |
 | `missing-from-catalog` | no longer offered by the catalog                                                          |
 | `unknown`              | the catalog failed to load, so `installed`, `out-of-date` and removal cannot be told      |
 
@@ -306,7 +361,7 @@ Limitation: `status` compares against the bundled catalog unless you pass `--sou
 
 ### List
 
-`shitaku list` shows what a catalog offers and never writes anything. Pass one kind (`mcps`, `skills`, `profiles`, `scripts` or `commands`, plural only) to narrow it; without one all five kinds are listed. `--search <text>` keeps items whose name or description contains the text, ignoring case, and combines with the kind. `--source <folder>` lists a custom catalog instead of the bundled one.
+`shitaku list` shows what a catalog offers and never writes anything. Pass one kind (`mcps`, `skills`, `profiles`, `scripts`, `commands` or `hooks`, plural only) to narrow it; without one all six kinds are listed. `--search <text>` keeps items whose name or description contains the text, ignoring case, and combines with the kind. `--source <folder>` lists a custom catalog instead of the bundled one.
 
 The text output is grouped by kind (`mcps`, `profiles`, `scripts`, `skills`), sorted by name, with one aligned name column. Descriptions are collapsed onto one line, and a profile without a description prints its name only:
 
@@ -338,12 +393,12 @@ When nothing matches it prints `no matching items`.
 
 `--json` prints one document, `{ "version": 1, "items": [{ "kind", "name", "description" }] }`. Later changes to its shape are additive.
 
-| Field         | Type           | Notes                                                                      |
-| ------------- | -------------- | -------------------------------------------------------------------------- |
-| `version`     | number         | Always `1`                                                                 |
-| `kind`        | string         | `mcp`, `profile`, `script`, `skill` or `command` (singular, like `status`) |
-| `name`        | string         | Item name                                                                  |
-| `description` | string or null | Raw text; `null` for a profile without one                                 |
+| Field         | Type           | Notes                                                                              |
+| ------------- | -------------- | ---------------------------------------------------------------------------------- |
+| `version`     | number         | Always `1`                                                                         |
+| `kind`        | string         | `mcp`, `profile`, `script`, `skill`, `command` or `hook` (singular, like `status`) |
+| `name`        | string         | Item name                                                                          |
+| `description` | string or null | Raw text; `null` for a profile without one                                         |
 
 `items` is flat and sorted by kind, then name; an empty result is `"items": []`. Whitespace in descriptions is collapsed only in text mode.
 
@@ -372,6 +427,7 @@ A healthy setup prints `no problems found`. Problems depend only on the manifest
 | `mcp-missing`         | problem  | the config file is fine but the installed MCP entry is gone                                        |
 | `skill-missing`       | problem  | an installed skill directory is gone                                                               |
 | `command-missing`     | problem  | an installed slash command file is gone                                                            |
+| `hook-missing`        | problem  | the settings file is fine but the installed hook handler is gone or was edited                     |
 | `env-unset`           | problem  | an installed entry needs `${VAR}` (no default) and `VAR` is unset or empty; only the name is shown |
 | `duplicate-mcp`       | problem  | the same MCP is in both user scope and the current project's `.mcp.json`                           |
 | `modified`            | info     | the item differs from what was installed                                                           |
@@ -408,7 +464,7 @@ Hide it with the global `--no-banner` flag, or set `SHITAKU_NO_BANNER` to `1`, `
 
 ### Custom catalogs and trust
 
-`--source <folder>` reads a catalog from a folder instead of the bundled one. Treat it as code you run: stdio entries in a catalog are written to your config and Claude Code executes their `command` later. Skills from a `--source` folder are copied into your skills directory, and Claude Code may follow their instructions or run their scripts. Slash commands from a `--source` folder are copied into your commands directory, and Claude Code treats their text as instructions the moment you run `/<name>`. Catalog scripts install under shitaku roots and are executed later by `shitaku run`. Only use folders you trust.
+`--source <folder>` reads a catalog from a folder instead of the bundled one. Treat it as code you run: stdio entries in a catalog are written to your config and Claude Code executes their `command` later. Skills from a `--source` folder are copied into your skills directory, and Claude Code may follow their instructions or run their scripts. Slash commands from a `--source` folder are copied into your commands directory, and Claude Code treats their text as instructions the moment you run `/<name>`. Hooks from a `--source` folder are merged into your Claude Code settings and run commands with your full user permissions; they follow the same trust model and the same confirmation as bundled ones. Catalog scripts install under shitaku roots and are executed later by `shitaku run`. Only use folders you trust.
 
 ### Update notifications
 

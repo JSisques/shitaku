@@ -7,7 +7,7 @@ import * as prettier from 'prettier';
 const root = join(import.meta.dirname, '..');
 const catalogDir = join(root, 'catalog');
 const locales = ['en', 'es'];
-const generatedKinds = ['mcps', 'skills', 'profiles', 'scripts', 'commands'];
+const generatedKinds = ['mcps', 'skills', 'profiles', 'scripts', 'commands', 'hooks'];
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
@@ -144,6 +144,69 @@ This page is generated from \`catalog/commands/${name}.md\`.
 `;
 }
 
+const HOOK_TEXT = {
+  en: {
+    warning:
+      'This hook runs a shell command with your full user permissions whenever Claude Code fires the event. Read the command before you install it.',
+    event: 'Event',
+    matcher: 'Matcher',
+    allMatchers: 'all',
+    timeout: 'Timeout',
+    timeoutUnset: 'not set',
+    command: 'Command',
+    field: 'Field',
+    value: 'Value',
+    title: 'Runs code',
+  },
+  es: {
+    warning:
+      'Este hook ejecuta un comando de shell con todos tus permisos de usuario cada vez que Claude Code dispara el evento. Lee el comando antes de instalarlo.',
+    event: 'Evento',
+    matcher: 'Matcher',
+    allMatchers: 'todos',
+    timeout: 'Timeout',
+    timeoutUnset: 'sin definir',
+    command: 'Comando',
+    field: 'Campo',
+    value: 'Valor',
+    title: 'Ejecuta código',
+  },
+};
+
+// A fence one backtick longer than any run inside the command, so the command cannot close it early.
+function fenced(text) {
+  const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length));
+  const fence = '`'.repeat(Math.max(3, longest + 1));
+  return `${fence}\n${text}\n${fence}`;
+}
+
+function renderHook(name, locale) {
+  const hook = readJson(join(catalogDir, 'hooks', `${name}.json`));
+  const t = HOOK_TEXT[locale];
+  const matcher = typeof hook.matcher === 'string' && hook.matcher !== '' ? `\`${cell(hook.matcher)}\`` : t.allMatchers;
+  const timeout = typeof hook.timeout === 'number' ? `\`${hook.timeout}\`` : t.timeoutUnset;
+  return `${frontmatter(name, hook.description)}# \`${name}\`
+
+${hook.description}
+
+:::caution[${t.title}]
+${t.warning}
+:::
+
+| ${t.field} | ${t.value} |
+| --- | --- |
+| ${t.event} | \`${hook.event}\` |
+| ${t.matcher} | ${matcher} |
+| ${t.timeout} | ${timeout} |
+
+## ${t.command}
+
+${fenced(hook.command)}
+
+This page is generated from \`catalog/hooks/${name}.json\`.
+`;
+}
+
 function renderScript(name) {
   const meta = readJson(join(catalogDir, 'scripts', name, 'script.json'));
   const description = meta.description;
@@ -170,6 +233,7 @@ function renderProfile(name) {
   const skills = profile.skills ?? [];
   const scripts = profile.scripts ?? [];
   const commands = profile.commands ?? [];
+  const hooks = profile.hooks ?? [];
   const extendsFrom = profile.extends ?? [];
 
   const lines = [
@@ -199,6 +263,9 @@ function renderProfile(name) {
   if (commands.length > 0) {
     lines.push('## Slash commands', '', ...commands.map((item) => `- \`${item}\``), '');
   }
+  if (hooks.length > 0) {
+    lines.push('## Hooks', '', ...hooks.map((item) => `- \`${item}\``), '');
+  }
 
   return `${lines.join('\n').trimEnd()}\n`;
 }
@@ -226,6 +293,10 @@ async function expectedFiles() {
     for (const name of items.commands ?? []) {
       const rel = join('website/src/content/docs', locale, 'catalog/commands', `${name}.md`);
       files.set(rel, await formatMarkdown(rel, renderCommand(name, locale)));
+    }
+    for (const name of items.hooks ?? []) {
+      const rel = join('website/src/content/docs', locale, 'catalog/hooks', `${name}.md`);
+      files.set(rel, await formatMarkdown(rel, renderHook(name, locale)));
     }
     for (const name of items.scripts ?? []) {
       const rel = join('website/src/content/docs', locale, 'catalog/scripts', `${name}.md`);

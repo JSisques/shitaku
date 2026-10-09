@@ -5,9 +5,10 @@ export interface ResolvedProfile {
   skills: string[];
   scripts: string[];
   commands: string[];
+  hooks: string[];
 }
 
-/** Resolves a profile to its MCP, skill, script and command names: parents first, de-duplicated in first-seen order. */
+/** Resolves a profile to its MCP, skill, script, command and hook names: parents first, de-duplicated in first-seen order. */
 export function resolveProfile(
   name: string,
   profiles: readonly Profile[],
@@ -15,16 +16,19 @@ export function resolveProfile(
   skillNames: readonly string[],
   scriptNames: readonly string[] = [],
   commandNames: readonly string[] = [],
+  hookNames: readonly string[] = [],
 ): ResolvedProfile {
   const byName = new Map(profiles.map((p) => [p.name, p]));
   const knownMcps = new Set(mcpNames);
   const knownSkills = new Set(skillNames);
   const knownScripts = new Set(scriptNames);
   const knownCommands = new Set(commandNames);
+  const knownHooks = new Set(hookNames);
   const mcps = new Set<string>();
   const skills = new Set<string>();
   const scripts = new Set<string>();
   const commands = new Set<string>();
+  const hooks = new Set<string>();
 
   const visit = (current: string, trail: string[]): void => {
     if (trail.includes(current)) throw new Error(`profile cycle: ${[...trail, current].join(' -> ')}`);
@@ -48,10 +52,14 @@ export function resolveProfile(
       if (!knownCommands.has(command)) throw new Error(`profile '${current}' references unknown command '${command}'`);
       commands.add(command);
     }
+    for (const hook of profile.hooks) {
+      if (!knownHooks.has(hook)) throw new Error(`profile '${current}' references unknown hook '${hook}'`);
+      hooks.add(hook);
+    }
   };
 
   visit(name, []);
-  return { mcps: [...mcps], skills: [...skills], scripts: [...scripts], commands: [...commands] };
+  return { mcps: [...mcps], skills: [...skills], scripts: [...scripts], commands: [...commands], hooks: [...hooks] };
 }
 
 /** Returns one error message per profile that fails to resolve. */
@@ -61,10 +69,11 @@ export function validateProfiles(
   skillNames: readonly string[],
   scriptNames: readonly string[] = [],
   commandNames: readonly string[] = [],
+  hookNames: readonly string[] = [],
 ): string[] {
   return profiles.flatMap((p) => {
     try {
-      resolveProfile(p.name, profiles, mcpNames, skillNames, scriptNames, commandNames);
+      resolveProfile(p.name, profiles, mcpNames, skillNames, scriptNames, commandNames, hookNames);
       return [];
     } catch (e) {
       return [e instanceof Error ? e.message : String(e)];

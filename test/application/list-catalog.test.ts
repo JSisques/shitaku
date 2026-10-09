@@ -7,6 +7,7 @@ const loaded: LoadedCatalog = {
   skills: [{ name: 'demo', description: 'Browser automation', files: [] }],
   scripts: [],
   commands: [],
+  hooks: [],
   profiles: [],
   issues: [{ file: 'skills/bad', reason: 'missing SKILL.md' }],
 };

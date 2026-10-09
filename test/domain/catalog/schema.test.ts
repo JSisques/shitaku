@@ -89,6 +89,28 @@ describe('ProfileSchema commands', () => {
   });
 });
 
+describe('ProfileSchema hooks', () => {
+  it('defaults hooks to an empty list and accepts listed ones', () => {
+    expect(ProfileSchema.parse({ name: 'p' }).hooks).toEqual([]);
+    expect(ProfileSchema.parse({ name: 'p', hooks: ['fmt'] }).hooks).toEqual(['fmt']);
+  });
+});
+
+describe('CatalogIndexSchema hooks', () => {
+  it('defaults items.hooks to an empty list when absent and parses listed hooks', () => {
+    expect(CatalogIndexSchema.parse({ version: 1, items: { mcps: [] } }).items.hooks).toEqual([]);
+    const idx = CatalogIndexSchema.parse({ version: 1, items: { mcps: [], hooks: ['fmt', 'a1'] } });
+    expect(idx.items.hooks).toEqual(['fmt', 'a1']);
+  });
+
+  it('rejects an invalid hook name in the index, naming it and the field', () => {
+    const res = CatalogIndexSchema.safeParse({ version: 1, items: { mcps: [], hooks: ['../evil'] } });
+    expect(res.success).toBe(false);
+    expect(JSON.stringify(res.error?.issues)).toContain("invalid hook name '../evil'");
+    expect(JSON.stringify(res.error?.issues)).toContain('hooks');
+  });
+});
+
 describe('CatalogIndexSchema', () => {
   it('parses items.mcps and items.profiles', () => {
     const idx = CatalogIndexSchema.parse({ version: 1, items: { mcps: ['github'] } });

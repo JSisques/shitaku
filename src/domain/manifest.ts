@@ -12,6 +12,8 @@ const TreeItemSchema = z.object({
   root: z.string(),
 });
 
+const HandlerSchema = z.record(z.string(), z.unknown());
+
 const ItemSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('mcp'),
@@ -23,6 +25,23 @@ const ItemSchema = z.discriminatedUnion('kind', [
   TreeItemSchema.extend({ kind: z.literal('script') }),
   /** A command is one file, so `root` is the file path itself. */
   TreeItemSchema.extend({ kind: z.literal('command') }),
+  /** A hook is one handler inside the settings file, so it has no `root`: the file path is the owning file's. */
+  z.object({
+    kind: z.literal('hook'),
+    name: z.string(),
+    action: z.enum(['create', 'update', 'remove']),
+    /** Hash of `{ event, matcher, handler }`. */
+    entryHash: z.string(),
+    event: z.string(),
+    /** Null when the group has no `matcher` key. */
+    matcher: z.string().nullable(),
+    handler: HandlerSchema,
+    /** The handler an update replaced. */
+    previous: HandlerSchema.optional(),
+    /** Whether the install created the event array / the matcher group; only those may be dropped again. */
+    createdEvent: z.boolean(),
+    createdGroup: z.boolean(),
+  }),
 ]);
 
 const FileSchema = z
@@ -124,15 +143,50 @@ export function deriveCommandOwnership(manifest: Manifest): Record<string, strin
   return deriveTreeOwnership(manifest, 'command');
 }
 
+type HookItem = Extract<z.infer<typeof ItemSchema>, { kind: 'hook' }>;
+
+/** What shitaku last wrote for one hook; the located handler is the canonical `handler`. */
+export type OwnedHook = Pick<HookItem, 'entryHash' | 'event' | 'matcher' | 'handler' | 'createdEvent' | 'createdGroup'>;
+
+const ownedHook = ({ entryHash, event, matcher, handler, createdEvent, createdGroup }: HookItem): OwnedHook => ({
+  entryHash,
+  event,
+  matcher,
+  handler,
+  createdEvent,
+  createdGroup,
+});
+
+/** settings file path -> hook name -> the hook shitaku last wrote there. Undone installs do not count. */
+export function deriveHookOwnership(manifest: Manifest): Record<string, Record<string, OwnedHook>> {
+  const owned: Record<string, Record<string, OwnedHook>> = {};
+  for (const install of manifest.installs.filter((i) => i.undoneAt === null)) {
+    for (const file of install.files) {
+      for (const item of file.items) {
+        if (item.kind !== 'hook') continue;
+        if (item.action === 'remove') {
+          delete owned[file.path]?.[item.name];
+          if (Object.keys(owned[file.path] ?? {}).length === 0) delete owned[file.path];
+        } else {
+          (owned[file.path] ??= {})[item.name] = ownedHook(item);
+        }
+      }
+    }
+  }
+  return owned;
+}
+
 /** One item shitaku currently owns, with the hash it last wrote and the install that wrote it. */
 export interface OwnedItem {
-  kind: 'mcp' | 'skill' | 'script' | 'command';
+  kind: 'mcp' | 'skill' | 'script' | 'command' | 'hook';
   scope: Scope;
-  /** Config file for an MCP, directory for a skill/script, file for a command. */
+  /** Config file for an MCP, directory for a skill/script, file for a command, settings file for a hook. */
   path: string;
   name: string;
   hash: string;
   installId: string;
+  /** A hook only: where its handler lives and how the install created it. */
+  hook?: OwnedHook;
 }
 
 /** Replays the non-undone installs in order; the newest install of a scope + path + name wins and keeps its install id. */
@@ -141,7 +195,7 @@ export function deriveOwnedItems(manifest: Manifest): OwnedItem[] {
   for (const install of manifest.installs.filter((i) => i.undoneAt === null)) {
     for (const file of install.files) {
       for (const item of file.items) {
-        const path = item.kind === 'mcp' ? file.path : item.root;
+        const path = item.kind === 'mcp' || item.kind === 'hook' ? file.path : item.root;
         const key = JSON.stringify([file.scope, path, item.name]);
         if (item.action === 'remove') {
           owned.delete(key);
@@ -154,6 +208,7 @@ export function deriveOwnedItems(manifest: Manifest): OwnedItem[] {
           name: item.name,
           hash: item.entryHash,
           installId: install.id,
+          ...(item.kind === 'hook' ? { hook: ownedHook(item) } : {}),
         });
       }
     }

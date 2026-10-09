@@ -3,6 +3,7 @@ import type { Paths } from '@/ports/paths.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import { hashEntry, sha256 } from '@/domain/hash.js';
 import type { FlatFileChange } from '@/domain/plan/flat-file-plan.js';
+import type { HookFileChange } from '@/domain/plan/hook-plan.js';
 import type { ScriptChange } from '@/domain/plan/script-plan.js';
 import type { SkillChange } from '@/domain/plan/skill-plan.js';
 import { mergeAtPath, readAtPath } from '@/domain/json-merge.js';
@@ -42,6 +43,8 @@ export interface ChangePlan {
   scripts: ScriptChange[];
   /** One entry per requested command, in request order. */
   commands: FlatFileChange[];
+  /** One entry per settings file the requested hooks go to. */
+  hooks: HookFileChange[];
 }
 
 export interface BuildPlanInput {
@@ -143,5 +146,6 @@ export function buildPlan(input: BuildPlanInput): ChangePlan {
     skills: [],
     scripts: [],
     commands: [],
+    hooks: [],
   };
 }
