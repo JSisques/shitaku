@@ -115,12 +115,12 @@ Spec scenarios: agents-install "Agent uninstall" (3), item-uninstall (all, incl.
 
 Spec scenarios: agents-install "Downgrade documented"; catalog "Limit documented", "Copy mentions agents" (security docs side).
 
-- [ ] 7.1 RED: `test/generators.test.ts` and `test/tooling.test.ts` expect agents in generated tables and `docs:catalog:check` to pass
-- [ ] 7.2 GREEN: update `scripts/generate-*.mjs` and README generated markers in `README.md` (agents row, no flag docs yet)
-- [ ] 7.3 Edit `CONTRIBUTING.md`: "Adding agents" section, nested-YAML-not-validated limit, and the single-line `name`/`description` limit with reference to https://github.com/JSisques/shitaku/issues/238
-- [ ] 7.4 Edit `README.md`: single-line `name`/`description` note referencing https://github.com/JSisques/shitaku/issues/238; manifest downgrade note (undo/uninstall agents before downgrading); security copy mentions agents can grant tools or permissions
-- [ ] 7.5 Update website pages (en, es) under `website/` for agents kind and downgrade note
-- [ ] 7.6 Verify: `pnpm docs:catalog:check` passes; no drift
+- [x] 7.1 RED: `test/generators.test.ts` and `test/tooling.test.ts` expect agents in generated tables and `docs:catalog:check` to pass
+- [x] 7.2 GREEN: update `scripts/generate-*.mjs` and README generated markers in `README.md` (agents row, no flag docs yet)
+- [x] 7.3 Edit `CONTRIBUTING.md`: "Adding agents" section, nested-YAML-not-validated limit, and the single-line `name`/`description` limit with reference to https://github.com/JSisques/shitaku/issues/238
+- [x] 7.4 Edit `README.md`: single-line `name`/`description` note referencing https://github.com/JSisques/shitaku/issues/238; manifest downgrade note (undo/uninstall agents before downgrading); security copy mentions agents can grant tools or permissions
+- [x] 7.5 Update website pages (en, es) under `website/` for agents kind and downgrade note
+- [x] 7.6 Verify: `pnpm docs:catalog:check` passes; no drift
 
 ## PR 8: CLI and trust copy (~350 lines)
 

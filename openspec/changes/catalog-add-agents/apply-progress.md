@@ -176,3 +176,15 @@ Verification: typecheck, lint, format:check, build clean; full suite green (1400
 | `adapters/cli/program.ts:263,352,637`                        | defer | PR 8 (`--agents`, `--kind agent`, conflict kinds)                  |
 
 Migrated to `isFlatFileKind` in PR 6: `uninstall-item.ts` (`planUninstall`, `assertFresh`), `installed-state.ts` (`observeFile` dispatch), `doctor-plan.ts` (missing branch).
+
+## PR 7: Docs and generators
+
+Tasks 7.1-7.6 done (TDD: generator and docs-guard tests first, RED, then generators and docs).
+
+Files: `scripts/generate-catalog-table.mjs` (agents section, `agents/<name>.md` descriptions), `scripts/generate-website-catalog.mjs` (en/es agent pages, profile "Agents" list, `agents` in the stale-page sweep), `test/generators.test.ts`, new `test/agents-docs.test.ts` (guards the limit, issue #238 link, downgrade note, grants-tools copy, and that `--agents` / `--kind agent` are not documented yet), `README.md` (Agents catalog section with markers, "Agents (install)", `--source` trust sentence), `CONTRIBUTING.md` ("Adding catalog items: agents"), website `en|es/security.md` and `en|es/catalog/overview.md`.
+
+### Deviations
+
+- No website pages for the CLI reference (`cli/commands`, `cli/flags`) were changed: the `init` agent flag, `--kind agent` and interactive prompts ship in PR 8.
+- `test/tooling.test.ts` needed no change; generator coverage lives in `test/generators.test.ts` (task 7.1 intent), plus the new docs guard.
+- Empty bundled catalog: the README shows "No agents in the bundled catalog yet." and no website agent pages are emitted.
