@@ -1,6 +1,6 @@
 # Contributing to shitaku
 
-Thanks for helping. This guide covers local setup, adding catalog items (MCPs, skills, scripts, slash commands, profiles), commit conventions and what a pull request needs to pass.
+Thanks for helping. This guide covers local setup, adding catalog items (MCPs, skills, scripts, slash commands, hooks, agents, profiles), commit conventions and what a pull request needs to pass.
 
 ## Local setup
 
@@ -51,11 +51,12 @@ catalog/
   scripts/<name>/script.json
   commands/<name>.md
   hooks/<name>.json
+  agents/<name>.md
 ```
 
-Every item must be listed in `catalog/catalog.json` under `items.mcps`, `items.profiles`, `items.skills`, `items.scripts`, `items.commands` or `items.hooks`. The loader (`src/adapters/catalog/folder-source.ts`) validates items with the zod schemas in `src/domain/catalog/`. An invalid or unlisted item is skipped with a warning.
+Every item must be listed in `catalog/catalog.json` under `items.mcps`, `items.profiles`, `items.skills`, `items.scripts`, `items.commands`, `items.hooks` or `items.agents`. The loader (`src/adapters/catalog/folder-source.ts`) validates items with the zod schemas in `src/domain/catalog/`. An invalid or unlisted item is skipped with a warning.
 
-After adding or changing an MCP, skill, script, slash command or hook, run `pnpm run docs:catalog` to regenerate the catalog tables in `README.md`. CI fails (`pnpm run docs:catalog:check`) when they are out of date.
+After adding or changing an MCP, skill, script, slash command, hook or agent, run `pnpm run docs:catalog` to regenerate the catalog tables in `README.md`. CI fails (`pnpm run docs:catalog:check`) when they are out of date.
 
 When catalog items change, also refresh the docs site pages:
 
@@ -66,7 +67,7 @@ pnpm run docs:website-catalog:check
 
 That regenerates Markdown under `website/src/content/docs/{en,es}/catalog/` from `catalog/` (read-only). Profiles stay browse-only with a not-installable callout. The isolated `.github/workflows/website.yml` workflow runs the same emit step before the Astro build; root `ci.yml` / `cd.yml` do not.
 
-Names for MCPs, skills, scripts, slash commands and hooks must match `^[a-z0-9][a-z0-9-]*$` (lowercase letters, digits and hyphens; no leading hyphen).
+Names for MCPs, skills, scripts, slash commands, hooks and agents must match `^[a-z0-9][a-z0-9-]*$` (lowercase letters, digits and hyphens; no leading hyphen).
 
 ### Add a skill
 
@@ -186,6 +187,38 @@ Install behavior: the file is copied flat to `~/.claude/commands/<name>.md` (`us
 - `--force` backs the file up under `~/.claude/.shitaku/backups/` and replaces it; `shitaku undo` restores the original bytes. Undo refuses (exit `3`) if the file changed after the install, unless `--force` is set.
 - `shitaku uninstall <name> --kind command` removes only that file. The bundled catalog ships no command yet, so tests use fixtures and never depend on a bundled one.
 
+### Adding catalog items: agents
+
+An agent is a single Markdown file that Claude Code loads as a subagent. Its frontmatter can grant tools or permissions, so review an agent as you would code.
+
+1. Create `catalog/agents/<name>.md`. The file name (without `.md`) is the agent name and must match `^[a-z0-9][a-z0-9-]*$`.
+2. Start the file with frontmatter that has a single-line `name` equal to the file stem and a single-line `description`. The body after the frontmatter must not be empty.
+
+   ```md
+   ---
+   name: code-reviewer
+   description: Reviews a diff for correctness and risk.
+   tools: Read, Grep
+   ---
+
+   You review the diff you are given and list concrete risks.
+   ```
+
+3. Add the name to `items.agents` in `catalog/catalog.json`:
+
+   ```json
+   "agents": ["code-reviewer"]
+   ```
+
+   A file that is not listed, or a listed one that is missing or invalid, is skipped with a warning. No symlinks.
+
+Validation limits:
+
+- Only `name` and `description` are validated. Other keys such as `tools`, `model`, `hooks` or `mcpServers` may span several lines, are copied verbatim and are not validated; unknown keys are ignored.
+- A `name` or `description` written as a block scalar (`|` or `>`) is rejected in v1 (single-line only). Support is tracked in https://github.com/JSisques/shitaku/issues/238.
+
+Install behavior: the file is copied flat to `~/.claude/agents/<name>.md` (`user`) or `./.claude/agents/<name>.md` (`project`). Other files in that directory are never touched. A different `<name>.md` that shitaku did not install is a conflict and is never overwritten silently; `--force` backs it up first and `shitaku undo` restores it. `shitaku uninstall <name>` refuses a modified file without `--force`. The bundled catalog ships no agent yet, so tests use fixtures. Regenerate the README and website tables with `pnpm run docs:catalog` and `pnpm run docs:website-catalog`.
+
 ### Adding catalog items: hooks
 
 A hook is one JSON file that adds a single Claude Code `command` handler to the `hooks` key of a `settings.json`. Hooks run commands with the user's full permissions, so review them as you would code.
@@ -228,10 +261,10 @@ Install behavior: `init --hooks <name>` merges the handler into `~/.claude/setti
 
 ### Add a profile
 
-A profile is a named bundle of MCPs, skills, scripts, slash commands and hooks.
+A profile is a named bundle of MCPs, skills, scripts, slash commands, hooks and agents.
 
 1. Create `catalog/profiles/<name>.json`. The `name` field must equal the file name.
-2. Fields: `name` (required), `description`, `extends` (profile names, applied first), `mcps`, `skills`, `scripts`, `commands`, `hooks` (names that exist in the catalog).
+2. Fields: `name` (required), `description`, `extends` (profile names, applied first), `mcps`, `skills`, `scripts`, `commands`, `hooks`, `agents` (names that exist in the catalog).
 3. Every referenced MCP, skill, script, command, hook and parent profile must exist, and `extends` must not form a cycle. A profile that does not resolve is skipped with a warning.
 4. Add the name to `items.profiles` in `catalog/catalog.json`, then update `test/adapters/catalog/bundled-catalog.test.ts` if needed.
 

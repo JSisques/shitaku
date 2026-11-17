@@ -37,3 +37,14 @@ Los campos desconocidos y varios manejadores en un mismo archivo se rechazan.
 - `undo` restaura los bytes originales. Si el archivo cambió después, se niega (código `3`); con `--force` elimina solo los manejadores que shitaku instaló y conserva todo lo demás.
 - Claude Code recarga los hooks en caliente y también puede escribir `settings.json`, por ejemplo desde `/config`. shitaku vuelve a leer el archivo antes de escribir; si cambió, vuelve a planificar y aborta solo cuando las acciones planificadas difieren, y después hace una copia de seguridad y escribe de forma atómica; aun así, evita `/config` mientras se ejecuta una instalación o un `undo`.
 - Las versiones anteriores de shitaku lanzan un `ManifestError` ante una entrada del manifiesto con `kind: 'hook'`: ejecuta `undo` o `uninstall` antes de bajar de versión.
+
+## Seguridad de los agentes
+
+Un agente es un archivo Markdown, `catalog/agents/<name>.md`, que Claude Code carga como subagente. Necesita un `name` de una sola línea igual al nombre del archivo, una `description` de una sola línea y un cuerpo no vacío. Otras claves, como `tools`, `model`, `hooks` o `mcpServers`, pueden ocupar varias líneas; se copian tal cual, no se validan y las claves desconocidas se ignoran.
+
+- El frontmatter de un agente puede conceder herramientas o permisos. Los agentes instalados se tratan con la misma confianza que las skills y los comandos slash: shitaku copia el archivo y no lo analiza ni lo aísla.
+- Los agentes de una carpeta `--source` son código no confiable. Léelos antes de instalarlos y usa solo carpetas en las que confíes.
+- Un `name` o una `description` escritos como bloque escalar (`|` o `>`) se rechazan en la v1. Escribe ambos en una sola línea; el soporte se sigue en https://github.com/JSisques/shitaku/issues/238.
+- Los agentes se instalan en `~/.claude/agents/<name>.md` (`user`) o `./.claude/agents/<name>.md` (`project`). Un archivo distinto que shitaku no instaló nunca se sobrescribe en silencio: `init` termina con código `2` y no escribe nada, y `--force` hace antes una copia de seguridad que `undo` puede restaurar.
+- `uninstall` rechaza un agente modificado desde la instalación salvo que uses `--force`.
+- Las versiones anteriores de shitaku lanzan un `ManifestError` ante una entrada del manifiesto con `kind: 'agent'`: ejecuta `undo` o `uninstall` para los agentes antes de bajar de versión.
