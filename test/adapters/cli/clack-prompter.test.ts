@@ -7,6 +7,7 @@ import type { McpItem } from '@/domain/catalog/schema.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
 import type { ChangePlan } from '@/domain/plan/change-plan.js';
 import { PromptCancelled, type HookPreview } from '@/ports/prompter.js';
+import { makeAgent } from '@test/helpers/agents.js';
 
 const CANCEL = Symbol('clack:cancel');
 // Clack types its cancel symbol privately; `never` lets the mocks resolve with it.
@@ -35,6 +36,7 @@ const planOf = (files: number, skills: number, emptyFiles = 0, scripts = 0, comm
     skills: Array.from({ length: skills }, () => ({})),
     scripts: Array.from({ length: scripts }, () => ({})),
     commands: Array.from({ length: commands }, () => ({})),
+    agents: [],
     hooks: [
       ...Array.from({ length: hooks }, () => ({ items: [{ action: 'create' }] })),
       { items: [{ action: 'skip' }] },
@@ -254,7 +256,59 @@ describe('ClackPrompter', () => {
     });
   });
 
+  describe('selectAgents', () => {
+    it('offers each agent with its description as a hint and returns the selection', async () => {
+      multiselect.mockResolvedValueOnce(['reviewer']);
+
+      const result = await prompter.selectAgents([makeAgent('reviewer'), makeAgent('planner')]);
+
+      expect(result).toEqual(['reviewer']);
+      expect(multiselect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringMatching(/agents.*tools or permissions/) as string,
+          options: [
+            { value: 'reviewer', label: 'reviewer', hint: 'reviewer agent' },
+            { value: 'planner', label: 'planner', hint: 'planner agent' },
+          ],
+          required: false,
+        }),
+      );
+    });
+
+    it('throws PromptCancelled when the prompt is dismissed', async () => {
+      multiselect.mockResolvedValueOnce(CANCELLED);
+
+      await expect(prompter.selectAgents([])).rejects.toBeInstanceOf(PromptCancelled);
+    });
+  });
+
+  describe('resolveConflict for agents', () => {
+    it('words an agent conflict as a single-file overwrite', async () => {
+      select.mockResolvedValueOnce('overwrite');
+
+      await prompter.resolveConflict({ kind: 'agent', name: 'reviewer', reason: 'modified' });
+
+      expect(select).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "Agent 'reviewer' already exists with different content (modified). What now?",
+          options: [
+            { value: 'skip', label: 'Keep the existing one' },
+            { value: 'overwrite', label: 'Overwrite it' },
+          ],
+        }),
+      );
+    });
+  });
+
   describe('confirm', () => {
+    it('counts agent files as locations', async () => {
+      confirm.mockResolvedValueOnce(true);
+
+      await prompter.confirm({ ...planOf(0, 0), agents: [{}, {}] } as unknown as ChangePlan);
+
+      expect(confirm).toHaveBeenCalledWith({ message: 'Apply the changes to 2 locations?' });
+    });
+
     it.each([
       { files: 1, skills: 0, scripts: 0, emptyFiles: 0, message: 'Apply the changes to 1 location?' },
       { files: 2, skills: 1, scripts: 0, emptyFiles: 0, message: 'Apply the changes to 3 locations?' },

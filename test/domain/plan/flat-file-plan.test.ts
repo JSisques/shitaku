@@ -71,4 +71,19 @@ describe('buildFlatFilePlan', () => {
       ['fix', 'user', 'skip'],
     ]);
   });
+
+  it('names the agent noun in a conflict reason and plans create/skip/update for agents', () => {
+    const agentPath = '/w/.claude/agents/reviewer.md';
+    const agentPlan = (present: Uint8Array | null, owned: Record<string, string> = {}) =>
+      buildFlatFilePlan({
+        entries: [{ name: 'reviewer', path: agentPath, scope: 'project', bytes: v2, present }],
+        owned,
+        noun: 'agent',
+      })[0];
+    expect(agentPlan(null)?.action).toBe('create');
+    expect(agentPlan(v2)?.action).toBe('skip');
+    expect(agentPlan(v1, { [agentPath]: sha256(v1) })?.action).toBe('update');
+    expect(agentPlan(v1)).toMatchObject({ action: 'conflict', reason: 'a different agent with this name exists' });
+    expect(agentPlan(v1, { [agentPath]: sha256(v2) })?.action).toBe('conflict');
+  });
 });

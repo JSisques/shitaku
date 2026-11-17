@@ -18,6 +18,8 @@ export const claudeCodeTarget: AgentTarget = {
 
   commandsDir: (scope, paths) => join(scope === 'user' ? paths.homeDir : paths.cwd, '.claude', 'commands'),
 
+  agentsDir: (scope, paths) => join(scope === 'user' ? paths.homeDir : paths.cwd, '.claude', 'agents'),
+
   settingsPath: (scope, paths) => join(scope === 'user' ? paths.homeDir : paths.cwd, '.claude', 'settings.json'),
 
   toHookHandler: ({ command, timeout }: HookItem) => ({ type: 'command', command, ...(timeout && { timeout }) }),

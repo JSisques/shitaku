@@ -10,6 +10,7 @@ const p = (
   scripts: string[] = [],
   commands: string[] = [],
   hooks: string[] = [],
+  agents: string[] = [],
 ): Profile => ({
   name,
   mcps,
@@ -18,115 +19,132 @@ const p = (
   scripts,
   commands,
   hooks,
+  agents,
 });
 const MCPS = ['github', 'context7'];
 const SKILLS = ['review', 'plan'];
 const SCRIPTS = ['lint', 'format'];
 const COMMANDS = ['review', 'plan-cmd'];
 const HOOKS = ['fmt', 'guard'];
+const AGENTS = ['reviewer', 'planner'];
+const KNOWN = { mcps: MCPS, skills: SKILLS, scripts: SCRIPTS, commands: COMMANDS, hooks: HOOKS, agents: AGENTS };
 
 describe('resolveProfile', () => {
   it('merges parents first and de-duplicates', () => {
     const profiles = [p('base', ['context7']), p('web', ['github', 'context7'], ['base'])];
-    expect(resolveProfile('web', profiles, MCPS, SKILLS, SCRIPTS, COMMANDS)).toEqual({
+    expect(resolveProfile('web', profiles, KNOWN)).toEqual({
       mcps: ['context7', 'github'],
       skills: [],
       scripts: [],
       commands: [],
       hooks: [],
+      agents: [],
     });
   });
 
   it('merges skills through extends and de-duplicates', () => {
     const profiles = [p('base', [], [], ['review']), p('web', [], ['base'], ['plan', 'review'])];
-    expect(resolveProfile('web', profiles, MCPS, SKILLS, SCRIPTS, COMMANDS)).toEqual({
+    expect(resolveProfile('web', profiles, KNOWN)).toEqual({
       mcps: [],
       skills: ['review', 'plan'],
       scripts: [],
       commands: [],
       hooks: [],
+      agents: [],
     });
   });
 
   it('merges scripts through extends and de-duplicates', () => {
     const profiles = [p('base', [], [], [], ['lint']), p('web', [], ['base'], [], ['format', 'lint'])];
-    expect(resolveProfile('web', profiles, MCPS, SKILLS, SCRIPTS, COMMANDS)).toEqual({
+    expect(resolveProfile('web', profiles, KNOWN)).toEqual({
       mcps: [],
       skills: [],
       scripts: ['lint', 'format'],
       commands: [],
       hooks: [],
+      agents: [],
     });
   });
 
   it('merges commands through extends and de-duplicates', () => {
     const profiles = [p('base', [], [], [], [], ['review']), p('web', [], ['base'], [], [], ['plan-cmd', 'review'])];
-    expect(resolveProfile('web', profiles, MCPS, SKILLS, SCRIPTS, COMMANDS)).toEqual({
+    expect(resolveProfile('web', profiles, KNOWN)).toEqual({
       mcps: [],
       skills: [],
       scripts: [],
       commands: ['review', 'plan-cmd'],
       hooks: [],
+      agents: [],
     });
   });
 
   it('merges hooks through extends and de-duplicates', () => {
     const profiles = [p('base', [], [], [], [], [], ['fmt']), p('web', [], ['base'], [], [], [], ['guard', 'fmt'])];
-    expect(resolveProfile('web', profiles, MCPS, SKILLS, SCRIPTS, COMMANDS, HOOKS).hooks).toEqual(['fmt', 'guard']);
+    expect(resolveProfile('web', profiles, KNOWN).hooks).toEqual(['fmt', 'guard']);
   });
 
   it('resolves a profile without hooks to an empty hook list', () => {
-    expect(resolveProfile('a', [p('a', ['github'])], MCPS, SKILLS, SCRIPTS, COMMANDS, HOOKS).hooks).toEqual([]);
+    expect(resolveProfile('a', [p('a', ['github'])], KNOWN).hooks).toEqual([]);
   });
 
   it('fails on an unknown hook', () => {
-    expect(() =>
-      resolveProfile('a', [p('a', [], [], [], [], [], ['ghost'])], MCPS, SKILLS, SCRIPTS, COMMANDS, HOOKS),
-    ).toThrow("profile 'a' references unknown hook 'ghost'");
+    expect(() => resolveProfile('a', [p('a', [], [], [], [], [], ['ghost'])], KNOWN)).toThrow(
+      "profile 'a' references unknown hook 'ghost'",
+    );
+  });
+
+  it('merges agents through extends and de-duplicates', () => {
+    const profiles = [
+      p('base', [], [], [], [], [], [], ['reviewer']),
+      p('web', [], ['base'], [], [], [], [], ['planner', 'reviewer']),
+    ];
+    expect(resolveProfile('web', profiles, KNOWN).agents).toEqual(['reviewer', 'planner']);
+  });
+
+  it('resolves a profile without agents to an empty agent list', () => {
+    expect(resolveProfile('a', [p('a', ['github'])], KNOWN).agents).toEqual([]);
+  });
+
+  it('fails on an unknown agent', () => {
+    expect(() => resolveProfile('a', [p('a', [], [], [], [], [], [], ['ghost'])], KNOWN)).toThrow(
+      "profile 'a' references unknown agent 'ghost'",
+    );
   });
 
   it('resolves a profile without commands to an empty command list', () => {
-    expect(resolveProfile('a', [p('a', ['github'])], MCPS, SKILLS, SCRIPTS, COMMANDS).commands).toEqual([]);
+    expect(resolveProfile('a', [p('a', ['github'])], KNOWN).commands).toEqual([]);
   });
 
   it('fails on an unknown command', () => {
-    expect(() => resolveProfile('a', [p('a', [], [], [], [], ['ghost'])], MCPS, SKILLS, SCRIPTS, COMMANDS)).toThrow(
-      "unknown command 'ghost'",
-    );
+    expect(() => resolveProfile('a', [p('a', [], [], [], [], ['ghost'])], KNOWN)).toThrow("unknown command 'ghost'");
   });
 
   it('fails on a cycle naming the path', () => {
     const profiles = [p('a', [], ['b']), p('b', [], ['a'])];
-    expect(() => resolveProfile('a', profiles, MCPS, SKILLS, SCRIPTS, COMMANDS)).toThrow('a -> b -> a');
+    expect(() => resolveProfile('a', profiles, KNOWN)).toThrow('a -> b -> a');
   });
 
   it('fails on an unknown mcp', () => {
-    expect(() => resolveProfile('a', [p('a', ['ghost'])], MCPS, SKILLS, SCRIPTS, COMMANDS)).toThrow('ghost');
+    expect(() => resolveProfile('a', [p('a', ['ghost'])], KNOWN)).toThrow('ghost');
   });
 
   it('fails on an unknown skill', () => {
-    expect(() => resolveProfile('a', [p('a', [], [], ['ghost'])], MCPS, SKILLS, SCRIPTS, COMMANDS)).toThrow(
-      "unknown skill 'ghost'",
-    );
+    expect(() => resolveProfile('a', [p('a', [], [], ['ghost'])], KNOWN)).toThrow("unknown skill 'ghost'");
   });
 
   it('fails on an unknown script', () => {
-    expect(() => resolveProfile('a', [p('a', [], [], [], ['ghost'])], MCPS, SKILLS, SCRIPTS, COMMANDS)).toThrow(
-      "unknown script 'ghost'",
-    );
+    expect(() => resolveProfile('a', [p('a', [], [], [], ['ghost'])], KNOWN)).toThrow("unknown script 'ghost'");
   });
 
   it('fails on an unknown profile', () => {
-    expect(() => resolveProfile('a', [p('a', [], ['nope'])], MCPS, SKILLS, SCRIPTS, COMMANDS)).toThrow('nope');
-    expect(() => resolveProfile('missing', [], MCPS, SKILLS, SCRIPTS, COMMANDS)).toThrow('missing');
+    expect(() => resolveProfile('a', [p('a', [], ['nope'])], KNOWN)).toThrow('nope');
+    expect(() => resolveProfile('missing', [], KNOWN)).toThrow('missing');
   });
 });
 
 describe('validateProfiles', () => {
   it('returns no errors for a valid set', () => {
-    expect(
-      validateProfiles([p('base', ['context7'], [], ['review'], ['lint'])], MCPS, SKILLS, SCRIPTS, COMMANDS),
-    ).toEqual([]);
+    expect(validateProfiles([p('base', ['context7'], [], ['review'], ['lint'])], KNOWN)).toEqual([]);
   });
 
   it('collects one error per invalid profile', () => {
@@ -138,12 +156,10 @@ describe('validateProfiles', () => {
         p('d', [], [], ['ghost']),
         p('e', [], [], [], ['ghost']),
         p('f', [], [], [], [], ['ghost']),
+        p('g', [], [], [], [], [], [], ['ghost']),
       ],
-      MCPS,
-      SKILLS,
-      SCRIPTS,
-      COMMANDS,
+      KNOWN,
     );
-    expect(errors).toHaveLength(6);
+    expect(errors).toHaveLength(7);
   });
 });

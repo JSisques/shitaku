@@ -29,7 +29,9 @@ describe('bundled catalog', () => {
     const mcpNames = catalog.mcps.map((m) => m.name);
     const skillNames = catalog.skills.map((sk) => sk.name);
     const scriptNames = catalog.scripts.map((s) => s.name);
-    expect(resolveProfile('web', catalog.profiles, mcpNames, skillNames, scriptNames, [])).toEqual({
+    expect(
+      resolveProfile('web', catalog.profiles, { mcps: mcpNames, skills: skillNames, scripts: scriptNames }),
+    ).toEqual({
       mcps: [
         'context7',
         'github',
@@ -45,13 +47,17 @@ describe('bundled catalog', () => {
       scripts: [],
       commands: [],
       hooks: [],
+      agents: [],
     });
-    expect(resolveProfile('backend', catalog.profiles, mcpNames, skillNames, scriptNames, [])).toEqual({
+    expect(
+      resolveProfile('backend', catalog.profiles, { mcps: mcpNames, skills: skillNames, scripts: scriptNames }),
+    ).toEqual({
       mcps: ['context7', 'github', 'docker', 'sqlite', 'supabase'],
       skills: [],
       scripts: [],
       commands: [],
       hooks: [],
+      agents: [],
     });
   });
 

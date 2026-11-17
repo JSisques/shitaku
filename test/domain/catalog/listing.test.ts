@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { collapseWhitespace, listEntries, LIST_KINDS } from '@/domain/catalog/listing.js';
 import type { Catalog, McpItem, Profile } from '@/domain/catalog/schema.js';
 import type { CommandItem } from '@/domain/catalog/command.js';
+import { makeAgent } from '@test/helpers/agents.js';
 import type { HookItem } from '@/domain/catalog/hook.js';
 import type { ScriptItem } from '@/domain/catalog/script.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
@@ -34,6 +35,7 @@ const profile = (name: string, description?: string): Profile => ({
   scripts: [],
   commands: [],
   hooks: [],
+  agents: [],
 });
 
 const catalog: Catalog = {
@@ -42,12 +44,13 @@ const catalog: Catalog = {
   scripts: [script('lint', 'Run lint'), script('a-script', 'Alpha script')],
   commands: [command('review', 'Review a diff'), command('a-cmd', 'Alpha command')],
   hooks: [hook('fmt', 'Format after edits'), hook('a-hook', 'Alpha hook')],
+  agents: [makeAgent(`reviewer`), makeAgent(`a-agent`)],
   profiles: [profile('base'), profile('full', 'Everything')],
 };
 
 describe('LIST_KINDS', () => {
   it('exposes the plural kinds accepted by the CLI', () => {
-    expect(LIST_KINDS).toEqual(['mcps', 'skills', 'profiles', 'scripts', 'commands', 'hooks']);
+    expect(LIST_KINDS).toEqual(['mcps', 'skills', 'profiles', 'scripts', 'commands', 'hooks', 'agents']);
   });
 });
 
@@ -62,8 +65,10 @@ describe('collapseWhitespace', () => {
 });
 
 describe('listEntries', () => {
-  it('maps all six kinds and sorts by kind, then name', () => {
+  it('maps all seven kinds and sorts by kind, then name', () => {
     expect(listEntries(catalog, {})).toEqual([
+      { kind: 'agent', name: 'a-agent', description: 'a-agent agent' },
+      { kind: 'agent', name: 'reviewer', description: 'reviewer agent' },
       { kind: 'command', name: 'a-cmd', description: 'Alpha command' },
       { kind: 'command', name: 'review', description: 'Review a diff' },
       { kind: 'hook', name: 'a-hook', description: 'Alpha hook' },
@@ -87,6 +92,7 @@ describe('listEntries', () => {
       scripts: [],
       commands: [],
       hooks: [],
+      agents: [],
       profiles: [],
     };
     expect(listEntries(both, {}).map((e) => `${e.kind}:${e.name}`)).toEqual(['mcp:x', 'skill:x']);
@@ -103,6 +109,7 @@ describe('listEntries', () => {
     ['scripts', 'script', 2],
     ['commands', 'command', 2],
     ['hooks', 'hook', 2],
+    ['agents', 'agent', 2],
   ] as const)('filters by kind %s', (kind, entryKind, count) => {
     const entries = listEntries(catalog, { kind });
     expect(entries).toHaveLength(count);
@@ -119,6 +126,13 @@ describe('listEntries', () => {
     expect(listEntries(catalog, { kind: 'hooks', search: 'FORMAT' })).toEqual([
       { kind: 'hook', name: 'fmt', description: 'Format after edits' },
     ]);
+  });
+
+  it('uses singular kind agent and lists nothing when the catalog has no agents', () => {
+    expect(listEntries(catalog, { kind: 'agents', search: 'REVIEWER' })).toEqual([
+      { kind: 'agent', name: 'reviewer', description: 'reviewer agent' },
+    ]);
+    expect(listEntries({ ...catalog, agents: [] }, { kind: 'agents' })).toEqual([]);
   });
 
   it('lists nothing for the hooks kind when the catalog has no hooks', () => {
@@ -149,6 +163,7 @@ describe('listEntries', () => {
     scripts: [],
     commands: [],
     hooks: [],
+    agents: [],
     profiles: [],
   };
 
@@ -161,7 +176,7 @@ describe('listEntries', () => {
   });
 
   it('treats an empty search as no filter', () => {
-    expect(listEntries(catalog, { search: '' })).toHaveLength(13);
+    expect(listEntries(catalog, { search: '' })).toHaveLength(15);
   });
 
   it('keeps raw descriptions untouched', () => {

@@ -6,6 +6,7 @@ import { readFileNoFollow, readTree } from '@/adapters/fs/walk.js';
 import { resolveProfile } from '@/domain/catalog/profile.js';
 import { CatalogIndexSchema, McpItemSchema, ProfileSchema } from '@/domain/catalog/schema.js';
 import type { McpItem, Profile } from '@/domain/catalog/schema.js';
+import { parseAgent, type AgentItem } from '@/domain/catalog/agent.js';
 import { parseCommand, type CommandItem } from '@/domain/catalog/command.js';
 import { HookItemSchema, type HookItem } from '@/domain/catalog/hook.js';
 import { parseSkill, type SkillItem } from '@/domain/catalog/skill.js';
@@ -58,14 +59,18 @@ export class FolderCatalogSource implements CatalogSource {
     const scripts = await this.loadScripts(index.items.scripts, issues);
     const commands = await this.loadCommands(index.items.commands, issues);
     const hooks = await this.loadHooks(index.items.hooks, issues);
-    const mcpNames = mcps.map((m) => m.name);
-    const skillNames = skills.map((sk) => sk.name);
-    const scriptNames = scripts.map((sc) => sc.name);
-    const commandNames = commands.map((c) => c.name);
-    const hookNames = hooks.map((h) => h.name);
+    const agents = await this.loadAgents(index.items.agents, issues);
+    const known = {
+      mcps: mcps.map((m) => m.name),
+      skills: skills.map((sk) => sk.name),
+      scripts: scripts.map((sc) => sc.name),
+      commands: commands.map((c) => c.name),
+      hooks: hooks.map((h) => h.name),
+      agents: agents.map((a) => a.name),
+    };
     const profiles = candidates.filter((p) => {
       try {
-        resolveProfile(p.name, candidates, mcpNames, skillNames, scriptNames, commandNames, hookNames);
+        resolveProfile(p.name, candidates, known);
         return true;
       } catch (e) {
         issues.push({ file: `profiles/${p.name}.json`, reason: e instanceof Error ? e.message : String(e) });
@@ -73,7 +78,7 @@ export class FolderCatalogSource implements CatalogSource {
       }
     });
 
-    return { mcps, skills, scripts, commands, hooks, profiles, issues };
+    return { mcps, skills, scripts, commands, hooks, agents, profiles, issues };
   }
 
   /** Loads each listed skill as bytes. A bad skill is skipped with an issue; an unlisted directory is an issue too. */
@@ -123,6 +128,14 @@ export class FolderCatalogSource implements CatalogSource {
     return this.loadFileItems<CommandItem>('commands', '.md', listed, issues, (name, bytes) => {
       const parsed = parseCommand(name, bytes);
       return 'issue' in parsed ? parsed : { item: parsed.command };
+    });
+  }
+
+  /** Loads each listed agent as one file. A bad agent is skipped with an issue; an unlisted `*.md` is an issue too. */
+  private loadAgents(listed: readonly string[], issues: CatalogIssue[]): Promise<AgentItem[]> {
+    return this.loadFileItems<AgentItem>('agents', '.md', listed, issues, (name, bytes) => {
+      const parsed = parseAgent(name, bytes);
+      return 'issue' in parsed ? parsed : { item: parsed.agent };
     });
   }
 

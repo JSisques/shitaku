@@ -1,5 +1,5 @@
 import { extractPlaceholders } from '@/domain/placeholders.js';
-import type { OwnedItem } from '@/domain/manifest.js';
+import { isFlatFileKind, type OwnedItem } from '@/domain/manifest.js';
 import type { ItemKind, Observed, StatusState } from '@/domain/plan/status-plan.js';
 import type { Scope } from '@/ports/agent-target.js';
 
@@ -9,6 +9,7 @@ export type DoctorCode =
   | 'mcp-missing'
   | 'skill-missing'
   | 'command-missing'
+  | 'agent-missing'
   | 'hook-missing'
   | 'env-unset'
   | 'duplicate-mcp' // severity 'problem'
@@ -102,14 +103,15 @@ function itemFindings(o: ItemObservation, env: DiagnoseInput['env']): Finding[] 
       },
     ];
   }
-  if (o.item.kind === 'command' && o.state === 'missing') {
+  if (isFlatFileKind(o.item.kind) && o.state === 'missing') {
+    // `agent-missing` fires only when the file is absent: an edited agent is `modified`, reported below.
     return [
       {
         ...base,
         severity: 'problem',
-        code: 'command-missing',
+        code: o.item.kind === 'agent' ? 'agent-missing' : 'command-missing',
         message: `${label(o)} is missing at ${o.item.path}`,
-        fix: 'run shitaku init again to reinstall the command',
+        fix: `run shitaku init again to reinstall the ${o.item.kind}`,
       },
     ];
   }

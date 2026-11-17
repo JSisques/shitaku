@@ -5,15 +5,29 @@ description: Resumen de comandos de la CLI de shitaku.
 
 # Comandos
 
-| Comando     | Propósito                                                 |
-| ----------- | --------------------------------------------------------- |
-| `init`      | Instala servidores MCP, skills, comandos slash y hooks    |
-| `undo`      | Restaura los archivos cambiados por la última instalación |
-| `uninstall` | Elimina un MCP, skill, comando slash o hook instalado     |
-| `status`    | Informa qué instaló shitaku y si cambió                   |
-| `list`      | Explora lo que ofrece un catálogo (solo lectura)          |
-| `doctor`    | Diagnostica elementos instalados y sugiere correcciones   |
-| `version`   | Imprime la versión del paquete instalado                  |
+| Comando     | Propósito                                                       |
+| ----------- | --------------------------------------------------------------- |
+| `init`      | Instala servidores MCP, skills, comandos slash, agentes y hooks |
+| `undo`      | Restaura los archivos cambiados por la última instalación       |
+| `uninstall` | Elimina un MCP, skill, comando slash, agente o hook instalado   |
+| `status`    | Informa qué instaló shitaku y si cambió                         |
+| `list`      | Explora lo que ofrece un catálogo (solo lectura)                |
+| `doctor`    | Diagnostica elementos instalados y sugiere correcciones         |
+| `version`   | Imprime la versión del paquete instalado                        |
+
+## Agentes
+
+Un agente es un archivo Markdown de subagente de Claude Code. Pueden dar herramientas o permisos, así que léelos antes de instalarlos. No hay puerta de confirmación para los agentes, tampoco con `--source`.
+
+```sh
+shitaku list agents
+shitaku init --agents reviewer --scope project
+shitaku uninstall reviewer --kind agent
+```
+
+- `--agents <a,b>` instala cada agente como un único archivo en `./.claude/agents/` (`project`) o en `~/.claude/agents/` (`user`). De forma interactiva, la pregunta aparece solo si el catálogo tiene agentes.
+- `--agents` cuenta como flag de tipo: `--yes` lo acepta como selección.
+- `uninstall <name> --kind agent` elimina solo ese archivo.
 
 ## Hooks
 

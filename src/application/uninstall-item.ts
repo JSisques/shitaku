@@ -3,7 +3,7 @@ import type { SkillFile } from '@/domain/catalog/skill.js';
 import { hashEntry, sha256, treeHash } from '@/domain/hash.js';
 import { readAtPath, removeAtPath } from '@/domain/json-merge.js';
 import { removeHook } from '@/domain/hook-merge.js';
-import { deriveOwnedItems, type Install, type Manifest, type OwnedItem } from '@/domain/manifest.js';
+import { deriveOwnedItems, isFlatFileKind, type Install, type Manifest, type OwnedItem } from '@/domain/manifest.js';
 import type { AgentTarget, Scope } from '@/ports/agent-target.js';
 import type { FileSystem } from '@/ports/file-system.js';
 import type { Paths } from '@/ports/paths.js';
@@ -71,7 +71,7 @@ interface Plan {
   text: string | null;
   /** Hook: the settings text without the owned handler. */
   after: string | null;
-  /** Skill/script/command: the files to delete by absolute path, entry file first. */
+  /** Skill/script/command/agent: the files to delete by absolute path, entry file first. */
   doomed: SkillFile[];
   files: string[];
 }
@@ -82,6 +82,7 @@ const expectedPath = (deps: UninstallDeps, item: OwnedItem): string => {
   if (item.kind === 'skill') return `${deps.target.skillsDir(item.scope, deps.paths)}/${item.name}`;
   if (item.kind === 'hook') return deps.target.settingsPath(item.scope, deps.paths);
   if (item.kind === 'command') return `${deps.target.commandsDir(item.scope, deps.paths)}/${item.name}.md`;
+  if (item.kind === 'agent') return `${deps.target.agentsDir(item.scope, deps.paths)}/${item.name}.md`;
   return `${scriptsDir(item.scope, deps.paths)}/${item.name}`;
 };
 
@@ -136,7 +137,7 @@ async function planUninstall(deps: UninstallDeps, req: UninstallRequest): Promis
     const removal = text === null ? null : removeHook(text, item.path, { event, matcher, handler }, created);
     observed = removal?.removed ? item.hash : null;
     plan = { text, after: removal?.text ?? null, doomed: [], files: observed === null ? [] : [item.path] };
-  } else if (item.kind === 'command') {
+  } else if (isFlatFileKind(item.kind)) {
     const bytes = await deps.fs.readBytes(item.path);
     observed = bytes === null ? null : sha256(bytes);
     plan = {
@@ -167,7 +168,7 @@ async function assertFresh(deps: UninstallDeps, plan: Plan): Promise<void> {
   const { item } = plan;
   let fresh: boolean;
   if (item.kind === 'mcp' || item.kind === 'hook') fresh = (await deps.fs.readText(item.path)) === plan.text;
-  else if (item.kind === 'command') {
+  else if (isFlatFileKind(item.kind)) {
     const bytes = await deps.fs.readBytes(item.path);
     fresh = (bytes === null ? null : sha256(bytes)) === plan.observed;
   } else fresh = treeHash((await readPresent(deps.fs, item.path)) ?? []) === plan.observed;
@@ -268,7 +269,7 @@ const journal = (deps: UninstallDeps, id: string, now: Date, plan: Plan, files: 
   });
 
 /**
- * Removes one shitaku-owned MCP entry, skill, script, command or hook handler and records the removal as an install, so `undo` reverts it.
+ * Removes one shitaku-owned MCP entry, skill, script, command, agent or hook handler and records the removal as an install, so `undo` reverts it.
  * Refuses (exit 3) an item that changed since install unless forced; never touches an item shitaku does not own.
  */
 export async function uninstallItem(deps: UninstallDeps, req: UninstallRequest): Promise<UninstallResult> {

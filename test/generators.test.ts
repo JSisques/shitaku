@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const ROOT = join(import.meta.dirname, '..');
 const SCRIPTS = { catalog: 'generate-catalog-table.mjs', website: 'generate-website-catalog.mjs' } as const;
-const SECTIONS = ['mcps', 'skills', 'scripts', 'commands', 'hooks'];
+const SECTIONS = ['mcps', 'skills', 'scripts', 'commands', 'hooks', 'agents'];
 const PAGES = 'website/src/content/docs';
 
 interface Sandbox {
@@ -31,6 +31,7 @@ const sandboxes: string[] = [];
 function sandbox(options: {
   commands: string[];
   hooks?: Record<string, object>;
+  agents?: Record<string, string>;
   readmeSections?: string[];
   profile?: object;
 }): Sandbox {
@@ -54,6 +55,7 @@ function sandbox(options: {
     profiles: options.profile ? ['team'] : [],
     commands: options.commands,
     ...(options.hooks ? { hooks: Object.keys(options.hooks) } : {}),
+    ...(options.agents ? { agents: Object.keys(options.agents) } : {}),
   };
   write('catalog/catalog.json', JSON.stringify({ version: 1, items }));
   for (const name of options.commands) {
@@ -61,6 +63,9 @@ function sandbox(options: {
   }
   for (const [name, hook] of Object.entries(options.hooks ?? {})) {
     write(`catalog/hooks/${name}.json`, JSON.stringify({ name, ...hook }));
+  }
+  for (const [name, description] of Object.entries(options.agents ?? {})) {
+    write(`catalog/agents/${name}.md`, `---\nname: ${name}\ndescription: ${description}\ntools: Read\n---\n\nBody.\n`);
   }
   if (options.profile) write('catalog/profiles/team.json', JSON.stringify(options.profile));
   const markers = (options.readmeSections ?? SECTIONS).map(
@@ -305,5 +310,94 @@ describe('docs:website-catalog (hook pages)', () => {
     const without = sandbox({ commands: [], profile: { name: 'team' } });
     without.run('website');
     expect(without.read(`${PAGES}/en/catalog/profiles/team.md`)).not.toContain('## Hooks');
+  });
+});
+
+describe('docs:catalog (agent table)', () => {
+  it('renders an agents table with the description and passes check', () => {
+    const box = sandbox({ commands: [], agents: { reviewer: 'Review code | carefully', planner: 'Plan work' } });
+    expect(box.run('catalog').status).toBe(0);
+    const readme = box.read('README.md');
+    expect(readme).toMatch(/\| `planner` +\| Plan work +\|/);
+    expect(readme).toContain('| `reviewer` | Review code \\| carefully');
+    expect(box.run('catalog', '--check').status).toBe(0);
+  });
+
+  it('fails check when an agent description drifts from the README', () => {
+    const box = sandbox({ commands: [], agents: { reviewer: 'Review code' } });
+    box.run('catalog');
+    box.write('catalog/agents/reviewer.md', '---\nname: reviewer\ndescription: Changed upstream\n---\n\nBody\n');
+    const check = box.run('catalog', '--check');
+    expect(check.status).toBe(1);
+    expect(check.stderr).toContain('README.md is out of date');
+  });
+
+  it('says so for an empty or unlisted agent catalog instead of rendering an empty table', () => {
+    for (const agents of [{}, undefined]) {
+      const box = sandbox({ commands: [], agents });
+      expect(box.run('catalog').status).toBe(0);
+      expect(box.read('README.md')).toContain('No agents in the bundled catalog yet.');
+      expect(box.run('catalog', '--check').status).toBe(0);
+    }
+  });
+
+  it('fails with a clear message when the README has no agents markers', () => {
+    const box = sandbox({ commands: [], readmeSections: ['mcps', 'skills', 'scripts', 'commands', 'hooks'] });
+    const run = box.run('catalog');
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain('<!-- catalog:agents:start -->');
+  });
+});
+
+describe('docs:website-catalog (agent pages)', () => {
+  it('emits en and es agent pages and check passes', () => {
+    const box = sandbox({ commands: [], agents: { reviewer: 'Review code' } });
+    expect(box.run('website').status).toBe(0);
+    const en = box.read(`${PAGES}/en/catalog/agents/reviewer.md`);
+    const es = box.read(`${PAGES}/es/catalog/agents/reviewer.md`);
+    for (const page of [en, es]) {
+      expect(page).toContain("title: 'reviewer'");
+      expect(page).toContain('Review code');
+      expect(page).toContain('`catalog/agents/reviewer.md`');
+    }
+    expect(en).toContain('subagent');
+    expect(es).toContain('subagente');
+    expect(box.run('website', '--check').status).toBe(0);
+  });
+
+  it('fails check on drift, on a missing page, and on a page for a removed agent', () => {
+    const box = sandbox({ commands: [], agents: { reviewer: 'Review code' } });
+    box.run('website');
+    box.write('catalog/agents/reviewer.md', '---\nname: reviewer\ndescription: Changed\n---\n\nBody\n');
+    expect(box.run('website', '--check').stderr).toContain(`drift ${PAGES}/en/catalog/agents/reviewer.md`);
+    box.run('website');
+    rmSync(join(box.dir, `${PAGES}/es/catalog/agents/reviewer.md`));
+    expect(box.run('website', '--check').stderr).toContain(`missing ${PAGES}/es/catalog/agents/reviewer.md`);
+    box.run('website');
+    box.write('catalog/catalog.json', JSON.stringify({ version: 1, items: { agents: [] } }));
+    expect(box.run('website', '--check').stderr).toContain(`unexpected ${PAGES}/en/catalog/agents/reviewer.md`);
+  });
+
+  it('succeeds with an empty or unlisted agent catalog and writes no agent pages', () => {
+    for (const agents of [{}, undefined]) {
+      const box = sandbox({ commands: [], agents });
+      expect(box.run('website').status).toBe(0);
+      expect(existsSync(join(box.dir, `${PAGES}/en/catalog/agents`))).toBe(false);
+      expect(box.run('website', '--check').status).toBe(0);
+    }
+  });
+
+  it('lists profile agents under the not-installable callout, and only when present', () => {
+    const withAgents = sandbox({
+      commands: [],
+      agents: { reviewer: 'R' },
+      profile: { name: 'team', agents: ['reviewer'] },
+    });
+    withAgents.run('website');
+    expect(withAgents.read(`${PAGES}/en/catalog/profiles/team.md`)).toContain('## Agents\n\n- `reviewer`');
+    expect(withAgents.read(`${PAGES}/es/catalog/profiles/team.md`)).toContain('## Agents\n\n- `reviewer`');
+    const without = sandbox({ commands: [], profile: { name: 'team' } });
+    without.run('website');
+    expect(without.read(`${PAGES}/en/catalog/profiles/team.md`)).not.toContain('## Agents');
   });
 });

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FolderCatalogSource } from '@/adapters/catalog/folder-source.js';
 import { MAX_DEPTH, MAX_FILE_BYTES, MAX_SKILL_FILES } from '@/domain/catalog/limits.js';
+import { agentBytes } from '@test/helpers/agents.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
 const mcp = (name: string): object => ({
@@ -555,5 +556,94 @@ describe('FolderCatalogSource', () => {
     const catalog = await new FolderCatalogSource(dir, 'folder').load();
     expect(catalog.profiles.map((p) => p.name)).toEqual(['ok']);
     expect(catalog.issues[0]?.reason).toContain("unknown hook 'ghost'");
+  });
+
+  it('loads an empty agents list when items.agents is absent', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [] } });
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.agents).toEqual([]);
+    expect(catalog.issues).toEqual([]);
+  });
+
+  it('loads a valid agent with its exact bytes', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], agents: ['reviewer'] } });
+    await put('agents/reviewer.md', agentBytes('reviewer', ['tools:', '  - Read']));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.issues).toEqual([]);
+    expect(catalog.agents).toHaveLength(1);
+    expect(catalog.agents[0]).toMatchObject({ name: 'reviewer', description: 'reviewer agent' });
+    expect(catalog.agents[0]?.bytes).toEqual(agentBytes('reviewer', ['tools:', '  - Read']));
+  });
+
+  it('skips an invalid agent, reports its path, and keeps the valid ones', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], agents: ['good', 'nofront'] } });
+    await put('agents/good.md', agentBytes('good'));
+    await put('agents/nofront.md', '# body only\n');
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.agents.map((a) => a.name)).toEqual(['good']);
+    expect(catalog.issues.map((i) => i.file)).toEqual(['agents/nofront.md']);
+  });
+
+  it('flags a listed agent with no file', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], agents: ['ghost'] } });
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.agents).toEqual([]);
+    expect(catalog.issues).toEqual([
+      { file: 'agents/ghost.md', reason: 'listed in catalog.json but the file is missing' },
+    ]);
+  });
+
+  it('flags an unlisted agents/*.md file and does not scan subdirectories', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], agents: ['listed'] } });
+    await put('agents/listed.md', agentBytes('listed'));
+    await put('agents/stray.md', agentBytes('stray'));
+    await put('agents/nested/deep.md', agentBytes('deep'));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.agents.map((a) => a.name)).toEqual(['listed']);
+    expect(catalog.issues).toEqual([{ file: 'agents/stray.md', reason: 'not listed in catalog.json' }]);
+  });
+
+  it('skips an agent file that is a symlink', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], agents: ['linked'] } });
+    await put('secret.md', agentBytes('linked'));
+    await mkdir(join(dir, 'agents'), { recursive: true });
+    await symlink(join(dir, 'secret.md'), join(dir, 'agents', 'linked.md'));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.agents).toEqual([]);
+    expect(catalog.issues[0]?.reason).toContain('symbolic link');
+  });
+
+  it('skips agents when the agents directory is a symlink', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], agents: ['jump'] } });
+    await put('elsewhere/jump.md', agentBytes('jump'));
+    await symlink(join(dir, 'elsewhere'), join(dir, 'agents'));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.agents).toEqual([]);
+    expect(catalog.issues[0]?.reason).toContain('resolves outside');
+  });
+
+  it('rejects an agent file above the size limit', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], agents: ['big'] } });
+    await put('agents/big.md', new Uint8Array([...agentBytes('big'), ...new Uint8Array(MAX_FILE_BYTES)]));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.agents).toEqual([]);
+    expect(catalog.issues[0]?.reason).toContain('file size');
+  });
+
+  it('resolves profile agents and drops profiles that reference unknown ones', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], agents: ['reviewer'], profiles: ['ok', 'broken'] } });
+    await put('agents/reviewer.md', agentBytes('reviewer'));
+    await put('profiles/ok.json', { name: 'ok', agents: ['reviewer'] });
+    await put('profiles/broken.json', { name: 'broken', agents: ['ghost'] });
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.profiles.map((p) => p.name)).toEqual(['ok']);
+    expect(catalog.issues[0]?.reason).toContain("unknown agent 'ghost'");
   });
 });

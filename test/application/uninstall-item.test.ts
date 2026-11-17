@@ -13,6 +13,7 @@ import { uninstallItem, UninstallSelectionError, type UninstallRequest } from '@
 import { deriveOwnedItems } from '@/domain/manifest.js';
 import type { CatalogSource } from '@/ports/catalog-source.js';
 import { UnsafeTreeError, type FileSystem } from '@/ports/file-system.js';
+import { agentSource, REVIEWER } from '@test/helpers/agents.js';
 import { commandSource, REVIEW_V1 } from '@test/helpers/commands.js';
 import { FMT_V1, GUARD, hookSource } from '@test/helpers/hooks.js';
 import { DEMO_V1, faultyFs, skillSource } from '@test/helpers/skills.js';
@@ -420,6 +421,7 @@ describe('uninstallItem (scripts)', () => {
             scripts: [{ ...SCRIPT_V1, name: 'demo' }],
             commands: [],
             hooks: [],
+            agents: [],
             profiles: [],
             issues: [],
           }),
@@ -650,6 +652,142 @@ describe('uninstallItem (commands)', () => {
     const error = await uninstall({ name: 'github', kind: undefined }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UninstallSelectionError);
     expect((error as UninstallSelectionError).candidates.map((c) => c.kind).sort()).toEqual(['command', 'mcp']);
+  });
+});
+
+describe('uninstallItem (agents)', () => {
+  let tmp: TmpPaths;
+  let fs: NodeFileSystem;
+  let deps: InitDeps;
+  const dir = () => join(tmp.cwd, '.claude', 'agents');
+  const file = () => join(dir(), 'reviewer.md');
+  const exists = (path: string) =>
+    access(path).then(
+      () => true,
+      () => false,
+    );
+  const uninstall = (req: Partial<UninstallRequest> = {}, over: { fs?: FileSystem } = {}) =>
+    uninstallItem(
+      { fs: over.fs ?? fs, target: claudeCodeTarget, paths: { homeDir: tmp.homeDir, cwd: tmp.cwd } },
+      { name: 'reviewer', kind: 'agent', ...req },
+    );
+  const install = (d: InitDeps = deps, extra: Partial<InitRequest> = {}) =>
+    initMcps(d, { mcps: [], agents: ['reviewer'], scope: 'project', ...extra });
+
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    fs = new NodeFileSystem();
+    deps = {
+      source: agentSource([REVIEWER]),
+      fs,
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('removes an unmodified agent, backs up its bytes and journals a remove with afterHash null', async () => {
+    await install();
+    expect(await uninstall()).toMatchObject({
+      status: 'removed',
+      exitCode: 0,
+      modified: false,
+      files: [file()],
+      item: { kind: 'agent', scope: 'project', name: 'reviewer', path: file() },
+    });
+    expect(await exists(file())).toBe(false);
+    const last = (await loadManifest(fs, tmp.homeDir)).installs.at(-1)!;
+    expect(last.files[0]).toMatchObject({
+      path: file(),
+      afterHash: null,
+      items: [{ kind: 'agent', name: 'reviewer', action: 'remove', root: file() }],
+    });
+    expect(new Uint8Array(await readFile(join(stateDir(tmp.homeDir), last.files[0]!.backup!)))).toEqual(REVIEWER.bytes);
+  });
+
+  it('refuses a modified agent with exit 3, and --force removes it keeping a neighbor', async () => {
+    await install();
+    await writeFile(join(dir(), 'mine.md'), 'mine');
+    await writeFile(file(), 'edited');
+    expect(await uninstall()).toMatchObject({ status: 'refused', exitCode: 3, modified: true, files: [file()] });
+    expect(await readFile(file(), 'utf8')).toBe('edited');
+    expect(await uninstall({ force: true, dryRun: true })).toMatchObject({ status: 'dry-run' });
+    expect(await uninstall({ force: true })).toMatchObject({ status: 'removed', exitCode: 0, modified: true });
+    expect(await readdir(dir())).toEqual(['mine.md']);
+  });
+
+  it('reports already-absent without writing when the file was deleted', async () => {
+    await install();
+    await rm(file());
+    const manifest = await readFile(manifestPath(tmp.homeDir), 'utf8');
+    expect(await uninstall()).toMatchObject({ status: 'already-absent', exitCode: 0, files: [] });
+    expect(await readFile(manifestPath(tmp.homeDir), 'utf8')).toBe(manifest);
+  });
+
+  it('writes nothing on a dry run', async () => {
+    await install();
+    expect(await uninstall({ dryRun: true })).toMatchObject({ status: 'dry-run', files: [file()] });
+    expect(new Uint8Array(await readFile(file()))).toEqual(REVIEWER.bytes);
+  });
+
+  it('aborts with StaleFileError when the file changed after planning', async () => {
+    await install();
+    const racing = racy(fs, 'readBytes', file(), () => writeFile(file(), 'raced'));
+    await expect(uninstall({ force: true }, { fs: racing })).rejects.toThrow(StaleFileError);
+    expect(await readFile(file(), 'utf8')).toBe('raced');
+  });
+
+  it('undo restores the original bytes and ownership', async () => {
+    await install();
+    await uninstall();
+    expect((await undoInstall({ fs, paths: deps.paths }, {})).status).toBe('undone');
+    expect(new Uint8Array(await readFile(file()))).toEqual(REVIEWER.bytes);
+    const status = await getStatus(
+      { fs, target: claudeCodeTarget, paths: deps.paths, source: deps.source },
+      { scope: 'project' },
+    );
+    expect(status.items).toMatchObject([{ kind: 'agent', name: 'reviewer', state: 'installed' }]);
+  });
+
+  it.each([
+    ['skill', skillSource([{ ...DEMO_V1, name: 'reviewer' }]), 'skills/reviewer'],
+    ['command', commandSource([{ ...REVIEW_V1, name: 'reviewer' }]), 'commands/reviewer.md'],
+  ] as const)(
+    'lists %s and agent candidates when the name is both, and kind agent resolves it',
+    async (kind, base, other) => {
+      const both: InitDeps = {
+        ...deps,
+        source: { ref: () => base.ref(), load: async () => ({ ...(await base.load()), agents: [REVIEWER] }) },
+      };
+      await install(both, kind === 'skill' ? { skills: ['reviewer'] } : { commands: ['reviewer'] });
+      const error = await uninstall({ kind: undefined }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(UninstallSelectionError);
+      expect((error as UninstallSelectionError).candidates.map((c) => c.kind).sort()).toEqual(['agent', kind]);
+      expect(await exists(file())).toBe(true);
+      expect(await uninstall()).toMatchObject({ status: 'removed', item: { kind: 'agent' } });
+      expect(await exists(file())).toBe(false);
+      expect(await exists(join(tmp.cwd, '.claude', other))).toBe(true);
+    },
+  );
+
+  it('keeps the agent when kind command removes the command of the same name', async () => {
+    const both: InitDeps = {
+      ...deps,
+      source: {
+        ref: () => deps.source.ref(),
+        load: async () => ({
+          ...(await commandSource([{ ...REVIEW_V1, name: 'reviewer' }]).load()),
+          agents: [REVIEWER],
+        }),
+      },
+    };
+    await install(both, { commands: ['reviewer'] });
+    const commandFile = join(tmp.cwd, '.claude', 'commands', 'reviewer.md');
+    expect(await uninstall({ kind: 'command' })).toMatchObject({ status: 'removed', item: { kind: 'command' } });
+    expect(await exists(commandFile)).toBe(false);
+    expect(await exists(file())).toBe(true);
+    expect(new Uint8Array(await readFile(file()))).toEqual(REVIEWER.bytes);
   });
 });
 

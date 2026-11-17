@@ -8,6 +8,7 @@ const loaded: LoadedCatalog = {
   scripts: [],
   commands: [],
   hooks: [],
+  agents: [],
   profiles: [],
   issues: [{ file: 'skills/bad', reason: 'missing SKILL.md' }],
 };

@@ -5,7 +5,8 @@ import { enc } from '@test/helpers/skills.js';
 /** A catalog source that serves the given commands and no MCPs/skills/scripts. */
 export const commandSource = (commands: CommandItem[]): CatalogSource => ({
   ref: () => ({ kind: 'bundled', location: '/catalog' }),
-  load: () => Promise.resolve({ mcps: [], skills: [], scripts: [], commands, hooks: [], profiles: [], issues: [] }),
+  load: () =>
+    Promise.resolve({ mcps: [], skills: [], scripts: [], commands, hooks: [], agents: [], profiles: [], issues: [] }),
 });
 
 /** A command and a newer catalog version of it. */

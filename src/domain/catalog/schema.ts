@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AgentNameSchema, type AgentItem } from '@/domain/catalog/agent.js';
 import { CommandNameSchema, type CommandItem } from '@/domain/catalog/command.js';
 import { HookNameSchema, type HookItem } from '@/domain/catalog/hook.js';
 import { ScriptNameSchema, type ScriptItem } from '@/domain/catalog/script.js';
@@ -68,6 +69,7 @@ export const ProfileSchema = z.object({
   scripts: z.array(z.string()).default([]),
   commands: z.array(z.string()).default([]),
   hooks: z.array(z.string()).default([]),
+  agents: z.array(z.string()).default([]),
 });
 
 export const CatalogIndexSchema = z.object({
@@ -79,6 +81,7 @@ export const CatalogIndexSchema = z.object({
     scripts: z.array(ScriptNameSchema).default([]),
     commands: z.array(CommandNameSchema).default([]),
     hooks: z.array(HookNameSchema).default([]),
+    agents: z.array(AgentNameSchema).default([]),
   }),
 });
 
@@ -92,5 +95,6 @@ export interface Catalog {
   scripts: ScriptItem[];
   commands: CommandItem[];
   hooks: HookItem[];
+  agents: AgentItem[];
   profiles: Profile[];
 }
