@@ -307,7 +307,7 @@ Other frontmatter keys such as `tools`, `model`, `hooks` or `mcpServers` may spa
 
 **Agents can grant tools or permissions.** An agent's frontmatter can give a subagent tools, a permission mode, hooks or MCP servers. Installed agents are trusted like skills and slash commands: shitaku copies the file and does not analyze or sandbox it.
 
-Install locations: `~/.claude/agents/<name>.md` (`user`) or `./.claude/agents/<name>.md` (`project`). Nothing else in that directory is read or touched, and `shitaku undo` reverts the install. The `init` flag that selects agents ships in a later release; today `status`, `doctor`, `uninstall` and `undo` already handle agents recorded in a manifest.
+Install locations: `~/.claude/agents/<name>.md` (`user`) or `./.claude/agents/<name>.md` (`project`). Nothing else in that directory is read or touched, and `shitaku undo` reverts the install. `init --agents <names>` selects agents (or pick them in the interactive prompt), and `status`, `doctor`, `uninstall` and `undo` handle them like any other item.
 
 - An existing `<name>.md` that differs from the catalog version and was not installed by shitaku (or was edited since) is a conflict: it is never overwritten silently, `init` exits `2` and writes nothing.
 - `--force` backs the file up under `~/.claude/.shitaku/backups/` and replaces it; `undo` restores it byte for byte.
