@@ -88,6 +88,7 @@ The tables below are generated from `catalog/` by `pnpm run docs:catalog`. Do no
 | `github`                   | GitHub remote MCP server (repositories, issues, pull requests)                                                                                                                  |
 | `notion`                   | Official Notion remote MCP for workspace search and page updates; authenticate with Notion OAuth in the MCP client                                                              |
 | `playwright`               | Browser automation via accessibility snapshots, screenshots, console messages and viewport resizing; can interact with any page it opens                                        |
+| `rea`                      | REA (Reverse Engineer Anything) reverse-engineering tools for binaries and apps; native analysis requires Hopper, Ghidra or IDA already installed                               |
 | `sqlite`                   | Inspect and query a local SQLite database file (can write); set SQLITE_DB_PATH; requires uvx (Astral uv)                                                                        |
 | `supabase`                 | Official Supabase remote MCP for projects and database tools; OAuth in the MCP client; defaults to read-only (?read_only=true)                                                  |
 | `vercel`                   | Official Vercel remote MCP for projects, deployments and logs; authenticate with Vercel OAuth in the MCP client (available on all plans)                                        |
@@ -412,6 +413,7 @@ mcps:
   github                    GitHub remote MCP server (repositories, issues, pull requests)
   notion                    Official Notion remote MCP for workspace search and page updates; authenticate with Notion OAuth in the MCP client
   playwright                Browser automation via accessibility snapshots, screenshots, console messages and viewport resizing; can interact with any page it opens
+  rea                       REA (Reverse Engineer Anything) reverse-engineering tools for binaries and apps; native analysis requires Hopper, Ghidra or IDA already installed
   sqlite                    Inspect and query a local SQLite database file (can write); set SQLITE_DB_PATH; requires uvx (Astral uv)
   supabase                  Official Supabase remote MCP for projects and database tools; OAuth in the MCP client; defaults to read-only (?read_only=true)
   vercel                    Official Vercel remote MCP for projects, deployments and logs; authenticate with Vercel OAuth in the MCP client (available on all plans)
