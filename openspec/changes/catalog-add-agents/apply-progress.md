@@ -117,3 +117,21 @@ Verification: typecheck, lint, format:check, build clean; full suite green.
 
 - Null-afterHash refine, `agent` item literal and `OwnedItem.kind` were already done in PR 1.
 - `agent-missing` is only a union member; doctor behavior lands in PR 6.
+
+## PR 5: Init and undo
+
+| Task | RED                                                                                      | GREEN                                                                                        | Refactor                                         |
+| ---- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| 5.1  | 12 agent tests failed (`UnknownAgentError` and `InitRequest.agents` missing, empty plan) | n/a                                                                                          | n/a                                              |
+| 5.2  | see 5.1                                                                                  | `InitRequest.agents`, `UnknownAgentError`, agent plan via `flatFileEntries` + noun `agent`   | `flatFileEntries` shared with commands           |
+| 5.3  | apply tests in the same run (create, force, backup, stale, rollback, skip, `mine.md`)    | n/a                                                                                          | n/a                                              |
+| 5.4  | see 5.3                                                                                  | `refreshFlatFile(..., 'agent')`, `flatFileStep(c, 'agent')`, empty-check sum includes agents | n/a                                              |
+| 5.5  | n/a (verify-only: 4 undo agent tests green without any `undo-install.ts` change)         | n/a                                                                                          | n/a                                              |
+| 5.6  | n/a                                                                                      | n/a                                                                                          | `refreshFlatFiles` replaces two duplicated loops |
+
+Files: `src/application/init-mcps.ts`, `test/application/{init-mcps,undo-install}.test.ts`, `test/helpers/agents.ts` (`agentSource`, `REVIEWER_V2`).
+
+### Deviations
+
+- `undo-install.ts` and `isByteFile`/`itemRoots` needed no change (design f confirmed).
+- Commands and agents now share `flatFileEntries` (plan) and `refreshFlatFiles` (apply).

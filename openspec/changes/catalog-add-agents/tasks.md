@@ -91,12 +91,12 @@ Spec scenarios: agents-install "Old manifest", "Agent item round trip", "User an
 
 Spec scenarios: agents-install "User and project roots", "Nested frontmatter kept verbatim", "Unrelated user agents untouched", "Skip identical", "Conflict refused", "Forced replace with backup", "Dry run", "Stale file at apply", "Clean undo prunes created directory", "Shared directory kept", "Drift refused", "Overwrite restored".
 
-- [ ] 5.1 RED: plan phase in `test/application/init-mcps.test.ts`: `planInit` reads agents via `agentsDir` + `readBytes`, conflict reason says "agent"
-- [ ] 5.2 GREEN: agent plan branch in `src/application/init-mcps.ts` (`buildFlatFilePlan` noun `agent`, `ChangePlan.agents`)
-- [ ] 5.3 RED: apply: create, update, force, backup, `StaleFileError`, rollback, skip not journaled, `mine.md` untouched
-- [ ] 5.4 GREEN: apply branch `refreshFlatFile(..., 'agent')` and manifest ownership in `src/application/init-mcps.ts`
-- [ ] 5.5 RED (verify-only, expected green): undo round trip deletes created file, prunes created `.claude/agents/`, keeps shared dir, refuses drift, restores backup (`test/application/undo-install.test.ts`); `src/application/undo-install.ts` needs NO change (design f); if red, fix generic `isByteFile`/`itemRoots` only
-- [ ] 5.6 REFACTOR: collapse duplicated command/agent apply code to the shared helper
+- [x] 5.1 RED: plan phase in `test/application/init-mcps.test.ts`: `planInit` reads agents via `agentsDir` + `readBytes`, conflict reason says "agent"
+- [x] 5.2 GREEN: agent plan branch in `src/application/init-mcps.ts` (`buildFlatFilePlan` noun `agent`, `ChangePlan.agents`)
+- [x] 5.3 RED: apply: create, update, force, backup, `StaleFileError`, rollback, skip not journaled, `mine.md` untouched
+- [x] 5.4 GREEN: apply branch `refreshFlatFile(..., 'agent')` and manifest ownership in `src/application/init-mcps.ts`
+- [x] 5.5 RED (verify-only, expected green): undo round trip deletes created file, prunes created `.claude/agents/`, keeps shared dir, refuses drift, restores backup (`test/application/undo-install.test.ts`); `src/application/undo-install.ts` needs NO change (design f); if red, fix generic `isByteFile`/`itemRoots` only
+- [x] 5.6 REFACTOR: collapse duplicated command/agent apply code to the shared helper
 
 ## PR 6: Uninstall, status, doctor (~300 lines)
 
