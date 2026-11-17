@@ -59,7 +59,7 @@ After a global install the command is just `shitaku`. With `npx`, prefix every i
 
 Setting up an AI coding agent means hand-editing config files (`.mcp.json`, `~/.claude.json`, `~/.claude/skills/`) and repeating that on every machine and project. shitaku makes that setup portable and repeatable:
 
-- **One command** installs MCP servers, skills, scripts, slash commands and hooks from a curated catalog, at project or user scope.
+- **One command** installs MCP servers, skills, scripts, slash commands, agents and hooks from a curated catalog, at project or user scope.
 - **Safe by default**: `--dry-run` previews the plan, conflicting entries are never overwritten silently, and secrets are written only as `${VAR}` placeholders, never as values.
 - **Reversible**: every change is backed up and recorded, so `shitaku undo` restores the previous state.
 - **Extensible**: point `--source` at your own catalog folder.
@@ -330,7 +330,7 @@ Resolution: project scope first, then user. Names must be bare catalog names —
 
 ### Uninstall
 
-`shitaku uninstall <name>` removes one MCP server, skill, script, slash command or hook that shitaku installed. It never prompts, and it only touches items shitaku owns (see `shitaku status`): a name shitaku did not install exits `1` and nothing is written, even with `--force`.
+`shitaku uninstall <name>` removes one MCP server, skill, script, slash command, agent or hook that shitaku installed. It never prompts, and it only touches items shitaku owns (see `shitaku status`): a name shitaku did not install exits `1` and nothing is written, even with `--force`.
 
 ```sh
 shitaku uninstall github                      # scope inferred when the name is owned in one scope
@@ -358,7 +358,7 @@ Behavior:
 
 ### Status
 
-`shitaku status` lists every item shitaku installed and has not undone, in both scopes unless `--scope` is given, and never writes anything. The text output is grouped by scope, then by kind (`mcps`, `skills`, `scripts`, `commands`, `hooks`), and each item shows its name, state and path:
+`shitaku status` lists every item shitaku installed and has not undone, in both scopes unless `--scope` is given, and never writes anything. The text output is grouped by scope, then by kind (`mcps`, `skills`, `scripts`, `commands`, `agents`, `hooks`), and each item shows its name, state and path:
 
 ```
 target: claude-code
@@ -392,7 +392,7 @@ Limitation: `status` compares against the bundled catalog unless you pass `--sou
 
 ### List
 
-`shitaku list` shows what a catalog offers and never writes anything. Pass one kind (`mcps`, `skills`, `profiles`, `scripts`, `commands` or `hooks`, plural only) to narrow it; without one all six kinds are listed. `--search <text>` keeps items whose name or description contains the text, ignoring case, and combines with the kind. `--source <folder>` lists a custom catalog instead of the bundled one.
+`shitaku list` shows what a catalog offers and never writes anything. Pass one kind (`mcps`, `skills`, `profiles`, `scripts`, `commands`, `hooks` or `agents`, plural only) to narrow it; without one all seven kinds are listed. `--search <text>` keeps items whose name or description contains the text, ignoring case, and combines with the kind. `--source <folder>` lists a custom catalog instead of the bundled one.
 
 The text output is grouped by kind (`mcps`, `profiles`, `scripts`, `skills`), sorted by name, with one aligned name column. Descriptions are collapsed onto one line, and a profile without a description prints its name only:
 
@@ -424,12 +424,12 @@ When nothing matches it prints `no matching items`.
 
 `--json` prints one document, `{ "version": 1, "items": [{ "kind", "name", "description" }] }`. Later changes to its shape are additive.
 
-| Field         | Type           | Notes                                                                              |
-| ------------- | -------------- | ---------------------------------------------------------------------------------- |
-| `version`     | number         | Always `1`                                                                         |
-| `kind`        | string         | `mcp`, `profile`, `script`, `skill`, `command` or `hook` (singular, like `status`) |
-| `name`        | string         | Item name                                                                          |
-| `description` | string or null | Raw text; `null` for a profile without one                                         |
+| Field         | Type           | Notes                                                                                       |
+| ------------- | -------------- | ------------------------------------------------------------------------------------------- |
+| `version`     | number         | Always `1`                                                                                  |
+| `kind`        | string         | `mcp`, `profile`, `script`, `skill`, `command`, `hook` or `agent` (singular, like `status`) |
+| `name`        | string         | Item name                                                                                   |
+| `description` | string or null | Raw text; `null` for a profile without one                                                  |
 
 `items` is flat and sorted by kind, then name; an empty result is `"items": []`. Whitespace in descriptions is collapsed only in text mode.
 

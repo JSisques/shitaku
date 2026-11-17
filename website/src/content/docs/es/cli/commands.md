@@ -5,15 +5,15 @@ description: Resumen de comandos de la CLI de shitaku.
 
 # Comandos
 
-| Comando     | Propósito                                                 |
-| ----------- | --------------------------------------------------------- |
-| `init`      | Instala servidores MCP, skills, comandos slash y hooks    |
-| `undo`      | Restaura los archivos cambiados por la última instalación |
-| `uninstall` | Elimina un MCP, skill, comando slash o hook instalado     |
-| `status`    | Informa qué instaló shitaku y si cambió                   |
-| `list`      | Explora lo que ofrece un catálogo (solo lectura)          |
-| `doctor`    | Diagnostica elementos instalados y sugiere correcciones   |
-| `version`   | Imprime la versión del paquete instalado                  |
+| Comando     | Propósito                                                       |
+| ----------- | --------------------------------------------------------------- |
+| `init`      | Instala servidores MCP, skills, comandos slash, agentes y hooks |
+| `undo`      | Restaura los archivos cambiados por la última instalación       |
+| `uninstall` | Elimina un MCP, skill, comando slash, agente o hook instalado   |
+| `status`    | Informa qué instaló shitaku y si cambió                         |
+| `list`      | Explora lo que ofrece un catálogo (solo lectura)                |
+| `doctor`    | Diagnostica elementos instalados y sugiere correcciones         |
+| `version`   | Imprime la versión del paquete instalado                        |
 
 ## Agentes
 

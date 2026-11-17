@@ -215,3 +215,8 @@ Files: `src/adapters/cli/program.ts` (`--agents`, kind flag, interactive `select
 All other hits are the classified PR 6.8 rows (unchanged). Zero unclassified.
 
 Verification: typecheck, lint, format:check, both docs checks, build clean; full suite green (1445 tests). Smoke: `HOME=<tmp> node dist/main.js list agents` prints `no matching items`, exit 0.
+
+## Follow-ups (verify-report items)
+
+- Docs: added `agent` to the kind lists in README (intro, uninstall, status, list, JSON `kind`) and the en/es `cli/commands.md` pages; pinned in `test/agents-docs.test.ts`.
+- Tests (all passed immediately; the code is generic, no bug found): interactive agent overwrite, `list agents --search`, skill-remains assertion, modified beats out-of-date for agents, and `--kind command` keeping a same-named agent.

@@ -9,7 +9,7 @@ After a global install the binary is `shitaku`. With `npx`, prefix every command
 
 ## `init`
 
-Install MCP servers, skills, slash commands and hooks from a catalog. Interactive by default; use flags to skip prompts.
+Install MCP servers, skills, slash commands, agents and hooks from a catalog. Interactive by default; use flags to skip prompts.
 
 ```sh
 shitaku init
@@ -41,7 +41,7 @@ Refuses (exit `3`) when a recorded file changed since the install unless `--forc
 
 ## `uninstall`
 
-Remove one installed MCP server, skill, slash command or hook that shitaku owns. Never prompts.
+Remove one installed MCP server, skill, slash command, agent or hook that shitaku owns. Never prompts.
 
 ```sh
 shitaku uninstall github
@@ -110,7 +110,7 @@ shitaku list commands
 shitaku list hooks
 ```
 
-Pass one kind (`mcps`, `skills`, `profiles`, `scripts`, `commands` or `hooks`, plural only) to narrow. `--search <text>` filters by name or description (case-insensitive).
+Pass one kind (`mcps`, `skills`, `profiles`, `scripts`, `commands`, `hooks` or `agents`, plural only) to narrow. `--search <text>` filters by name or description (case-insensitive).
 
 ## `doctor`
 
