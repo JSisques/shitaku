@@ -102,14 +102,14 @@ Spec scenarios: agents-install "User and project roots", "Nested frontmatter kep
 
 Spec scenarios: agents-install "Agent uninstall" (3), item-uninstall (all, incl. "Skill and agent share a name", "Command and agent share a name"), install-status (all).
 
-- [ ] 6.1 RED: uninstall removed / refused modified / already absent / dry-run / `--force`, backup, journal `remove`; undo restores (`test/application/uninstall-item.test.ts`)
-- [ ] 6.2 GREEN: `isFlatFileKind` in `assertFresh` and plan branch, agent resolution by absolute path in `src/application/uninstall-item.ts`
-- [ ] 6.3 RED: skill+agent and command+agent same-name collision exit 1 with candidates; `--kind agent` disambiguates
-- [ ] 6.4 RED: status states installed/modified/out-of-date/missing/missing-from-catalog for agents; same name two scopes; skill+agent both listed (`test/application/status.test.ts`)
-- [ ] 6.5 GREEN: `observeFile` dispatch via `isFlatFileKind`, `expectedPath`, `desiredFor` agent branches in `src/application/installed-state.ts`
-- [ ] 6.6 RED/GREEN: doctor `agent-missing` names agent and path, healthy/modified agent no finding, writes nothing (`test/domain/plan/doctor-plan.test.ts`, `src/domain/plan/doctor-plan.ts`)
-- [ ] 6.7 REFACTOR: remove dead `kind === 'command'` duplicates
-- [ ] 6.8 GREP CHECKLIST: run `rg -n "kind === 'command'|kind !== 'command'|'command'" src` and classify every hit as (a) migrated to `isFlatFileKind`, (b) explicit agent branch added (`expectedPath`, `desiredFor`, `doctor-plan.ts`), or (c) intentionally command-only with a code comment; zero unclassified hits (re-run in PR 8 for `program.ts` and `prompter.ts`)
+- [x] 6.1 RED: uninstall removed / refused modified / already absent / dry-run / `--force`, backup, journal `remove`; undo restores (`test/application/uninstall-item.test.ts`)
+- [x] 6.2 GREEN: `isFlatFileKind` in `assertFresh` and plan branch, agent resolution by absolute path in `src/application/uninstall-item.ts`
+- [x] 6.3 RED: skill+agent and command+agent same-name collision exit 1 with candidates; `--kind agent` disambiguates
+- [x] 6.4 RED: status states installed/modified/out-of-date/missing/missing-from-catalog for agents; same name two scopes; skill+agent both listed (`test/application/status.test.ts`)
+- [x] 6.5 GREEN: `observeFile` dispatch via `isFlatFileKind`, `expectedPath`, `desiredFor` agent branches in `src/application/installed-state.ts`
+- [x] 6.6 RED/GREEN: doctor `agent-missing` names agent and path, healthy/modified agent no finding, writes nothing (`test/domain/plan/doctor-plan.test.ts`, `src/domain/plan/doctor-plan.ts`)
+- [x] 6.7 REFACTOR: remove dead `kind === 'command'` duplicates
+- [x] 6.8 GREP CHECKLIST: run `rg -n "kind === 'command'|kind !== 'command'|'command'" src` and classify every hit as (a) migrated to `isFlatFileKind`, (b) explicit agent branch added (`expectedPath`, `desiredFor`, `doctor-plan.ts`), or (c) intentionally command-only with a code comment; zero unclassified hits (re-run in PR 8 for `program.ts` and `prompter.ts`)
 
 ## PR 7: Docs and generators (~350 lines)
 
