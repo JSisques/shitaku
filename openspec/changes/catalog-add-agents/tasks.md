@@ -126,9 +126,9 @@ Spec scenarios: agents-install "Downgrade documented"; catalog "Limit documented
 
 Spec scenarios: agents-install "Agent selection" (3), "Interactive conflict choice"; catalog "Copy mentions agents", "No consent gate"; item-uninstall "Valid agent kind", "Invalid kind"; catalog-list "Invalid kind".
 
-- [ ] 8.1 RED: CLI harness in `test/adapters/cli/`: `--agents reviewer --yes` installs only reviewer; `--agents ghost` exits non-zero naming it; `--agents` counts as a kind flag; no consent gate with `--source`; `--source` help mentions agents and tool/permission grants
-- [ ] 8.2 RED: interactive selection offered only when catalog has agents; conflict prompt labels `agent`; `--kind agent` accepted by `uninstall`, `--kind widget` lists `agent` in choices error; `list agents` accepted
-- [ ] 8.3 GREEN: `--agents`, `--kind agent`, list choices, trust copy in `src/adapters/cli/program.ts`
-- [ ] 8.4 GREEN: agent selection and noun in `src/ports/prompter.ts`, `src/adapters/cli/clack-prompter.ts` (and prompter test doubles under `test/helpers/`)
-- [ ] 8.5 Update flag docs in `README.md` (`--agents`, `--kind agent`); re-run `pnpm docs:catalog:check`
-- [ ] 8.6 Re-run grep checklist (6.8) across `src`; final full verification and manual smoke: `pnpm run build && node dist/main.js list agents`
+- [x] 8.1 RED: CLI harness in `test/adapters/cli/`: `--agents reviewer --yes` installs only reviewer; `--agents ghost` exits non-zero naming it; `--agents` counts as a kind flag; no consent gate with `--source`; `--source` help mentions agents and tool/permission grants
+- [x] 8.2 RED: interactive selection offered only when catalog has agents; conflict prompt labels `agent`; `--kind agent` accepted by `uninstall`, `--kind widget` lists `agent` in choices error; `list agents` accepted
+- [x] 8.3 GREEN: `--agents`, `--kind agent`, list choices, trust copy in `src/adapters/cli/program.ts`
+- [x] 8.4 GREEN: agent selection and noun in `src/ports/prompter.ts`, `src/adapters/cli/clack-prompter.ts` (and prompter test doubles under `test/helpers/`)
+- [x] 8.5 Update flag docs in `README.md` (`--agents`, `--kind agent`); re-run `pnpm docs:catalog:check`
+- [x] 8.6 Re-run grep checklist (6.8) across `src`; final full verification and manual smoke: `pnpm run build && node dist/main.js list agents`

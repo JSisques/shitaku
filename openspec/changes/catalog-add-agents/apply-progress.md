@@ -188,3 +188,30 @@ Files: `scripts/generate-catalog-table.mjs` (agents section, `agents/<name>.md` 
 - No website pages for the CLI reference (`cli/commands`, `cli/flags`) were changed: the `init` agent flag, `--kind agent` and interactive prompts ship in PR 8.
 - `test/tooling.test.ts` needed no change; generator coverage lives in `test/generators.test.ts` (task 7.1 intent), plus the new docs guard.
 - Empty bundled catalog: the README shows "No agents in the bundled catalog yet." and no website agent pages are emitted.
+
+## PR 8: CLI and trust copy
+
+Tasks 8.1-8.6 done (TDD: CLI and prompter tests plus the updated docs guard first, 19 failures RED, then source and docs).
+
+Files: `src/adapters/cli/program.ts` (`--agents`, kind flag, interactive `selectAgents` only when the catalog has agents, conflict kind `agent`, `plan.agents` in `printPlan` and the empty-plan abort check, `--kind agent`, `UnknownAgentError` handled, `--source` help mentions agents and tools or permissions), `src/adapters/cli/clack-prompter.ts` (`selectAgents`, `Agent` label, confirm counts `plan.agents`), `src/ports/prompter.ts` (`selectAgents`, `ConflictInfo.kind` adds `agent`), `test/adapters/cli/{program,clack-prompter}.test.ts`, `test/agents-docs.test.ts` (guard flipped: `--agents` and `--kind agent` must now be documented in the README and the en/es CLI pages), `README.md`, website `en|es/cli/{commands,flags}.md`.
+
+### Deviations
+
+- `list agents` and the invalid `list` kind choices needed no change (`LIST_KINDS` already had `agents` from PR 3b).
+- No consent gate exists for any non-hook kind, so "no consent gate for agents" is asserted by a run with `--source` and no prompter calls.
+- CONTRIBUTING.md still omits the flag (it links to the README for usage); a guard asserts that.
+- Real-home safety: smoke ran with `HOME` set to a temp dir.
+
+### 8.6 grep re-run (`rg -n "kind === 'command'|kind !== 'command'|'command'" src`)
+
+| Hit                                         | Class | Note                                                         |
+| ------------------------------------------- | ----- | ------------------------------------------------------------ |
+| `ports/prompter.ts:19` conflict kind union  | (b)   | `'agent'` added                                              |
+| `adapters/cli/program.ts:272` conflicts     | (b)   | agent conflict mapping added on the next line                |
+| `adapters/cli/program.ts:372` `kind?` union | (b)   | `'agent'` added                                              |
+| `adapters/cli/program.ts:663` choices       | (b)   | `'agent'` added                                              |
+| `adapters/cli/clack-prompter.ts` labels     | (b)   | `CONFLICT_LABELS.agent`; a `Record` type forces completeness |
+
+All other hits are the classified PR 6.8 rows (unchanged). Zero unclassified.
+
+Verification: typecheck, lint, format:check, both docs checks, build clean; full suite green (1445 tests). Smoke: `HOME=<tmp> node dist/main.js list agents` prints `no matching items`, exit 0.
