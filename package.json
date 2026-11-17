@@ -1,6 +1,6 @@
 {
   "name": "@jsisques/shitaku",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Portable, configurable AI agent setup (skills, MCPs, etc.) installable via npx.",
   "type": "module",
   "license": "MIT",
