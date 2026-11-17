@@ -17,7 +17,7 @@
       "cloudflare-bindings",
       "cloudflare-observability"
     ],
-    "skills": ["example-skill", "pr-writing", "socratic-method"],
+    "skills": ["docs-writing", "example-skill", "pr-writing", "socratic-method"],
     "profiles": ["base", "web", "backend"],
     "scripts": ["complexity", "dead-code", "duplication"],
     "commands": [],
