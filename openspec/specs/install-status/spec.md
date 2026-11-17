@@ -8,32 +8,26 @@ A read-only `shitaku status` command that reports every active, shitaku-managed 
 
 ### Requirement: Manifest-driven read-only report
 
-`status` MUST list only items recorded by installs with `undoneAt === null`. It MUST NOT write to configs, skill directories, script directories, command files, backups, or the manifest. Each item MUST carry `kind` (`mcp`, `skill`, `script`, or `command`; the model MUST allow further kinds), `name`, `scope`, `state`, `path`, and `installId`. Items MUST be keyed by scope, path, and name. The output MUST show the agent target. Text output MUST group items by scope, then by kind. A command's `path` MUST be its file path.
-(Previously: kinds were mcp|skill|script)
+`status` MUST list only items recorded by installs with `undoneAt === null`. It MUST NOT write to configs, settings files, skill, script, command, or agent files, backups, or the manifest. Each item MUST carry `kind` (`mcp`, `skill`, `script`, `command`, `hook`, or `agent`; the model MUST allow further kinds), `name`, `scope`, `state`, `path`, and `installId`. Items MUST be keyed by scope, path, and name. Text output MUST group items by scope, then by kind. An agent's `path` MUST be its file path.
+(Previously: kinds were mcp|skill|script|command|hook)
 
-#### Scenario: Active items listed
+#### Scenario: Active agent listed
 
-- GIVEN one active install with MCP `fs`, skill `demo`, script `lint`, and command `review`
+- GIVEN one active install with agent `reviewer`
 - WHEN `shitaku status` runs
-- THEN all four are listed with kind, scope, state, and path
-
-#### Scenario: Undone install ignored
-
-- GIVEN an install with `undoneAt` set
-- WHEN `status` runs
-- THEN none of its items appear
+- THEN `reviewer` is listed with kind `agent`, scope, state, and path
 
 #### Scenario: Same name in two scopes
 
-- GIVEN command `review` installed in project and user scope
+- GIVEN agent `reviewer` installed in project and user scope
 - WHEN `status` runs
-- THEN two distinct `review` items are listed, one per scope
+- THEN two distinct `reviewer` items are listed, one per scope
 
-#### Scenario: No writes
+#### Scenario: Skill and agent with same name
 
-- GIVEN any manifest and disk state
+- GIVEN skill `x` and agent `x` are both owned
 - WHEN `status` runs
-- THEN no file or directory is created, modified, or removed
+- THEN both are listed, each with its own kind and path
 
 ### Requirement: Scope selection
 
@@ -53,54 +47,32 @@ By default `status` MUST report both scopes. `--scope project|user` MUST restric
 
 ### Requirement: Item states
 
-Each item MUST have exactly one state, evaluated in this order:
+The state table and ordering are unchanged, extended so that an agent file counts under `missing` when absent, and the hash used for agents is the file-bytes hash (as for commands). A user edit to an agent file MUST yield `modified`; `modified` MUST win over `out-of-date`.
+(Previously: no agent file state)
 
-| State                  | Condition                                                                    |
-| ---------------------- | ---------------------------------------------------------------------------- |
-| `missing`              | MCP entry, skill directory, script directory, or command file absent on disk |
-| `modified`             | current hash differs from hash recorded at install                           |
-| `missing-from-catalog` | item not in the catalog                                                      |
-| `out-of-date`          | current equals recorded, catalog hash differs                                |
-| `installed`            | current, recorded, and catalog hashes equal                                  |
+#### Scenario: Installed agent
 
-`modified` MUST win over `out-of-date`. Hashes are entry hash for MCPs, tree hash for skills and scripts, and file-bytes hash for commands. For an MCP, only its own entry is compared.
-(Previously: no command file state)
-
-#### Scenario: Installed
-
-- GIVEN disk, manifest, and catalog hashes equal
+- GIVEN disk, manifest, and catalog hashes equal for `reviewer`
 - WHEN `status` runs
-- THEN the item is `installed`
+- THEN `reviewer` is `installed`
 
-#### Scenario: Modified wins
+#### Scenario: Modified agent
 
-- GIVEN the user edited the item and the catalog also changed
+- GIVEN the user edited `reviewer.md` and the catalog also changed
 - WHEN `status` runs
-- THEN the item is `modified`
+- THEN `reviewer` is `modified`
 
-#### Scenario: Out of date
+#### Scenario: Out of date agent
 
-- GIVEN the item is untouched and the catalog hash differs
+- GIVEN `reviewer.md` is untouched and the catalog bytes differ
 - WHEN `status` runs
-- THEN the item is `out-of-date`
+- THEN `reviewer` is `out-of-date`
 
-#### Scenario: Missing and missing-from-catalog
+#### Scenario: Missing agent and missing from catalog
 
-- GIVEN command `a` deleted from disk and MCP `b` removed from catalog
+- GIVEN `reviewer.md` was deleted and agent `old` was removed from the catalog
 - WHEN `status` runs
-- THEN `a` is `missing` and `b` is `missing-from-catalog`
-
-#### Scenario: Unrelated config changes
-
-- GIVEN Claude Code rewrote other entries in `~/.claude.json`
-- WHEN `status` runs
-- THEN the shitaku MCP entry is still `installed`
-
-#### Scenario: Unlisted user command ignored
-
-- GIVEN `mine.md` sits beside owned `review.md`
-- WHEN `status` runs
-- THEN `mine` is not listed
+- THEN `reviewer` is `missing` and `old` is `missing-from-catalog`
 
 ### Requirement: Unsafe and unreadable skill trees
 
@@ -233,3 +205,19 @@ A command path that is a symlink, a directory, a special file, or unreadable MUS
 - GIVEN owned `review` unchanged on disk
 - WHEN `doctor` runs
 - THEN no finding is reported for `review`
+
+### Requirement: Doctor findings for agents
+
+`doctor` MUST report an owned agent whose file is absent as a finding with code `agent-missing`, naming the agent and its path. A present agent (modified or not) MUST NOT produce `agent-missing`. `doctor` MUST NOT write.
+
+#### Scenario: Agent removed
+
+- GIVEN owned agent `reviewer` whose file was deleted
+- WHEN `doctor` runs
+- THEN it reports `reviewer` as `agent-missing` and writes nothing
+
+#### Scenario: Healthy agent
+
+- GIVEN owned `reviewer` present on disk
+- WHEN `doctor` runs
+- THEN no finding is reported for `reviewer`

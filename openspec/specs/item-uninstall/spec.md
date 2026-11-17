@@ -8,31 +8,19 @@
 
 ### Requirement: Command surface
 
-The system MUST provide `uninstall <name>` with `--scope project|user`, `--kind mcp|skill|script|command`, `--dry-run`, and `--force`. It MUST NOT prompt for confirmation.
-(Previously: `--kind` allowed mcp|skill|script)
+The system MUST provide `uninstall <name>` with `--scope project|user`, `--kind mcp|skill|script|command|hook|agent`, `--dry-run`, and `--force`. It MUST NOT prompt for confirmation.
+(Previously: `--kind` allowed mcp|skill|script|command|hook)
 
-#### Scenario: Unmodified MCP removed
+#### Scenario: Valid agent kind
 
-- GIVEN MCP `github` is owned and its entry hash equals the recorded hash
-- WHEN `uninstall github` runs
-- THEN the entry is removed, a backup exists, and exit is 0
-
-#### Scenario: Unmodified skill removed
-
-- GIVEN skill `demo` is owned and its tree hash equals the recorded hash
-- WHEN `uninstall demo` runs
-- THEN the skill directory is removed, a backup exists, and exit is 0
-
-#### Scenario: Unmodified script removed
-
-- GIVEN script `lint` is owned and its tree hash equals the recorded hash
-- WHEN `uninstall lint --kind script` runs
-- THEN the script directory is removed, a backup exists, and exit is 0
+- GIVEN owned agent `reviewer`
+- WHEN `uninstall reviewer --kind agent` runs
+- THEN the agent is removed and exit is 0
 
 #### Scenario: Invalid kind
 
 - WHEN `uninstall x --kind widget` runs
-- THEN it exits non-zero with a choices error and writes nothing
+- THEN it exits non-zero with a choices error that lists `agent` and writes nothing
 
 ### Requirement: Resolution and ownership
 
@@ -52,20 +40,26 @@ The item MUST be resolved from owned-item replay of the manifest. If the name is
 
 ### Requirement: Kind collision
 
-When the name is owned as more than one of MCP, skill, script, or command, the system MUST exit 1 listing the candidates (kind, scope) and write nothing. `--kind` MUST resolve it.
-(Previously: collision covered MCP, skill, and script only)
+When the name is owned as more than one of MCP, skill, script, command, hook, or agent, the system MUST exit 1 listing the candidates (kind, scope) and write nothing. `--kind` MUST resolve it.
+(Previously: collision did not cover agents)
 
-#### Scenario: Ambiguous
+#### Scenario: Skill and agent share a name
 
-- GIVEN `x` is owned as skill and command, or MCP and command
+- GIVEN `x` is owned as skill and as agent
 - WHEN `uninstall x` runs
 - THEN exit is 1, candidates are listed, and nothing is written
 
 #### Scenario: Disambiguated
 
 - GIVEN the same state
-- WHEN `uninstall x --kind command` or `--kind skill` runs
-- THEN only the selected kind is removed
+- WHEN `uninstall x --kind agent` runs
+- THEN only the agent file is removed and the skill remains
+
+#### Scenario: Command and agent share a name
+
+- GIVEN `x` is owned as command and as agent
+- WHEN `uninstall x --kind command` runs
+- THEN only the command is removed and the agent file stays
 
 ### Requirement: Modified items
 
@@ -168,3 +162,19 @@ If a script's current tree hash differs from the recorded hash, uninstall MUST e
 - GIVEN `review` is owned but its file was deleted
 - WHEN `uninstall review --kind command` runs
 - THEN "already absent" is reported, nothing changes, and exit is 0
+
+### Requirement: Agent uninstall resolution
+
+`uninstall <name> --kind agent` MUST resolve to the owned agent of that name in the selected scope and apply the behavior defined in `agents-install` (Agent uninstall). Ownership MUST be located by absolute file path.
+
+#### Scenario: Agent removed by kind
+
+- GIVEN agent `reviewer` is owned and unmodified
+- WHEN `uninstall reviewer --kind agent` runs
+- THEN the file is removed, a backup exists, and exit is 0
+
+#### Scenario: Dry run
+
+- GIVEN owned `reviewer`
+- WHEN `uninstall reviewer --kind agent --dry-run` runs
+- THEN the planned removal is printed and nothing is written
