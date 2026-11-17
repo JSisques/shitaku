@@ -130,31 +130,64 @@ describe('bundled catalog', () => {
     }
   });
 
-  it('ships example-skill and socratic-method as registered loadable bundled skills', async () => {
+  it('ships example-skill, pr-writing and socratic-method as registered loadable bundled skills', async () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { skills?: unknown };
     };
-    expect(index.items.skills).toEqual(['example-skill', 'socratic-method']);
+    expect(index.items.skills).toEqual(['example-skill', 'pr-writing', 'socratic-method']);
 
     const skillsDir = join(catalogRoot, 'skills');
     expect(statSync(skillsDir).isDirectory()).toBe(true);
     const entries = readdirSync(skillsDir)
       .filter((name) => !name.startsWith('.'))
       .sort();
-    expect(entries).toEqual(['example-skill', 'socratic-method']);
+    expect(entries).toEqual(['example-skill', 'pr-writing', 'socratic-method']);
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.skills).toHaveLength(2);
+    expect(catalog.skills).toHaveLength(3);
 
     const byName = Object.fromEntries(catalog.skills.map((sk) => [sk.name, sk]));
     expect(byName['example-skill']).toMatchObject({ name: 'example-skill' });
     expect(byName['example-skill']?.description).toContain('example skill');
     expect(byName['example-skill']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
 
+    expect(byName['pr-writing']).toMatchObject({ name: 'pr-writing' });
+    expect(byName['pr-writing']?.description.length).toBeGreaterThan(0);
+    expect(byName['pr-writing']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
+
     expect(byName['socratic-method']).toMatchObject({ name: 'socratic-method' });
     expect(byName['socratic-method']?.description.length).toBeGreaterThan(0);
     expect(byName['socratic-method']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
+  });
+
+  it('keeps the pr-writing skill content contract', () => {
+    const raw = readFileSync(join(catalogRoot, 'skills', 'pr-writing', 'SKILL.md'), 'utf8');
+    const [, frontmatter = '', body = ''] = raw.split(/^---\r?\n|\r?\n---\r?\n/);
+    const lines = frontmatter.split(/\r?\n/).filter((line) => line.length > 0);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe('name: pr-writing');
+    const descriptionLine = lines[1] ?? '';
+    expect(descriptionLine).toMatch(/^description: 'Trigger:.*'$/);
+    const description = descriptionLine.slice("description: '".length, -1);
+    expect(description.length).toBeLessThanOrEqual(250);
+    expect(description).not.toMatch(/['"|]/);
+    expect(raw).not.toContain('disable-model-invocation');
+
+    for (const heading of [
+      'Activation Contract',
+      'Hard Rules',
+      'Decision Gates',
+      'Execution Steps',
+      'Output Contract',
+    ]) {
+      expect(body).toContain(`## ${heading}`);
+    }
+    for (const required of ['BREAKING CHANGE:', 'Closes #', 'CODEOWNERS', 'gh label list']) {
+      expect(raw).toContain(required);
+    }
+    expect(raw).not.toMatch(/topic/i);
+    expect(raw).not.toContain('Co-Authored-By');
   });
 
   it('documents scripts in README with generated markers and shitaku run', () => {
