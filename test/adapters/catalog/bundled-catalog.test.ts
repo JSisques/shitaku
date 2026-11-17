@@ -53,6 +53,7 @@ describe('bundled catalog', () => {
       'cloudflare-docs',
       'cloudflare-bindings',
       'cloudflare-observability',
+      'rea',
     ]);
     const mcpNames = catalog.mcps.map((m) => m.name);
     const skillNames = catalog.skills.map((sk) => sk.name);
@@ -87,6 +88,32 @@ describe('bundled catalog', () => {
       hooks: [],
       agents: [],
     });
+  });
+
+  it('ships rea as a pinned stdio MCP without env, outside every profile', async () => {
+    const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
+    const rea = catalog.mcps.find((m) => m.name === 'rea');
+    expect(rea).toBeDefined();
+    expect(rea?.server).toEqual({ type: 'stdio', command: 'npx', args: ['-y', 'rea-agents@6.9.0', 'mcp'] });
+    expect(rea?.env).toEqual([]);
+    const raw = readFileSync(join(catalogRoot, 'mcps', 'rea.json'), 'utf8');
+    expect(raw).not.toContain('${');
+    const args = rea?.server.type === 'stdio' ? rea.server.args : [];
+    expect(args.some((arg) => arg.includes('@latest'))).toBe(false);
+    const description = rea?.description ?? '';
+    expect(description).not.toMatch(/\n/);
+    expect(description).toMatch(/reverse/i);
+    expect(description).toMatch(/Hopper|Ghidra|IDA/);
+    expect(description).toContain('Node 22.23.4+, 24.22.1+ or 26.12.1+');
+
+    const available = {
+      mcps: catalog.mcps.map((m) => m.name),
+      skills: catalog.skills.map((sk) => sk.name),
+      scripts: catalog.scripts.map((s) => s.name),
+    };
+    for (const profile of ['base', 'web', 'backend']) {
+      expect(resolveProfile(profile, catalog.profiles, available).mcps).not.toContain('rea');
+    }
   });
 
   it('loads with an explicitly empty commands list', async () => {
