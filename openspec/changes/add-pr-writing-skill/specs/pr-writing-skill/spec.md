@@ -16,7 +16,7 @@ The bundled catalog MUST list `pr-writing` in `items.skills` and MUST ship `cata
 - WHEN the catalog is loaded
 - THEN skill `pr-writing` is available and valid
 - AND frontmatter `name` equals the skill directory name
-- AND the bundled skill list is `example-skill`, `socratic-method`, `pr-writing`
+- AND the bundled skill list is `example-skill`, `pr-writing`, `socratic-method`
 
 #### Scenario: Frontmatter rejects empty or mismatched identity
 

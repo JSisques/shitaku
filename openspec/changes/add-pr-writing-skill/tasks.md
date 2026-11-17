@@ -53,4 +53,4 @@ Note: `ask-on-risk` only asks when the budget is at risk; the forecast is Low, s
 
 - [x] 5.1 Run `pnpm run build`, then `node dist/main.js init --skills pr-writing --scope project --dry-run` in a clean temp project; plan classifies `pr-writing` as `create` and no file, backup or manifest is written. Spec: Installable create when absent (Dry-run create when absent).
 - [x] 5.2 Inspect `catalog/skills/pr-writing/SKILL.md`: no `disable-model-invocation: true`, no repo-specific label/reviewer/milestone names, no topics or commit-message authoring. Spec: Generic and model-invocable; Draft only.
-- [ ] 5.3 Note for PR time (non-blocking): update issue #236 acceptance criteria that still mention topics.
+- [x] 5.3 Note for PR time (non-blocking): update issue #236 acceptance criteria that still mention topics.
