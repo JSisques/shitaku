@@ -163,6 +163,19 @@ describe('CatalogIndexSchema', () => {
     expect(res.error?.message).toContain('../evil');
   });
 
+  it('defaults items.agents to an empty list when absent and parses listed agents', () => {
+    expect(CatalogIndexSchema.parse({ version: 1, items: { mcps: [] } }).items.agents).toEqual([]);
+    const idx = CatalogIndexSchema.parse({ version: 1, items: { mcps: [], agents: ['reviewer', 'a1'] } });
+    expect(idx.items.agents).toEqual(['reviewer', 'a1']);
+  });
+
+  it('rejects an agent name that could traverse paths, failing the whole catalog', () => {
+    const res = CatalogIndexSchema.safeParse({ version: 1, items: { mcps: [], agents: ['../evil'] } });
+    expect(res.success).toBe(false);
+    expect(JSON.stringify(res.error?.issues)).toContain('agents');
+    expect(res.error?.message).toContain('../evil');
+  });
+
   it('rejects an unsupported version', () => {
     expect(CatalogIndexSchema.safeParse({ version: 2, items: { mcps: [] } }).success).toBe(false);
   });

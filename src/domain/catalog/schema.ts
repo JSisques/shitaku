@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AgentNameSchema } from '@/domain/catalog/agent.js';
 import { CommandNameSchema, type CommandItem } from '@/domain/catalog/command.js';
 import { HookNameSchema, type HookItem } from '@/domain/catalog/hook.js';
 import { ScriptNameSchema, type ScriptItem } from '@/domain/catalog/script.js';
@@ -79,6 +80,7 @@ export const CatalogIndexSchema = z.object({
     scripts: z.array(ScriptNameSchema).default([]),
     commands: z.array(CommandNameSchema).default([]),
     hooks: z.array(HookNameSchema).default([]),
+    agents: z.array(AgentNameSchema).default([]),
   }),
 });
 

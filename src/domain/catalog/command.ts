@@ -1,10 +1,13 @@
 import { z } from 'zod';
 import { readFrontmatter } from '@/domain/catalog/frontmatter.js';
 
+/** Name shape shared by the flat-file kinds (command, agent). */
+export const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
 // The custom message names the offending value, which zod's default regex message omits.
 export const CommandNameSchema = z
   .string()
-  .regex(/^[a-z0-9][a-z0-9-]*$/, { error: (iss) => `invalid command name '${String(iss.input)}'` });
+  .regex(NAME_PATTERN, { error: (iss) => `invalid command name '${String(iss.input)}'` });
 
 /** A slash command: one markdown file. `bytes` are the exact file bytes, so every frontmatter key reaches the target. */
 export interface CommandItem {
