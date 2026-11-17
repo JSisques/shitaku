@@ -18,6 +18,8 @@ export interface AgentTarget {
   skillsDir(scope: Scope, paths: Paths): string;
   /** Directory that holds one flat `.md` file per installed command. */
   commandsDir(scope: Scope, paths: Paths): string;
+  /** Directory that holds one flat `.md` file per installed agent. */
+  agentsDir(scope: Scope, paths: Paths): string;
   /** The settings file whose `hooks` key holds the installed hooks. */
   settingsPath(scope: Scope, paths: Paths): string;
   /** The handler written under `hooks.<event>` for a catalog hook. */

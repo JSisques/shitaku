@@ -9,6 +9,7 @@ export type DoctorCode =
   | 'mcp-missing'
   | 'skill-missing'
   | 'command-missing'
+  | 'agent-missing'
   | 'hook-missing'
   | 'env-unset'
   | 'duplicate-mcp' // severity 'problem'

@@ -65,7 +65,7 @@ const FileSchema = z
     (f) =>
       f.afterHash !== null || f.items.every((i) => i.kind === 'skill' || i.kind === 'script' || isFlatFileKind(i.kind)),
     {
-      message: 'afterHash may be null only for skill, script or command files',
+      message: 'afterHash may be null only for skill, script, command or agent files',
       path: ['afterHash'],
     },
   );
@@ -120,7 +120,10 @@ export function deriveOwnership(manifest: Manifest): Ownership {
   return owned;
 }
 
-function deriveTreeOwnership(manifest: Manifest, kind: 'skill' | 'script' | 'command'): Record<string, string> {
+function deriveTreeOwnership(
+  manifest: Manifest,
+  kind: 'skill' | 'script' | 'command' | 'agent',
+): Record<string, string> {
   const owned: Record<string, string> = {};
   for (const install of manifest.installs.filter((i) => i.undoneAt === null)) {
     for (const file of install.files) {
@@ -147,6 +150,11 @@ export function deriveScriptOwnership(manifest: Manifest): Record<string, string
 /** command file path -> hash of the command shitaku last installed there. Undone installs do not count. */
 export function deriveCommandOwnership(manifest: Manifest): Record<string, string> {
   return deriveTreeOwnership(manifest, 'command');
+}
+
+/** agent file path -> hash of the agent shitaku last installed there. Undone installs do not count. */
+export function deriveAgentOwnership(manifest: Manifest): Record<string, string> {
+  return deriveTreeOwnership(manifest, 'agent');
 }
 
 type HookItem = Extract<z.infer<typeof ItemSchema>, { kind: 'hook' }>;
