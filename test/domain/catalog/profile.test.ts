@@ -10,6 +10,7 @@ const p = (
   scripts: string[] = [],
   commands: string[] = [],
   hooks: string[] = [],
+  agents: string[] = [],
 ): Profile => ({
   name,
   mcps,
@@ -18,13 +19,15 @@ const p = (
   scripts,
   commands,
   hooks,
+  agents,
 });
 const MCPS = ['github', 'context7'];
 const SKILLS = ['review', 'plan'];
 const SCRIPTS = ['lint', 'format'];
 const COMMANDS = ['review', 'plan-cmd'];
 const HOOKS = ['fmt', 'guard'];
-const KNOWN = { mcps: MCPS, skills: SKILLS, scripts: SCRIPTS, commands: COMMANDS, hooks: HOOKS };
+const AGENTS = ['reviewer', 'planner'];
+const KNOWN = { mcps: MCPS, skills: SKILLS, scripts: SCRIPTS, commands: COMMANDS, hooks: HOOKS, agents: AGENTS };
 
 describe('resolveProfile', () => {
   it('merges parents first and de-duplicates', () => {
@@ -35,6 +38,7 @@ describe('resolveProfile', () => {
       scripts: [],
       commands: [],
       hooks: [],
+      agents: [],
     });
   });
 
@@ -46,6 +50,7 @@ describe('resolveProfile', () => {
       scripts: [],
       commands: [],
       hooks: [],
+      agents: [],
     });
   });
 
@@ -57,6 +62,7 @@ describe('resolveProfile', () => {
       scripts: ['lint', 'format'],
       commands: [],
       hooks: [],
+      agents: [],
     });
   });
 
@@ -68,6 +74,7 @@ describe('resolveProfile', () => {
       scripts: [],
       commands: ['review', 'plan-cmd'],
       hooks: [],
+      agents: [],
     });
   });
 
@@ -83,6 +90,24 @@ describe('resolveProfile', () => {
   it('fails on an unknown hook', () => {
     expect(() => resolveProfile('a', [p('a', [], [], [], [], [], ['ghost'])], KNOWN)).toThrow(
       "profile 'a' references unknown hook 'ghost'",
+    );
+  });
+
+  it('merges agents through extends and de-duplicates', () => {
+    const profiles = [
+      p('base', [], [], [], [], [], [], ['reviewer']),
+      p('web', [], ['base'], [], [], [], [], ['planner', 'reviewer']),
+    ];
+    expect(resolveProfile('web', profiles, KNOWN).agents).toEqual(['reviewer', 'planner']);
+  });
+
+  it('resolves a profile without agents to an empty agent list', () => {
+    expect(resolveProfile('a', [p('a', ['github'])], KNOWN).agents).toEqual([]);
+  });
+
+  it('fails on an unknown agent', () => {
+    expect(() => resolveProfile('a', [p('a', [], [], [], [], [], [], ['ghost'])], KNOWN)).toThrow(
+      "profile 'a' references unknown agent 'ghost'",
     );
   });
 
@@ -131,9 +156,10 @@ describe('validateProfiles', () => {
         p('d', [], [], ['ghost']),
         p('e', [], [], [], ['ghost']),
         p('f', [], [], [], [], ['ghost']),
+        p('g', [], [], [], [], [], [], ['ghost']),
       ],
       KNOWN,
     );
-    expect(errors).toHaveLength(6);
+    expect(errors).toHaveLength(7);
   });
 });

@@ -4,7 +4,8 @@ import type { CatalogSource } from '@/ports/catalog-source.js';
 /** A catalog source that serves the given hooks and no other kind. */
 export const hookSource = (hooks: HookItem[]): CatalogSource => ({
   ref: () => ({ kind: 'bundled', location: '/catalog' }),
-  load: () => Promise.resolve({ mcps: [], skills: [], scripts: [], commands: [], hooks, profiles: [], issues: [] }),
+  load: () =>
+    Promise.resolve({ mcps: [], skills: [], scripts: [], commands: [], hooks, agents: [], profiles: [], issues: [] }),
 });
 
 /** A hook with a matcher and a newer catalog version of it. */

@@ -420,6 +420,7 @@ describe('uninstallItem (scripts)', () => {
             scripts: [{ ...SCRIPT_V1, name: 'demo' }],
             commands: [],
             hooks: [],
+            agents: [],
             profiles: [],
             issues: [],
           }),

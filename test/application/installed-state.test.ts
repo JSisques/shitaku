@@ -32,6 +32,7 @@ const catalog: LoadedCatalog = {
   scripts: [],
   commands: [],
   hooks: [],
+  agents: [],
   profiles: [],
   issues: [],
 };

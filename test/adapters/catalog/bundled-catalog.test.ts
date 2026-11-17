@@ -47,6 +47,7 @@ describe('bundled catalog', () => {
       scripts: [],
       commands: [],
       hooks: [],
+      agents: [],
     });
     expect(
       resolveProfile('backend', catalog.profiles, { mcps: mcpNames, skills: skillNames, scripts: scriptNames }),
@@ -56,6 +57,7 @@ describe('bundled catalog', () => {
       scripts: [],
       commands: [],
       hooks: [],
+      agents: [],
     });
   });
 

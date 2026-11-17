@@ -40,7 +40,7 @@ describe('getDiagnosis', () => {
     load: () => (catalog instanceof Error ? Promise.reject(catalog) : Promise.resolve(catalog)),
   };
   const setCatalog = (mcps: McpItem[], skills: SkillItem[] = []): void => {
-    catalog = { mcps, skills, scripts: [], commands: [], hooks: [], profiles: [], issues: [] };
+    catalog = { mcps, skills, scripts: [], commands: [], hooks: [], agents: [], profiles: [], issues: [] };
   };
   const paths = () => ({ homeDir: tmp.homeDir, cwd: tmp.cwd });
   const deps = (): InitDeps => ({ source, fs, target: claudeCodeTarget, paths: paths(), env });
@@ -188,7 +188,16 @@ describe('getDiagnosis', () => {
           : f,
       ),
     };
-    catalog = { mcps: [], skills: [], scripts: [withTool], commands: [], hooks: [], profiles: [], issues: [] };
+    catalog = {
+      mcps: [],
+      skills: [],
+      scripts: [withTool],
+      commands: [],
+      hooks: [],
+      agents: [],
+      profiles: [],
+      issues: [],
+    };
     await initMcps(deps(), { mcps: [], skills: [], scripts: ['lint'], scope: 'project' });
     const report = await getDiagnosis(deps(), {});
     expect(report.findings).toEqual([
@@ -216,7 +225,16 @@ describe('getDiagnosis', () => {
         },
       ],
     };
-    catalog = { mcps: [], skills: [], scripts: [complexity], commands: [], hooks: [], profiles: [], issues: [] };
+    catalog = {
+      mcps: [],
+      skills: [],
+      scripts: [complexity],
+      commands: [],
+      hooks: [],
+      agents: [],
+      profiles: [],
+      issues: [],
+    };
     await initMcps(deps(), { mcps: [], skills: [], scripts: ['complexity'], scope: 'project' });
     const report = await getDiagnosis(deps(), {});
     const missing = report.findings.filter((f) => f.code === 'script-tool-missing');
@@ -239,6 +257,7 @@ describe('getDiagnosis (hooks)', () => {
         scripts: [],
         commands: [],
         hooks: [FMT_V1, GUARD, PROJ],
+        agents: [],
         profiles: [],
         issues: [],
       } satisfies LoadedCatalog),
