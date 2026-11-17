@@ -68,12 +68,12 @@ Spec scenarios: catalog "Valid agent loads", "Name differs from file stem", "Req
 
 Spec scenarios: catalog "Unlisted, ghost, or guarded", "Layout with agents", "Agents resolved", "Unknown agent reference", "Profile without agents field"; catalog-list all four scenarios of "Agents list shape" and "Kind filter" (list side).
 
-- [ ] 3b.1 RED: loader loads valid agent, rejects unlisted/ghost/symlink/oversize, `agents/` subdirs not scanned (`test/adapters/catalog/folder-source.test.ts`)
-- [ ] 3b.2 GREEN: `loadFileItems` agents branch in `src/adapters/catalog/folder-source.ts`; `Catalog.agents`
-- [ ] 3b.3 RED/GREEN: profile `agents` (default empty, dedupe via `extends`, unknown agent names `ghost`) in `test/domain/catalog/profile.test.ts`, `src/domain/catalog/profile.ts`
-- [ ] 3b.4 RED/GREEN: listing rows `kind: 'agent'`, seven-kind filter, `list agents` empty -> `no matching items` in `test/domain/catalog/listing.test.ts`, `src/domain/catalog/listing.ts`
-- [ ] 3b.5 GREEN: `catalog/catalog.json` gains `"agents": []`; create `catalog/agents/.gitkeep`
-- [ ] 3b.6 REFACTOR: `ResolvedProfile` gains `agents`; typecheck all call sites
+- [x] 3b.1 RED: loader loads valid agent, rejects unlisted/ghost/symlink/oversize, `agents/` subdirs not scanned (`test/adapters/catalog/folder-source.test.ts`)
+- [x] 3b.2 GREEN: `loadFileItems` agents branch in `src/adapters/catalog/folder-source.ts`; `Catalog.agents`
+- [x] 3b.3 RED/GREEN: profile `agents` (default empty, dedupe via `extends`, unknown agent names `ghost`) in `test/domain/catalog/profile.test.ts`, `src/domain/catalog/profile.ts`
+- [x] 3b.4 RED/GREEN: listing rows `kind: 'agent'`, seven-kind filter, `list agents` empty -> `no matching items` in `test/domain/catalog/listing.test.ts`, `src/domain/catalog/listing.ts`
+- [x] 3b.5 GREEN: `catalog/catalog.json` gains `"agents": []`; create `catalog/agents/.gitkeep`
+- [x] 3b.6 REFACTOR: `ResolvedProfile` gains `agents`; typecheck all call sites
 
 ## PR 4: Manifest, plan, port (~350 lines)
 

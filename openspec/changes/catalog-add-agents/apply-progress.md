@@ -78,3 +78,22 @@ Verification: typecheck, lint, format:check, build clean; full suite 1346/1346.
 
 - No JSON catalog fixtures exist under `test/fixtures/`, and `Catalog.agents` is PR 3b (task 3b.2), so no `agents: []` literals were added; 3a.4 is the builder helper only.
 - `NAME_PATTERN` lives in `command.ts` (existing flat-file precedent); skill/script/hook keep their own inline regex (out of scope).
+
+## PR 3b: Loader, listing, profile
+
+| Task | RED                                                                        | GREEN                                                        | Refactor                                    |
+| ---- | -------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------- |
+| 3b.1 | 9 loader tests failed (`catalog.agents` missing)                           | n/a                                                          | n/a                                         |
+| 3b.2 | see 3b.1                                                                   | `loadAgents` via `loadFileItems`; `Catalog.agents`           | n/a                                         |
+| 3b.3 | 4 profile tests failed (agents merge, empty default, unknown, validate x7) | `ProfileSchema.agents`, `KnownNames.agents?`, resolve branch | n/a                                         |
+| 3b.4 | listing tests failed (seven kinds, `agent` rows, filter, empty list)       | `agents` in `LIST_KINDS`, `EntryKind`, `ENTRY_KIND`, entries | n/a                                         |
+| 3b.5 | n/a                                                                        | `"agents": []` in `catalog.json`; `catalog/agents/.gitkeep`  | n/a                                         |
+| 3b.6 | n/a                                                                        | n/a                                                          | `ResolvedProfile.agents`; 31 literals fixed |
+
+Files: `src/adapters/catalog/folder-source.ts`, `src/domain/catalog/{schema,profile,listing}.ts`, `catalog/catalog.json`, `catalog/agents/.gitkeep`, folder-source/profile/listing/bundled-catalog tests, and `agents: []` literals in 6 application tests and 4 helpers.
+Verification: typecheck, lint, format:check, build clean; full suite 1360/1360; `docs:catalog:check` passes.
+
+### Deviations
+
+- `ChangePlan.agents` stays out (PR 4); the `list agents` empty case is covered at the domain level (`listEntries` returns `[]`, which the existing CLI maps to `no matching items`).
+- Profile `agents` is validated only; profiles cannot install agents by name yet.
