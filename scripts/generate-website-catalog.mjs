@@ -7,7 +7,7 @@ import * as prettier from 'prettier';
 const root = join(import.meta.dirname, '..');
 const catalogDir = join(root, 'catalog');
 const locales = ['en', 'es'];
-const generatedKinds = ['mcps', 'skills', 'profiles', 'scripts', 'commands', 'hooks'];
+const generatedKinds = ['mcps', 'skills', 'profiles', 'scripts', 'commands', 'hooks', 'agents'];
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
@@ -144,6 +144,28 @@ This page is generated from \`catalog/commands/${name}.md\`.
 `;
 }
 
+const agentDescription = (name) =>
+  frontmatterDescription(join(catalogDir, 'agents', `${name}.md`), `agents/${name}.md`);
+
+const AGENT_USAGE = {
+  en: (name) =>
+    `A Claude Code subagent: installing it writes \`${name}.md\` into the Claude Code agents directory. Its frontmatter can grant tools or permissions, so read the file before you install it.`,
+  es: (name) =>
+    `Un subagente de Claude Code: al instalarlo se escribe \`${name}.md\` en el directorio de agentes de Claude Code. Su frontmatter puede conceder herramientas o permisos, así que lee el archivo antes de instalarlo.`,
+};
+
+function renderAgent(name, locale) {
+  const description = agentDescription(name);
+  return `${frontmatter(name, description)}# \`${name}\`
+
+${description}
+
+${AGENT_USAGE[locale](name)}
+
+This page is generated from \`catalog/agents/${name}.md\`.
+`;
+}
+
 const HOOK_TEXT = {
   en: {
     warning:
@@ -234,6 +256,7 @@ function renderProfile(name) {
   const scripts = profile.scripts ?? [];
   const commands = profile.commands ?? [];
   const hooks = profile.hooks ?? [];
+  const agents = profile.agents ?? [];
   const extendsFrom = profile.extends ?? [];
 
   const lines = [
@@ -266,6 +289,9 @@ function renderProfile(name) {
   if (hooks.length > 0) {
     lines.push('## Hooks', '', ...hooks.map((item) => `- \`${item}\``), '');
   }
+  if (agents.length > 0) {
+    lines.push('## Agents', '', ...agents.map((item) => `- \`${item}\``), '');
+  }
 
   return `${lines.join('\n').trimEnd()}\n`;
 }
@@ -293,6 +319,10 @@ async function expectedFiles() {
     for (const name of items.commands ?? []) {
       const rel = join('website/src/content/docs', locale, 'catalog/commands', `${name}.md`);
       files.set(rel, await formatMarkdown(rel, renderCommand(name, locale)));
+    }
+    for (const name of items.agents ?? []) {
+      const rel = join('website/src/content/docs', locale, 'catalog/agents', `${name}.md`);
+      files.set(rel, await formatMarkdown(rel, renderAgent(name, locale)));
     }
     for (const name of items.hooks ?? []) {
       const rel = join('website/src/content/docs', locale, 'catalog/hooks', `${name}.md`);

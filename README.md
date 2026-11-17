@@ -139,6 +139,16 @@ _No hooks in the bundled catalog yet._
 
 <!-- catalog:hooks:end -->
 
+### Agents
+
+Installable Claude Code subagents live as single files under `catalog/agents/<name>.md`. The bundled catalog ships none yet; the list below stays empty until one is added to `items.agents`. Agents can grant tools or permissions, so read [Agents (install)](#agents-install) before installing one.
+
+<!-- catalog:agents:start -->
+
+_No agents in the bundled catalog yet._
+
+<!-- catalog:agents:end -->
+
 ## Usage
 
 Examples below use the global `shitaku` command. After a one-off run, substitute `npx @jsisques/shitaku` for `shitaku`.
@@ -285,6 +295,25 @@ Project-scope hooks live in `./.claude/settings.json`. If you commit that file, 
 Secret detection in hook files is a heuristic: it recognizes common token shapes and `NAME=value` assignments, so it cannot prove a command is free of secrets. Keep credentials in the environment and reference them as `${VAR}`.
 
 Before downgrading shitaku, run `shitaku undo` or `shitaku uninstall` for any install that included hooks: versions without hook support throw a `ManifestError` on a manifest entry with `kind: 'hook'`.
+
+### Agents (install)
+
+An agent is one Markdown file, `catalog/agents/<name>.md`, that Claude Code loads as a subagent. The file needs frontmatter with a single-line `name` and a single-line `description`, and a non-empty body. The `name` must equal the file name (without `.md`) and match `^[a-z0-9][a-z0-9-]*$`. List it under `items.agents` in `catalog/catalog.json`; an unlisted or invalid file is skipped with a warning.
+
+Other frontmatter keys such as `tools`, `model`, `hooks` or `mcpServers` may span several lines. They are copied verbatim and are not validated by shitaku; unknown keys are ignored. Claude Code decides what they mean.
+
+**Limit (v1):** a `name` or `description` written as a block scalar (`description: |` or `>`) is rejected, because shitaku reads those two keys line by line. Write them on one line. Block-scalar support is tracked in https://github.com/JSisques/shitaku/issues/238.
+
+**Agents can grant tools or permissions.** An agent's frontmatter can give a subagent tools, a permission mode, hooks or MCP servers. Installed agents are trusted like skills and slash commands: shitaku copies the file and does not analyze or sandbox it.
+
+Install locations: `~/.claude/agents/<name>.md` (`user`) or `./.claude/agents/<name>.md` (`project`). Nothing else in that directory is read or touched, and `shitaku undo` reverts the install. The `init` flag that selects agents ships in a later release; today `status`, `doctor`, `uninstall` and `undo` already handle agents recorded in a manifest.
+
+- An existing `<name>.md` that differs from the catalog version and was not installed by shitaku (or was edited since) is a conflict: it is never overwritten silently, `init` exits `2` and writes nothing.
+- `--force` backs the file up under `~/.claude/.shitaku/backups/` and replaces it; `undo` restores it byte for byte.
+- `shitaku uninstall <name>` removes just that file and refuses (exit `3`) when it was modified since the install unless `--force` is set. `status` reports an agent with the same states as other items (`doctor` code `agent-missing`).
+- Profiles list `agents`, but profiles cannot be installed by name yet.
+
+Before downgrading shitaku, run `shitaku undo` or `shitaku uninstall` for any install that included agents: versions without agent support throw a `ManifestError` on a manifest entry with `kind: 'agent'`.
 
 ### Run
 
@@ -464,7 +493,7 @@ Hide it with the global `--no-banner` flag, or set `SHITAKU_NO_BANNER` to `1`, `
 
 ### Custom catalogs and trust
 
-`--source <folder>` reads a catalog from a folder instead of the bundled one. Treat it as code you run: stdio entries in a catalog are written to your config and Claude Code executes their `command` later. Skills from a `--source` folder are copied into your skills directory, and Claude Code may follow their instructions or run their scripts. Slash commands from a `--source` folder are copied into your commands directory, and Claude Code treats their text as instructions the moment you run `/<name>`. Hooks from a `--source` folder are merged into your Claude Code settings and run commands with your full user permissions; they follow the same trust model and the same confirmation as bundled ones. Catalog scripts install under shitaku roots and are executed later by `shitaku run`. Only use folders you trust.
+`--source <folder>` reads a catalog from a folder instead of the bundled one. Treat it as code you run: stdio entries in a catalog are written to your config and Claude Code executes their `command` later. Skills from a `--source` folder are copied into your skills directory, and Claude Code may follow their instructions or run their scripts. Slash commands from a `--source` folder are copied into your commands directory, and Claude Code treats their text as instructions the moment you run `/<name>`. Agents from a `--source` folder are copied into your agents directory, and their frontmatter can grant tools or permissions to a subagent; read them first. Hooks from a `--source` folder are merged into your Claude Code settings and run commands with your full user permissions; they follow the same trust model and the same confirmation as bundled ones. Catalog scripts install under shitaku roots and are executed later by `shitaku run`. Only use folders you trust.
 
 ### Update notifications
 
