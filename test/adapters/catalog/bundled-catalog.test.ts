@@ -104,6 +104,7 @@ describe('bundled catalog', () => {
     expect(description).not.toMatch(/\n/);
     expect(description).toMatch(/reverse/i);
     expect(description).toMatch(/Hopper|Ghidra|IDA/);
+    expect(description).toContain('Node 22.23.4+, 24.22.1+ or 26.12.1+');
 
     const available = {
       mcps: catalog.mcps.map((m) => m.name),
