@@ -79,13 +79,13 @@ Spec scenarios: catalog "Unlisted, ghost, or guarded", "Layout with agents", "Ag
 
 Spec scenarios: agents-install "Old manifest", "Agent item round trip", "User and project roots" (paths), "Create/Skip/Owned update/Unmanaged different/Owned but user-edited/Force update" (plan level).
 
-- [ ] 4.1 RED: old-manifest fixture parses; `agent` item round-trips; null `afterHash` accepted for agent (`test/domain/manifest.test.ts`)
-- [ ] 4.2 GREEN: `TreeItemSchema.extend({ kind: z.literal('agent') })`; refine uses `isTreeKind(k) || isFlatFileKind(k)`; `deriveAgentOwnership`; `OwnedItem.kind` gains `'agent'` in `src/domain/manifest.ts`
-- [ ] 4.3 RED: `buildFlatFilePlan` noun `agent` -> create/skip/update/conflict with reason containing "agent"; `ChangePlan.agents` (`test/domain/plan/change-plan.test.ts`)
-- [ ] 4.4 GREEN: `src/domain/plan/change-plan.ts` agents field; `src/domain/plan/doctor-plan.ts` `agent-missing` code (consumed in PR 6)
-- [ ] 4.5 RED: `agentsDir('user'|'project')` (`test/adapters/claude-code/target.test.ts`)
-- [ ] 4.6 GREEN: `AgentTarget.agentsDir` in `src/ports/agent-target.ts`; Claude impl in `src/adapters/claude-code/target.ts`
-- [ ] 4.7 REFACTOR: update every in-memory `AgentTarget` test double
+- [x] 4.1 RED: old-manifest fixture parses; `agent` item round-trips; null `afterHash` accepted for agent (`test/domain/manifest.test.ts`)
+- [x] 4.2 GREEN: `TreeItemSchema.extend({ kind: z.literal('agent') })`; refine uses `isTreeKind(k) || isFlatFileKind(k)`; `deriveAgentOwnership`; `OwnedItem.kind` gains `'agent'` in `src/domain/manifest.ts`
+- [x] 4.3 RED: `buildFlatFilePlan` noun `agent` -> create/skip/update/conflict with reason containing "agent"; `ChangePlan.agents` (`test/domain/plan/change-plan.test.ts`)
+- [x] 4.4 GREEN: `src/domain/plan/change-plan.ts` agents field; `src/domain/plan/doctor-plan.ts` `agent-missing` code (consumed in PR 6)
+- [x] 4.5 RED: `agentsDir('user'|'project')` (`test/adapters/claude-code/target.test.ts`)
+- [x] 4.6 GREEN: `AgentTarget.agentsDir` in `src/ports/agent-target.ts`; Claude impl in `src/adapters/claude-code/target.ts`
+- [x] 4.7 REFACTOR: update every in-memory `AgentTarget` test double
 
 ## PR 5: Init and undo (~350 lines)
 

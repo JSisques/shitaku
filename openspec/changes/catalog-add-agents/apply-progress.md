@@ -97,3 +97,23 @@ Verification: typecheck, lint, format:check, build clean; full suite 1360/1360; 
 
 - `ChangePlan.agents` stays out (PR 4); the `list agents` empty case is covered at the domain level (`listEntries` returns `[]`, which the existing CLI maps to `no matching items`).
 - Profile `agents` is validated only; profiles cannot install agents by name yet.
+
+## PR 4: Manifest, plan, port
+
+| Task | RED                                                                                 | GREEN                                                                             | Refactor                                                |
+| ---- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| 4.1  | `deriveAgentOwnership` import missing (4 manifest tests failed)                     | n/a (schema, refine and `OwnedItem.kind` already pulled forward in PR 1)          | n/a                                                     |
+| 4.2  | see 4.1                                                                             | `deriveAgentOwnership` via `deriveTreeOwnership`; refine message                  | n/a                                                     |
+| 4.3  | `ChangePlan.agents` undefined; agent noun plan test already green (generic planner) | n/a                                                                               | n/a                                                     |
+| 4.4  | see 4.3                                                                             | `ChangePlan.agents`, `agents: []` in `buildPlan`/`planMcps`; `agent-missing` code | n/a                                                     |
+| 4.5  | `target.agentsDir` is not a function                                                | n/a                                                                               | n/a                                                     |
+| 4.6  | see 4.5                                                                             | `AgentTarget.agentsDir`; Claude impl                                              | n/a                                                     |
+| 4.7  | n/a                                                                                 | n/a                                                                               | no in-memory doubles exist (all use `claudeCodeTarget`) |
+
+Files: `src/domain/{manifest,plan/change-plan,plan/doctor-plan}.ts`, `src/ports/agent-target.ts`, `src/adapters/claude-code/target.ts`, `src/application/init-mcps.ts` (one literal), and the manifest, flat-file-plan, change-plan and target tests.
+Verification: typecheck, lint, format:check, build clean; full suite green.
+
+### Deviations
+
+- Null-afterHash refine, `agent` item literal and `OwnedItem.kind` were already done in PR 1.
+- `agent-missing` is only a union member; doctor behavior lands in PR 6.
