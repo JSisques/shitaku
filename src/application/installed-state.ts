@@ -1,7 +1,7 @@
 import { hashEntry, sha256, treeHash } from '@/domain/hash.js';
 import { hasHook } from '@/domain/hook-merge.js';
 import { ConfigError, readAtPath } from '@/domain/json-merge.js';
-import type { OwnedItem } from '@/domain/manifest.js';
+import { isFlatFileKind, type OwnedItem } from '@/domain/manifest.js';
 import { hookEntryHash } from '@/domain/plan/hook-plan.js';
 import type { Desired, Observed } from '@/domain/plan/status-plan.js';
 import type { AgentTarget } from '@/ports/agent-target.js';
@@ -14,7 +14,7 @@ export interface InstalledDeps {
   target: AgentTarget;
 }
 
-/** What is on disk for one owned item. `config` describes the MCP config or hook settings file; skills/scripts/commands always report `present`. */
+/** What is on disk for one owned item. `config` describes the MCP config or hook settings file; skills/scripts/commands/agents always report `present`. */
 export interface InstalledObservation {
   config: 'present' | 'missing' | 'unreadable';
   current: Observed;
@@ -86,7 +86,7 @@ export function observeInstalled(deps: InstalledDeps): (item: OwnedItem) => Prom
     }
   };
 
-  /** A command is one file: read as bytes, never walked as a tree, so a directory or symlink there is only `unreadable`. */
+  /** A command or agent is one file: read as bytes, never walked as a tree, so a directory or symlink there is only `unreadable`. */
   const observeFile = async (item: OwnedItem): Promise<InstalledObservation> => {
     try {
       const bytes = await deps.fs.readBytes(item.path);
@@ -138,7 +138,7 @@ export function observeInstalled(deps: InstalledDeps): (item: OwnedItem) => Prom
       ? observeMcp(item)
       : item.kind === 'hook'
         ? observeHook(item)
-        : item.kind === 'command'
+        : isFlatFileKind(item.kind)
           ? observeFile(item)
           : observeTree(item);
 }
@@ -164,6 +164,10 @@ export function desiredFor(catalog: LoadedCatalog | null, target: AgentTarget, i
   if (item.kind === 'command') {
     const command = catalog.commands.find((c) => c.name === item.name);
     return command === undefined ? { kind: 'absent' } : { kind: 'hash', hash: sha256(command.bytes) };
+  }
+  if (item.kind === 'agent') {
+    const agent = catalog.agents.find((a) => a.name === item.name);
+    return agent === undefined ? { kind: 'absent' } : { kind: 'hash', hash: sha256(agent.bytes) };
   }
   if (item.kind === 'script') {
     const hash = treeHash(catalog.scripts.find((s) => s.name === item.name)?.files ?? []);

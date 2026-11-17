@@ -46,6 +46,13 @@ const command = (name: string, state: StatusState = 'installed', scope: Scope = 
   state,
 });
 
+const agent = (name: string, state: StatusState = 'installed', scope: Scope = 'project'): ItemObservation => ({
+  item: { kind: 'agent', scope, path: `/repo/.claude/agents/${name}.md`, name, hash: 'h', installId: 'i1' },
+  config: 'present',
+  current: state === 'missing' ? { kind: 'absent' } : { kind: 'hash', hash: 'h' },
+  state,
+});
+
 const HOOK_FILE = '/repo/.claude/settings.json';
 
 const hook = (
@@ -191,6 +198,28 @@ describe('diagnose: presence problems', () => {
     expect(run([command('review', 'modified')])).toMatchObject([
       { code: 'modified', severity: 'info', kind: 'command' },
     ]);
+  });
+});
+
+describe('diagnose: agents', () => {
+  it('reports agent-missing as a problem naming the agent file', () => {
+    const findings = run([agent('reviewer', 'missing'), agent('other')]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      code: 'agent-missing',
+      severity: 'problem',
+      kind: 'agent',
+      name: 'reviewer',
+      path: '/repo/.claude/agents/reviewer.md',
+      fix: 'run shitaku init again to reinstall the agent',
+    });
+    expect(findings[0]?.message).toContain('project agent reviewer is missing at /repo/.claude/agents/reviewer.md');
+  });
+
+  it('reports nothing for a healthy agent and no agent-missing for an edited one', () => {
+    expect(run([agent('reviewer')])).toEqual([]);
+    const edited = run([agent('reviewer', 'modified')]);
+    expect(edited.map((f) => f.code)).toEqual(['modified']);
   });
 });
 
