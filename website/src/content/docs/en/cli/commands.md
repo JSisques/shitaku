@@ -16,13 +16,14 @@ shitaku init
 shitaku init --mcps github,context7 --scope project --yes
 shitaku init --skills example-skill --scope user --dry-run
 shitaku init --commands review --scope project
+shitaku init --agents reviewer --scope project
 shitaku init --hooks fmt --scope project
 shitaku init --hooks fmt --scope project --yes --allow-hooks
 ```
 
 Scopes: `project` writes MCPs to `./.mcp.json` and skills to `./.claude/skills/`; `user` writes MCPs to `~/.claude.json` and skills to `~/.claude/skills/` (close Claude Code first when writing `~/.claude.json`). Slash commands are single files written flat to `./.claude/commands/` (`project`) or `~/.claude/commands/` (`user`). Hooks are merged into `./.claude/settings.json` (`project`) or `~/.claude/settings.json` (`user`).
 
-`--mcps`, `--skills`, `--commands` and `--hooks` are independent and optional, but at least one kind must be selected. `--yes` skips confirmation and needs `--scope` plus at least one of them. `--force` overwrites entries, command files and skill directories that differ; a command file that differs and was not installed by shitaku is a conflict (exit `2`) without `--force`, and `--force` backs it up first. `--source <folder>` reads a custom catalog instead of the bundled one.
+`--mcps`, `--skills`, `--commands`, `--agents` and `--hooks` are independent and optional, but at least one kind must be selected. `--yes` skips confirmation and needs `--scope` plus at least one of them. `--force` overwrites entries, command files and skill directories that differ; a command file that differs and was not installed by shitaku is a conflict (exit `2`) without `--force`, and `--force` backs it up first. `--source <folder>` reads a custom catalog instead of the bundled one. Interactively, the agents prompt appears only when the catalog has agents. Agents are never gated behind a confirmation; they can grant tools or permissions, so read them first.
 
 Before changing a file, shitaku backs it up under `~/.claude/.shitaku/backups/` and records the install in `~/.claude/.shitaku/manifest.json`.
 
@@ -47,6 +48,7 @@ shitaku uninstall github
 shitaku uninstall github --scope user
 shitaku uninstall demo --kind skill
 shitaku uninstall review --kind command
+shitaku uninstall reviewer --kind agent
 shitaku uninstall fmt --kind hook
 shitaku uninstall github --dry-run
 shitaku uninstall github --force

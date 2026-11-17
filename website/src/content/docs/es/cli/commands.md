@@ -15,6 +15,20 @@ description: Resumen de comandos de la CLI de shitaku.
 | `doctor`    | Diagnostica elementos instalados y sugiere correcciones   |
 | `version`   | Imprime la versión del paquete instalado                  |
 
+## Agentes
+
+Un agente es un archivo Markdown de subagente de Claude Code. Pueden dar herramientas o permisos, así que léelos antes de instalarlos. No hay puerta de confirmación para los agentes, tampoco con `--source`.
+
+```sh
+shitaku list agents
+shitaku init --agents reviewer --scope project
+shitaku uninstall reviewer --kind agent
+```
+
+- `--agents <a,b>` instala cada agente como un único archivo en `./.claude/agents/` (`project`) o en `~/.claude/agents/` (`user`). De forma interactiva, la pregunta aparece solo si el catálogo tiene agentes.
+- `--agents` cuenta como flag de tipo: `--yes` lo acepta como selección.
+- `uninstall <name> --kind agent` elimina solo ese archivo.
+
 ## Hooks
 
 Un hook añade un manejador `command` de Claude Code a la clave `hooks` de un `settings.json`. Los hooks ejecutan comandos con todos tus permisos de usuario, así que `init` siempre muestra el evento, el matcher y el comando exactos y te pide confirmación. Lee [Seguridad](/es/security/#seguridad-de-los-hooks) antes de instalar uno. El catálogo incluido todavía no trae ninguno.

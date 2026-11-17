@@ -42,7 +42,19 @@ describe('agents docs', () => {
     });
   });
 
-  it.each(['README.md', 'CONTRIBUTING.md'])('does not document the init flag that ships later in %s', (file) => {
-    expect(readFileSync(join(ROOT, file), 'utf8')).not.toMatch(/--agents|--kind agent/);
+  it.each([
+    'README.md',
+    'website/src/content/docs/en/cli/commands.md',
+    'website/src/content/docs/en/cli/flags.md',
+    'website/src/content/docs/es/cli/commands.md',
+    'website/src/content/docs/es/cli/flags.md',
+  ])('documents the init flag and the uninstall kind in %s', (file) => {
+    const text = readFileSync(join(ROOT, file), 'utf8');
+    expect(text).toMatch(/--agents/);
+    expect(text).toMatch(/--kind[^\n]*agent/);
+  });
+
+  it('keeps the flag out of CONTRIBUTING.md, which links to the README for usage', () => {
+    expect(readFileSync(join(ROOT, 'CONTRIBUTING.md'), 'utf8')).not.toMatch(/--kind agent/);
   });
 });

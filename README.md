@@ -165,6 +165,7 @@ shitaku init --skills example-skill --scope project
 shitaku init --mcps github --skills example-skill --scope project
 shitaku init --scripts my-script --scope project
 shitaku init --commands review --scope project
+shitaku init --agents reviewer --scope project
 shitaku init --hooks fmt --scope project
 
 # Hooks run commands: --yes alone is refused, pass --allow-hooks to skip the confirmation
@@ -177,10 +178,10 @@ shitaku init --mcps github --scope user --dry-run
 shitaku undo [--id <id>] [--force] [--dry-run]
 
 # Browse what a catalog offers (read-only)
-shitaku list [mcps|skills|profiles|scripts|commands|hooks] [--search <text>] [--source <folder>] [--json]
+shitaku list [mcps|skills|profiles|scripts|commands|hooks|agents] [--search <text>] [--source <folder>] [--json]
 
-# Remove one installed MCP, skill, script, slash command or hook (undo reverts it)
-shitaku uninstall <name> [--scope project|user] [--kind mcp|skill|script|command|hook] [--force] [--dry-run]
+# Remove one installed MCP, skill, script, slash command, agent or hook (undo reverts it)
+shitaku uninstall <name> [--scope project|user] [--kind mcp|skill|script|command|hook|agent] [--force] [--dry-run]
 
 # Report what shitaku installed and whether it changed (read-only)
 shitaku status [--scope project|user] [--source <folder>] [--json]
@@ -203,7 +204,7 @@ shitaku upgrade
 
 Scopes: `project` writes MCPs to `./.mcp.json`, skills to `./.claude/skills/`, and scripts to `./.shitaku/scripts/`; `user` writes MCPs to `~/.claude.json`, skills to `~/.claude/skills/`, and scripts to `~/.claude/.shitaku/scripts/` (close Claude Code first when writing `~/.claude.json`). Slash commands go to `./.claude/commands/` (`project`) or `~/.claude/commands/` (`user`). Hooks are merged into `./.claude/settings.json` (`project`) or `~/.claude/settings.json` (`user`). Scripts never install into agent skill directories.
 
-Flags for `init`: `--mcps <a,b>`, `--skills <a,b>`, `--scripts <a,b>`, `--commands <a,b>`, `--hooks <a,b>`, `--allow-hooks`, `--scope project|user`, `--source <folder>`, `--dry-run`, `--yes` (skip confirmation, needs `--scope` and at least one of `--mcps`/`--skills`/`--scripts`/`--commands`/`--hooks`; it never confirms hooks), `--force` (overwrite entries, command files and skill/script directories that differ). The five selection flags are independent and optional, but at least one kind must be selected. Interactively, the skills, scripts, commands or hooks prompt appears only when the catalog has that kind.
+Flags for `init`: `--mcps <a,b>`, `--skills <a,b>`, `--scripts <a,b>`, `--commands <a,b>`, `--agents <a,b>`, `--hooks <a,b>`, `--allow-hooks`, `--scope project|user`, `--source <folder>`, `--dry-run`, `--yes` (skip confirmation, needs `--scope` and at least one of `--mcps`/`--skills`/`--scripts`/`--commands`/`--agents`/`--hooks`; it never confirms hooks), `--force` (overwrite entries, command and agent files and skill/script directories that differ). The six selection flags are independent and optional, but at least one kind must be selected. Interactively, the skills, scripts, commands, agents or hooks prompt appears only when the catalog has that kind. Agents are never gated behind a confirmation, with or without `--source`; read them first, since they can grant tools or permissions.
 
 Exit codes: `0` ok, `1` error, `2` unresolved conflicts (an existing entry with the same name differs; re-run with `--force`), `3` undo or uninstall refused because a file or item changed since the install (use `--force`), `4` `doctor` found problems.
 
@@ -337,12 +338,13 @@ shitaku uninstall github --scope user         # narrow when it is owned in both
 shitaku uninstall demo --kind skill           # resolve a name that is both an MCP and a skill
 shitaku uninstall demo --kind script          # resolve a script when the name collides
 shitaku uninstall review --kind command       # remove one installed slash command file
+shitaku uninstall reviewer --kind agent       # remove one installed agent file
 shitaku uninstall fmt --kind hook             # remove one installed hook handler
 shitaku uninstall github --dry-run            # print the plan, write nothing
 shitaku uninstall github --force              # remove even if the item changed since the install
 ```
 
-Flags: `--scope project|user`, `--kind mcp|skill|script|command|hook`, `--dry-run`, `--force`. If the name matches several owned items, the command exits `1` and lists the candidates (kind and scope).
+Flags: `--scope project|user`, `--kind mcp|skill|script|command|hook|agent`, `--dry-run`, `--force`. If the name matches several owned items, the command exits `1` and lists the candidates (kind and scope).
 
 Exit codes: `0` removed, already absent or dry run; `1` error (not installed, ambiguous, corrupt manifest); `3` refused because the item changed since the install. Refusal prints `changed since install: <path>` and a `--force` hint, writes nothing, and also applies to `--dry-run`, so a dry run reports exactly what a real run would do.
 
