@@ -1,4 +1,5 @@
 import { confirm, isCancel, log, multiselect, select } from '@clack/prompts';
+import type { AgentItem } from '@/domain/catalog/agent.js';
 import type { CommandItem } from '@/domain/catalog/command.js';
 import type { HookItem } from '@/domain/catalog/hook.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
@@ -22,6 +23,7 @@ const CONFLICT_LABELS: Record<ConflictInfo['kind'], string> = {
   skill: 'Skill',
   script: 'Script',
   command: 'Command',
+  agent: 'Agent',
 };
 
 export class ClackPrompter implements Prompter {
@@ -60,6 +62,16 @@ export class ClackPrompter implements Prompter {
       await multiselect({
         message: 'Which slash commands do you want to install?',
         options: options.map((c) => ({ value: c.name, label: c.name, hint: c.description })),
+        required: false,
+      }),
+    );
+  }
+
+  async selectAgents(options: AgentItem[]): Promise<string[]> {
+    return answer<string[]>(
+      await multiselect({
+        message: 'Which agents do you want to install? (agents can grant tools or permissions)',
+        options: options.map((a) => ({ value: a.name, label: a.name, hint: a.description })),
         required: false,
       }),
     );
@@ -109,6 +121,7 @@ export class ClackPrompter implements Prompter {
       plan.skills.length +
       plan.scripts.length +
       plan.commands.length +
+      plan.agents.length +
       plan.hooks.filter(writesHookFile).length;
     return answer<boolean>(
       await confirm({ message: `Apply the changes to ${targets} location${targets === 1 ? '' : 's'}?` }),

@@ -7,6 +7,7 @@ import {
   applyPlan,
   LeakError,
   StaleFileError,
+  UnknownAgentError,
   UnknownCommandError,
   UnknownHookError,
   UnknownMcpError,
@@ -82,6 +83,7 @@ interface InitOptions {
   skills?: string[];
   scripts?: string[];
   commands?: string[];
+  agents?: string[];
   hooks?: string[];
   /** The one flag that skips the hook confirmation; `--yes` never does. */
   allowHooks?: boolean;
@@ -163,6 +165,10 @@ function printPlan(deps: CliDeps, plan: ChangePlan): void {
     deps.out(`${command.scope} scope: ${command.path}`);
     deps.out(row(command.name, command.action, command.reason));
   }
+  for (const agent of plan.agents) {
+    deps.out(`${agent.scope} scope: ${agent.path}`);
+    deps.out(row(agent.name, agent.action, agent.reason));
+  }
   for (const file of plan.hooks.filter((f) => f.items.length > 0)) {
     deps.out(`${file.scope} scope: ${file.path}`);
     for (const hook of file.items) deps.out(row(hook.name, hook.action, hook.reason));
@@ -194,6 +200,7 @@ function hasKindFlag(opts: InitOptions): boolean {
     opts.skills !== undefined ||
     opts.scripts !== undefined ||
     opts.commands !== undefined ||
+    opts.agents !== undefined ||
     opts.hooks !== undefined
   );
 }
@@ -207,7 +214,7 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
   const kindFlag = hasKindFlag(opts);
   const nonInteractive = initIsNonInteractive(opts);
   if (nonInteractive && !kindFlag) {
-    deps.err('error: select at least one kind: pass --mcps, --skills, --scripts, --commands and/or --hooks');
+    deps.err('error: select at least one kind: pass --mcps, --skills, --scripts, --commands, --agents and/or --hooks');
     return 1;
   }
   if (nonInteractive && opts.scope === undefined) {
@@ -243,15 +250,17 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
   const commands =
     opts.commands ??
     (kindFlag || catalog.commands.length === 0 ? [] : await deps.prompter.selectCommands(catalog.commands));
+  const agents =
+    opts.agents ?? (kindFlag || catalog.agents.length === 0 ? [] : await deps.prompter.selectAgents(catalog.agents));
   const hooks =
     opts.hooks ?? (kindFlag || catalog.hooks.length === 0 ? [] : await deps.prompter.selectHooks(catalog.hooks));
-  if (mcps.length + skills.length + scripts.length + commands.length + hooks.length === 0) {
-    deps.err('error: select at least one MCP, skill, script, command or hook');
+  if (mcps.length + skills.length + scripts.length + commands.length + agents.length + hooks.length === 0) {
+    deps.err('error: select at least one MCP, skill, script, command, agent or hook');
     return 1;
   }
   const scope = opts.scope ?? (await deps.prompter.selectScope());
   let force = opts.force === true;
-  let request: InitRequest = { mcps, skills, scripts, commands, hooks, scope, force };
+  let request: InitRequest = { mcps, skills, scripts, commands, agents, hooks, scope, force };
   let plan = await planInit(initDeps, request);
 
   const conflicts = [
@@ -261,6 +270,7 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
     ...plan.skills.filter((sk) => sk.action === 'conflict').map((sk) => ({ ...sk, kind: 'skill' as const })),
     ...plan.scripts.filter((sc) => sc.action === 'conflict').map((sc) => ({ ...sc, kind: 'script' as const })),
     ...plan.commands.filter((c) => c.action === 'conflict').map((c) => ({ ...c, kind: 'command' as const })),
+    ...plan.agents.filter((a) => a.action === 'conflict').map((a) => ({ ...a, kind: 'agent' as const })),
   ];
   if (conflicts.length > 0) {
     if (nonInteractive) {
@@ -268,7 +278,13 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
       deps.err('error: unresolved conflicts; re-run with --force to overwrite them');
       return EXIT_CONFLICT;
     }
-    const keep = { mcp: new Set(mcps), skill: new Set(skills), script: new Set(scripts), command: new Set(commands) };
+    const keep = {
+      mcp: new Set(mcps),
+      skill: new Set(skills),
+      script: new Set(scripts),
+      command: new Set(commands),
+      agent: new Set(agents),
+    };
     for (const c of conflicts) {
       const choice = await deps.prompter.resolveConflict({
         kind: c.kind,
@@ -283,6 +299,7 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
       skills: skills.filter((sk) => keep.skill.has(sk)),
       scripts: scripts.filter((sc) => keep.script.has(sc)),
       commands: commands.filter((c) => keep.command.has(c)),
+      agents: agents.filter((a) => keep.agent.has(a)),
       hooks,
       scope,
       force,
@@ -301,7 +318,10 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
     if (!(await deps.prompter.confirmHooks(previews))) {
       request = { ...request, hooks: [] };
       plan = await planInit(initDeps, request);
-      if (plan.files.length + plan.skills.length + plan.scripts.length + plan.commands.length === 0) {
+      if (
+        plan.files.length + plan.skills.length + plan.scripts.length + plan.commands.length + plan.agents.length ===
+        0
+      ) {
         deps.out('aborted: nothing was written');
         return 0;
       }
@@ -349,7 +369,7 @@ async function runUndo(deps: CliDeps, opts: { id?: string; force?: boolean; dryR
 
 interface UninstallOptions {
   scope?: Scope;
-  kind?: 'mcp' | 'skill' | 'script' | 'command' | 'hook';
+  kind?: 'mcp' | 'skill' | 'script' | 'command' | 'hook' | 'agent';
   dryRun?: boolean;
   force?: boolean;
 }
@@ -591,11 +611,12 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
   program
     .command('init')
-    .description('Install MCP servers, skills, scripts, slash commands and hooks for Claude Code')
+    .description('Install MCP servers, skills, scripts, slash commands, agents and hooks for Claude Code')
     .option('--mcps <names>', 'comma-separated MCP names', csv)
     .option('--skills <names>', 'comma-separated skill names', csv)
     .option('--scripts <names>', 'comma-separated script names', csv)
     .option('--commands <names>', 'comma-separated slash command names', csv)
+    .option('--agents <names>', 'comma-separated agent names (agents can grant tools or permissions)', csv)
     .option('--hooks <names>', 'comma-separated hook names (hooks run code: you confirm the exact commands first)', csv)
     .option(
       '--allow-hooks',
@@ -604,13 +625,16 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     .addOption(new Option('--scope <scope>', 'where to install').choices(['project', 'user']))
     .option(
       '--source <folder>',
-      'use a catalog folder instead of the bundled one (trusted: its commands and hooks run code)',
+      'use a catalog folder instead of the bundled one (trusted: its commands and hooks run code, and its agents can grant tools or permissions)',
     )
     .option('--dry-run', 'print the plan without writing anything')
-    .option('--yes', 'skip confirmation (requires --scope and --mcps, --skills, --scripts, --commands and/or --hooks)')
+    .option(
+      '--yes',
+      'skip confirmation (requires --scope and --mcps, --skills, --scripts, --commands, --agents and/or --hooks)',
+    )
     .option(
       '--force',
-      'overwrite existing entries, skill/script directories and command files that differ (backed up first)',
+      'overwrite existing entries, skill/script directories and command/agent files that differ (backed up first)',
     )
     .action(async (opts: InitOptions) => void (exitCode = await guarded(deps, () => runInit(deps, opts))));
 
@@ -627,15 +651,18 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
   program
     .command('uninstall <name>')
-    .description('Remove one MCP server, skill, script, slash command or hook that shitaku installed (undo reverts it)')
+    .description(
+      'Remove one MCP server, skill, script, slash command, agent or hook that shitaku installed (undo reverts it)',
+    )
     .addOption(new Option('--scope <scope>', 'scope to remove from (default: inferred)').choices(['project', 'user']))
     .addOption(
-      new Option('--kind <kind>', 'resolve a name that is an MCP, skill, script, command and/or hook').choices([
+      new Option('--kind <kind>', 'resolve a name that is an MCP, skill, script, command, hook and/or agent').choices([
         'mcp',
         'skill',
         'script',
         'command',
         'hook',
+        'agent',
       ]),
     )
     .option('--dry-run', 'show what would be removed')
@@ -658,7 +685,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
   program
     .command('list')
-    .description('List the MCPs, skills, profiles, scripts, slash commands and hooks a catalog offers')
+    .description('List the MCPs, skills, profiles, scripts, slash commands, agents and hooks a catalog offers')
     .addArgument(new Argument('[kind]', 'only list this kind').choices(LIST_KINDS))
     .option('--search <text>', 'only items whose name or description contains this text (case-insensitive)')
     .option('--source <folder>', 'list a catalog folder instead of the bundled one')
@@ -734,6 +761,7 @@ async function guarded(deps: CliDeps, run: () => Promise<number>): Promise<numbe
       UnknownSkillError,
       UnknownScriptError,
       UnknownCommandError,
+      UnknownAgentError,
       UnknownHookError,
       UnsafeTreeError,
       StaleFileError,

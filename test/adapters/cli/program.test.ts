@@ -19,7 +19,10 @@ const TOKEN = 'abc123-secret-value';
 /** Scripted prompter; any call it was not scripted for fails the test. */
 function fakePrompter(
   script: Partial<
-    Record<'mcps' | 'skills' | 'scripts' | 'commands' | 'hooks' | 'scope' | 'confirm' | 'confirmHooks', unknown>
+    Record<
+      'mcps' | 'skills' | 'scripts' | 'commands' | 'agents' | 'hooks' | 'scope' | 'confirm' | 'confirmHooks',
+      unknown
+    >
   > & {
     conflict?: 'overwrite' | 'skip';
   } = {},
@@ -46,6 +49,10 @@ function fakePrompter(
     selectCommands: () => (
       calls.push('commands'),
       Promise.resolve((script.commands as string[] | undefined) ?? unscripted('commands'))
+    ),
+    selectAgents: () => (
+      calls.push('agents'),
+      Promise.resolve((script.agents as string[] | undefined) ?? unscripted('agents'))
     ),
     selectHooks: () => (
       calls.push('hooks'),
@@ -644,6 +651,111 @@ describe('runCli', () => {
     it('rejects --kind widget with the allowed choices', async () => {
       expect(await run('uninstall', 'review', '--kind', 'widget')).toBe(1);
       expect(err.join('\n')).toContain('Allowed choices are mcp, skill, script, command');
+    });
+  });
+
+  describe('agents', () => {
+    const agentFile = (name = 'reviewer', root = tmp.cwd) => join(root, '.claude', 'agents', `${name}.md`);
+    const AGENT = (name: string) => `---\nname: ${name}\ndescription: ${name} agent\ntools:\n  - Read\n---\nBody\n`;
+    /** A folder catalog that offers the given agents only. */
+    const writeAgentCatalog = async (names: string[] = ['reviewer', 'planner']): Promise<string> => {
+      const dir = join(tmp.root, 'agents-catalog');
+      await mkdir(join(dir, 'agents'), { recursive: true });
+      await writeFile(
+        join(dir, 'catalog.json'),
+        JSON.stringify({ version: 1, items: { mcps: [], skills: [], scripts: [], agents: names, profiles: [] } }),
+      );
+      for (const name of names) await writeFile(join(dir, 'agents', `${name}.md`), AGENT(name));
+      return dir;
+    };
+
+    it('lists --agents in init help and the --source trust copy mentions agents and grants', async () => {
+      expect(await run('init', '--help')).toBe(0);
+      const help = text().replace(/\s+/g, ' ');
+      expect(help).toContain('--agents');
+      expect(help).toMatch(/--source.*agents.*tools or permissions/);
+    });
+
+    it('installs only the selected agent without prompts or a consent gate, and undo reverts it', async () => {
+      const dir = await writeAgentCatalog();
+      expect(await run('init', '--agents', 'reviewer', '--scope', 'project', '--source', dir)).toBe(0);
+      expect(await readFile(agentFile(), 'utf8')).toBe(AGENT('reviewer'));
+      expect(await readdir(join(tmp.cwd, '.claude', 'agents'))).toEqual(['reviewer.md']);
+      expect(calls).toEqual([]);
+      expect(await run('undo')).toBe(0);
+      await expect(readdir(join(tmp.cwd, '.claude'))).rejects.toThrow();
+    });
+
+    it('treats --agents as a kind flag: --yes without any kind flag still fails', async () => {
+      const dir = await writeAgentCatalog();
+      expect(await run('init', '--yes', '--scope', 'project', '--source', dir)).toBe(1);
+      expect(err.join('\n')).toContain('--agents');
+      expect(await run('init', '--yes', '--agents', 'planner', '--scope', 'project', '--source', dir)).toBe(0);
+    });
+
+    it('exits 1 naming an unknown agent and writes nothing', async () => {
+      const dir = await writeAgentCatalog();
+      expect(await run('init', '--agents', 'ghost', '--scope', 'project', '--source', dir)).toBe(1);
+      expect(err.join('\n')).toMatch(/^error: .*ghost/);
+      expect(await readdir(tmp.cwd)).toEqual([]);
+    });
+
+    it('prints the agent in the plan on --dry-run', async () => {
+      const dir = await writeAgentCatalog();
+      expect(await run('init', '--agents', 'reviewer', '--scope', 'project', '--dry-run', '--source', dir)).toBe(0);
+      expect(out).toContain(`project scope: ${agentFile()}`);
+      expect(out).toContain('  reviewer: create');
+    });
+
+    it('asks for agents only when the catalog has some', async () => {
+      const dir = await writeAgentCatalog();
+      usePrompter({ mcps: [], agents: ['reviewer'], scope: 'project', confirm: true });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(calls).toEqual(['mcps', 'agents', 'scope', 'confirm']);
+      expect(await readFile(agentFile(), 'utf8')).toBe(AGENT('reviewer'));
+      usePrompter({ mcps: [], skills: [], scripts: [], commands: [], hooks: [], scope: 'project', confirm: true });
+      await run('init', '--source', await writeCatalogWithoutAgents());
+      expect(calls).not.toContain('agents');
+    });
+
+    const writeCatalogWithoutAgents = async (): Promise<string> => {
+      const dir = join(tmp.root, 'no-agents');
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, 'catalog.json'), JSON.stringify({ version: 1, items: { mcps: [], profiles: [] } }));
+      return dir;
+    };
+
+    it('resolves an interactive agent conflict with the agent kind', async () => {
+      const dir = await writeAgentCatalog();
+      await mkdir(join(tmp.cwd, '.claude', 'agents'), { recursive: true });
+      await writeFile(agentFile(), 'mine\n');
+      usePrompter({ mcps: [], agents: ['reviewer'], scope: 'project', conflict: 'skip', confirm: true });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(conflicts).toEqual([expect.objectContaining({ kind: 'agent', name: 'reviewer' })]);
+      expect(await readFile(agentFile(), 'utf8')).toBe('mine\n');
+    });
+
+    it('exits 2 on a non-interactive agent conflict', async () => {
+      const dir = await writeAgentCatalog();
+      await mkdir(join(tmp.cwd, '.claude', 'agents'), { recursive: true });
+      await writeFile(agentFile(), 'mine\n');
+      expect(await run('init', '--yes', '--agents', 'reviewer', '--scope', 'project', '--source', dir)).toBe(2);
+      expect(err).toContain("conflict: agent 'reviewer' already exists with different content");
+    });
+
+    it('uninstalls an agent with --kind agent, and list accepts agents', async () => {
+      const dir = await writeAgentCatalog();
+      await run('init', '--agents', 'reviewer', '--scope', 'project', '--source', dir);
+      expect(await run('uninstall', 'reviewer', '--kind', 'agent')).toBe(0);
+      expect(text()).toMatch(/uninstalled agent 'reviewer' \(project scope\)/);
+      out.length = 0;
+      expect(await run('list', 'agents', '--source', dir)).toBe(0);
+      expect(out).toContain('agents:');
+    });
+
+    it('lists agent among the --kind choices on an invalid kind', async () => {
+      expect(await run('uninstall', 'reviewer', '--kind', 'widget')).toBe(1);
+      expect(err.join('\n')).toContain('Allowed choices are mcp, skill, script, command, hook, agent');
     });
   });
 
@@ -1404,7 +1516,7 @@ describe('runCli', () => {
       useUpdates('0.3.0');
       expect(await run('init', '--yes')).toBe(1);
       expect(err).toEqual([
-        'error: select at least one kind: pass --mcps, --skills, --scripts, --commands and/or --hooks',
+        'error: select at least one kind: pass --mcps, --skills, --scripts, --commands, --agents and/or --hooks',
         NOTICE,
       ]);
     });
