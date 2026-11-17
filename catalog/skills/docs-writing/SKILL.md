@@ -15,6 +15,7 @@ Use when asked to write, update, or review project documentation: README, CHANGE
 - Comments explain why, not what. Document public API contracts with JSDoc/TSDoc (params, returns, throws). Leave no commented-out code and no stale TODOs.
 - Update docs in the same change as the behavior they describe. Run the docs generators and their check scripts; never hand-edit generated output.
 - Write concise, neutral prose in second person or imperative. Do not pad, and do not market.
+- Give runnable, copy-pasteable examples, and update CLI help and flag docs when behavior changes.
 - Stay generic: do not assume any repository-specific file, tool, label, or convention name.
 
 ## Decision Gates
