@@ -135,3 +135,44 @@ Files: `src/application/init-mcps.ts`, `test/application/{init-mcps,undo-install
 
 - `undo-install.ts` and `isByteFile`/`itemRoots` needed no change (design f confirmed).
 - Commands and agents now share `flatFileEntries` (plan) and `refreshFlatFiles` (apply).
+
+## PR 6: Uninstall, status, doctor
+
+| Task | RED                                                                               | GREEN                                                                            | Refactor                                             |
+| ---- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| 6.1  | 8 agent uninstall tests failed (`'reviewer' was not installed by shitaku`)        | n/a                                                                              | n/a                                                  |
+| 6.2  | see 6.1                                                                           | `expectedPath` agent branch; `isFlatFileKind` in `planUninstall` / `assertFresh` | n/a                                                  |
+| 6.3  | skill+agent and command+agent collisions removed without error (single candidate) | same `expectedPath` branch makes both kinds candidates                           | n/a                                                  |
+| 6.4  | 4 agent status tests failed (agent observed as a tree)                            | n/a                                                                              | n/a                                                  |
+| 6.5  | see 6.4                                                                           | `observeFile` dispatch via `isFlatFileKind`; `desiredFor` agent branch           | n/a                                                  |
+| 6.6  | `agent-missing` finding not emitted                                               | `agent-missing` in `doctor-plan.ts`                                              | command/agent missing branches merged (6.7)          |
+| 6.7  | n/a                                                                               | n/a                                                                              | one flat-file `*-missing` branch in `doctor-plan.ts` |
+| 6.8  | n/a                                                                               | n/a                                                                              | grep table below                                     |
+
+Files: `src/application/{uninstall-item,installed-state}.ts`, `src/domain/plan/doctor-plan.ts`, and the uninstall, status and doctor-plan tests. Code and tests: 224 insertions, 13 deletions (~237 lines).
+Verification: typecheck, lint, format:check, build clean; full suite green (1400 tests).
+
+### Deviations
+
+- Doctor still emits the generic info `modified` finding for an edited agent (same as commands); only `agent-missing` is absent for it.
+- Disambiguation is tested at the application level (`kind` omitted gives candidates, `kind: 'agent'` resolves); the `--kind agent` CLI wiring is PR 8.
+- `undo-install.ts` and `status.ts` / `doctor.ts` needed no change.
+
+### 6.8 grep classification (`rg -n "kind === 'command'|kind !== 'command'|'command'" src`)
+
+| Hit                                                          | Class | Note                                                               |
+| ------------------------------------------------------------ | ----- | ------------------------------------------------------------------ |
+| `domain/manifest.ts:27` command item literal                 | (b)   | agent literal sits right below (PR 1)                              |
+| `domain/manifest.ts:50-51` `FlatFileKind` / `isFlatFileKind` | (a)   | the helper itself                                                  |
+| `domain/manifest.ts:125,195` kind unions                     | (b)   | include `'agent'`                                                  |
+| `domain/manifest.ts:152` `deriveCommandOwnership`            | (b)   | `deriveAgentOwnership` added in PR 4                               |
+| `domain/hook-merge.ts:7`, `domain/catalog/hook.ts:46,50`     | (c)   | hook handler `type: 'command'`, not an item kind                   |
+| `domain/catalog/listing.ts:6,24`                             | (b)   | `EntryKind` includes `agent`; `commands:` key maps the plural flag |
+| `application/installed-state.ts:164` `desiredFor`            | (b)   | agent branch added in PR 6                                         |
+| `application/uninstall-item.ts:84` `expectedPath`            | (b)   | agent branch added in PR 6 (read/fresh checks migrated to (a))     |
+| `application/init-mcps.ts:143,449,464`                       | (b)   | agent plan, apply and step siblings added in PR 5                  |
+| `adapters/claude-code/target.ts:25`                          | (c)   | hook handler `type: 'command'`                                     |
+| `ports/prompter.ts:18`                                       | defer | PR 8 (conflict kind union)                                         |
+| `adapters/cli/program.ts:263,352,637`                        | defer | PR 8 (`--agents`, `--kind agent`, conflict kinds)                  |
+
+Migrated to `isFlatFileKind` in PR 6: `uninstall-item.ts` (`planUninstall`, `assertFresh`), `installed-state.ts` (`observeFile` dispatch), `doctor-plan.ts` (missing branch).
