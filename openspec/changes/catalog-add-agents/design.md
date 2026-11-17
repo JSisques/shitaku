@@ -78,4 +78,4 @@ No migration. Downgrade after installing agents requires `undo`/`uninstall` firs
 
 ## Open Questions
 
-- [ ] Block-scalar `description` (`description: |`) is rejected; acceptable for v1?
+- [x] Block-scalar `name`/`description` (`description: |`) is rejected in v1; accepted. Follow-up: https://github.com/JSisques/shitaku/issues/238

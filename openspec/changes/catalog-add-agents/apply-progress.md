@@ -46,3 +46,17 @@ Command-specific branches to classify in PR 6 (task 6.8):
 - `KnownNames` omits `agents?` until PR 3b (`ResolvedProfile` has no `agents` yet).
 - Added the `agent` literal to the manifest `ItemSchema` and `'agent'` to `OwnedItem.kind` now (design row d, pulled forward): required for `ByteStep.item.kind: FlatFileKind` to typecheck against `Install['files']`. Additive; old manifests parse. Test added ("agent items").
 - `refreshFlatFile` stays private; the `'agent'` noun path cannot be exercised until `plan.agents` exists (PR 5). The `'command'` noun path is covered by existing suites.
+
+## PR 2: Frontmatter nested mode
+
+| Task | RED                                              | GREEN                                    | Refactor                                  |
+| ---- | ------------------------------------------------ | ---------------------------------------- | ----------------------------------------- |
+| 2.1  | strict-mode-unchanged test (absent/false option) | default path unchanged                   | n/a                                       |
+| 2.2  | 10 nested-mode tests failed, 10 existing passed  | `allowNested` overload + `opaque` list   | n/a                                       |
+| 2.3  | see 2.2                                          | 20/20 in `frontmatter.test.ts`           | n/a                                       |
+| 2.4  | n/a                                              | n/a                                      | shared `splitBlock` helper for both modes |
+| 2.5  | n/a                                              | design.md Open Question closed, #238 ref | n/a                                       |
+
+### Deviations
+
+- `readFrontmatter` uses overloads: strict mode still returns `{ data, body }` with no `opaque` key (so existing `toEqual` tests stay untouched); nested mode returns the new `NestedFrontmatterResult` with `opaque`. Design typed `opaque` as always present on `FrontmatterResult`.

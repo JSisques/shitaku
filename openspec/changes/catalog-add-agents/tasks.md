@@ -48,11 +48,11 @@ Spec scenarios: none new (behavior-preserving); supports every later PR.
 
 Spec scenarios: catalog "Opt-in nested frontmatter reader" (Strict mode unchanged, Nested mode for agents, Missing frontmatter still rejected).
 
-- [ ] 2.1 RED: in `test/domain/catalog/frontmatter.test.ts`, strict mode unchanged (existing tests untouched)
-- [ ] 2.2 RED: nested mode cases: `tools` list, `mcpServers` map, `|` block, `>` block, empty value, orphan indented line (issue), CRLF, no/unterminated frontmatter rejected, `opaque` names returned
-- [ ] 2.3 GREEN: `readFrontmatter(text, file, { allowNested: true })` and `FrontmatterResult.opaque` in `src/domain/catalog/frontmatter.ts` (pure; default mode byte-identical)
-- [ ] 2.4 REFACTOR: share line-splitting helper between modes; keep architecture guard green (`test/architecture.test.ts`)
-- [ ] 2.5 Edit `openspec/changes/catalog-add-agents/design.md`: resolve the Open Question as "block-scalar `name`/`description` rejected in v1; follow-up https://github.com/JSisques/shitaku/issues/238"
+- [x] 2.1 RED: in `test/domain/catalog/frontmatter.test.ts`, strict mode unchanged (existing tests untouched)
+- [x] 2.2 RED: nested mode cases: `tools` list, `mcpServers` map, `|` block, `>` block, empty value, orphan indented line (issue), CRLF, no/unterminated frontmatter rejected, `opaque` names returned
+- [x] 2.3 GREEN: `readFrontmatter(text, file, { allowNested: true })` and `FrontmatterResult.opaque` in `src/domain/catalog/frontmatter.ts` (pure; default mode byte-identical)
+- [x] 2.4 REFACTOR: share line-splitting helper between modes; keep architecture guard green (`test/architecture.test.ts`)
+- [x] 2.5 Edit `openspec/changes/catalog-add-agents/design.md`: resolve the Open Question as "block-scalar `name`/`description` rejected in v1; follow-up https://github.com/JSisques/shitaku/issues/238"
 
 ## PR 3a: Agent schema (~200 lines)
 
