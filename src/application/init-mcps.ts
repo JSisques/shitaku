@@ -2,7 +2,7 @@ import { dirname } from 'node:path';
 import { hashEntry, sha256 } from '@/domain/hash.js';
 import type { HookItem } from '@/domain/catalog/hook.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
-import type { Install, Manifest, OwnedHook } from '@/domain/manifest.js';
+import type { FlatFileKind, Install, Manifest, OwnedHook } from '@/domain/manifest.js';
 import {
   deriveCommandOwnership,
   deriveHookOwnership,
@@ -278,19 +278,20 @@ async function refreshScript(
   return replanned!;
 }
 
-/** Re-reads each writable command file; re-plans once if it changed, aborting when the action differs. */
+/** Re-reads each writable flat file of `kind`; re-plans once if it changed, aborting when the action differs. */
 async function refreshFlatFile(
   deps: InitDeps,
   change: FlatFileChange,
   owned: Record<string, string>,
   force: boolean,
+  kind: FlatFileKind,
 ): Promise<FlatFileChange> {
   const { name, path, scope, bytes } = change;
   const present = await deps.fs.readBytes(path);
   const [replanned] = buildFlatFilePlan({
     entries: [{ name, path, scope, bytes, present }],
     owned,
-    noun: 'command',
+    noun: kind,
     force,
   });
   if (replanned!.action !== change.action) throw new StaleFileError(`${path} changed since planning, re-run`);
@@ -306,7 +307,7 @@ interface ByteStep {
   scope: Scope;
   /** The manifest item this file belongs to; for a command `root` is the file itself. */
   item: {
-    kind: TreeKind | 'command';
+    kind: TreeKind | FlatFileKind;
     name: string;
     action: 'create' | 'update';
     entryHash: string;
@@ -343,12 +344,12 @@ function treeSteps(change: TreeChange, kind: TreeKind): ByteStep[] {
   return [...writes, ...removals, ...entryWrites];
 }
 
-/** A command is one file, so its step is both the whole item and its own root. */
-const commandStep = (change: FlatFileChange): ByteStep => ({
+/** A command or agent is one file, so its step is both the whole item and its own root. */
+const flatFileStep = (change: FlatFileChange, kind: FlatFileKind): ByteStep => ({
   path: change.path,
   scope: change.scope,
   item: {
-    kind: 'command',
+    kind,
     name: change.name,
     action: change.action as 'create' | 'update',
     entryHash: change.desiredHash,
@@ -389,7 +390,7 @@ export async function applyPlan(deps: InitDeps, plan: ChangePlan, opts: { force?
   const commandOwners = deriveCommandOwnership(manifest);
   const commands: FlatFileChange[] = [];
   for (const change of plan.commands.filter(writesFlatFile))
-    commands.push(await refreshFlatFile(deps, change, commandOwners, force));
+    commands.push(await refreshFlatFile(deps, change, commandOwners, force, 'command'));
   const hookOwners = deriveHookOwnership(manifest);
   const hooks: HookFileChange[] = [];
   for (const change of plan.hooks.filter(writesHookFile))
@@ -402,7 +403,7 @@ export async function applyPlan(deps: InitDeps, plan: ChangePlan, opts: { force?
   const steps = [
     ...skills.flatMap((c) => treeSteps(c, 'skill')),
     ...scripts.flatMap((c) => treeSteps(c, 'script')),
-    ...commands.map(commandStep),
+    ...commands.map((c) => flatFileStep(c, 'command')),
   ];
   const createdDirs = await missingDirs(deps.fs, [
     ...steps.filter((s) => s.after !== null).map((s) => s.path),

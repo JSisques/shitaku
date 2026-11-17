@@ -7,6 +7,7 @@ import {
   deriveScriptOwnership,
   deriveSkillOwnership,
   emptyManifest,
+  isFlatFileKind,
   ManifestError,
   parseManifest,
   type Install,
@@ -452,6 +453,23 @@ describe('command items', () => {
   });
 });
 
+describe('agent items', () => {
+  it('parses an agent item whose root is the file path, accepting a null afterHash', () => {
+    const path = '/w/.claude/agents/reviewer.md';
+    const item = { kind: 'agent', name: 'reviewer', action: 'remove', entryHash: 'h1', root: path };
+    const file = { path, scope: 'project', backup: null, beforeHash: 'h1', afterHash: null, items: [item] };
+    const install = {
+      id: 'a',
+      createdAt: 't',
+      undoneAt: null,
+      source: { kind: 'bundled', location: 'x', catalogVersion: 1 },
+      files: [file],
+    };
+    const parsed = parseManifest(JSON.stringify({ version: 1, installs: [install] }));
+    expect(parsed.installs[0]?.files[0]?.items[0]).toMatchObject({ kind: 'agent', root: path });
+  });
+});
+
 describe('deriveCommandOwnership', () => {
   const path = '/w/.claude/commands/review.md';
 
@@ -619,5 +637,19 @@ describe('deriveHookOwnership', () => {
     expect(
       deriveOwnedItems(manifest([hookInstall('a', hookItem()), hookInstall('b', hookItem({ action: 'remove' }))])),
     ).toEqual([]);
+  });
+});
+
+describe('isFlatFileKind', () => {
+  it.each([
+    ['command', true],
+    ['agent', true],
+    ['skill', false],
+    ['script', false],
+    ['hook', false],
+    ['mcp', false],
+    ['', false],
+  ])('isFlatFileKind(%j) is %s', (kind, expected) => {
+    expect(isFlatFileKind(kind)).toBe(expected);
   });
 });

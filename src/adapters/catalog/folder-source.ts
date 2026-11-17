@@ -58,14 +58,16 @@ export class FolderCatalogSource implements CatalogSource {
     const scripts = await this.loadScripts(index.items.scripts, issues);
     const commands = await this.loadCommands(index.items.commands, issues);
     const hooks = await this.loadHooks(index.items.hooks, issues);
-    const mcpNames = mcps.map((m) => m.name);
-    const skillNames = skills.map((sk) => sk.name);
-    const scriptNames = scripts.map((sc) => sc.name);
-    const commandNames = commands.map((c) => c.name);
-    const hookNames = hooks.map((h) => h.name);
+    const known = {
+      mcps: mcps.map((m) => m.name),
+      skills: skills.map((sk) => sk.name),
+      scripts: scripts.map((sc) => sc.name),
+      commands: commands.map((c) => c.name),
+      hooks: hooks.map((h) => h.name),
+    };
     const profiles = candidates.filter((p) => {
       try {
-        resolveProfile(p.name, candidates, mcpNames, skillNames, scriptNames, commandNames, hookNames);
+        resolveProfile(p.name, candidates, known);
         return true;
       } catch (e) {
         issues.push({ file: `profiles/${p.name}.json`, reason: e instanceof Error ? e.message : String(e) });
