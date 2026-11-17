@@ -751,20 +751,43 @@ describe('uninstallItem (agents)', () => {
   });
 
   it.each([
-    ['skill', skillSource([{ ...DEMO_V1, name: 'reviewer' }])],
-    ['command', commandSource([{ ...REVIEW_V1, name: 'reviewer' }])],
-  ] as const)('lists %s and agent candidates when the name is both, and kind agent resolves it', async (kind, base) => {
+    ['skill', skillSource([{ ...DEMO_V1, name: 'reviewer' }]), 'skills/reviewer'],
+    ['command', commandSource([{ ...REVIEW_V1, name: 'reviewer' }]), 'commands/reviewer.md'],
+  ] as const)(
+    'lists %s and agent candidates when the name is both, and kind agent resolves it',
+    async (kind, base, other) => {
+      const both: InitDeps = {
+        ...deps,
+        source: { ref: () => base.ref(), load: async () => ({ ...(await base.load()), agents: [REVIEWER] }) },
+      };
+      await install(both, kind === 'skill' ? { skills: ['reviewer'] } : { commands: ['reviewer'] });
+      const error = await uninstall({ kind: undefined }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(UninstallSelectionError);
+      expect((error as UninstallSelectionError).candidates.map((c) => c.kind).sort()).toEqual(['agent', kind]);
+      expect(await exists(file())).toBe(true);
+      expect(await uninstall()).toMatchObject({ status: 'removed', item: { kind: 'agent' } });
+      expect(await exists(file())).toBe(false);
+      expect(await exists(join(tmp.cwd, '.claude', other))).toBe(true);
+    },
+  );
+
+  it('keeps the agent when kind command removes the command of the same name', async () => {
     const both: InitDeps = {
       ...deps,
-      source: { ref: () => base.ref(), load: async () => ({ ...(await base.load()), agents: [REVIEWER] }) },
+      source: {
+        ref: () => deps.source.ref(),
+        load: async () => ({
+          ...(await commandSource([{ ...REVIEW_V1, name: 'reviewer' }]).load()),
+          agents: [REVIEWER],
+        }),
+      },
     };
-    await install(both, kind === 'skill' ? { skills: ['reviewer'] } : { commands: ['reviewer'] });
-    const error = await uninstall({ kind: undefined }).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(UninstallSelectionError);
-    expect((error as UninstallSelectionError).candidates.map((c) => c.kind).sort()).toEqual(['agent', kind]);
+    await install(both, { commands: ['reviewer'] });
+    const commandFile = join(tmp.cwd, '.claude', 'commands', 'reviewer.md');
+    expect(await uninstall({ kind: 'command' })).toMatchObject({ status: 'removed', item: { kind: 'command' } });
+    expect(await exists(commandFile)).toBe(false);
     expect(await exists(file())).toBe(true);
-    expect(await uninstall()).toMatchObject({ status: 'removed', item: { kind: 'agent' } });
-    expect(await exists(file())).toBe(false);
+    expect(new Uint8Array(await readFile(file()))).toEqual(REVIEWER.bytes);
   });
 });
 

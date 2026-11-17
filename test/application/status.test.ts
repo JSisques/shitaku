@@ -446,6 +446,12 @@ describe('getStatus (agents)', () => {
     expect(await statesOf()).toEqual({ 'project/agent/reviewer': 'missing' });
   });
 
+  it('reports modified, not out-of-date, when the file was edited and the catalog moved on', async () => {
+    setCatalog([REVIEWER_V2]);
+    await writeFile(file(), 'edited');
+    expect(await statesOf()).toEqual({ 'project/agent/reviewer': 'modified' });
+  });
+
   it('reports the same name in two scopes separately', async () => {
     await initMcps(deps(), { mcps: [], agents: ['reviewer'], scope: 'user' });
     expect(await statesOf()).toEqual({ 'project/agent/reviewer': 'installed', 'user/agent/reviewer': 'installed' });

@@ -735,6 +735,22 @@ describe('runCli', () => {
       expect(await readFile(agentFile(), 'utf8')).toBe('mine\n');
     });
 
+    it('replaces the file when the interactive agent conflict is answered with overwrite', async () => {
+      const dir = await writeAgentCatalog();
+      await mkdir(join(tmp.cwd, '.claude', 'agents'), { recursive: true });
+      await writeFile(agentFile(), 'mine\n');
+      usePrompter({ mcps: [], agents: ['reviewer'], scope: 'project', conflict: 'overwrite', confirm: true });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(conflicts).toEqual([expect.objectContaining({ kind: 'agent', name: 'reviewer' })]);
+      expect(await readFile(agentFile(), 'utf8')).toBe(AGENT('reviewer'));
+    });
+
+    it('lists only the agents matching --search', async () => {
+      const dir = await writeAgentCatalog();
+      expect(await run('list', 'agents', '--search', 'PLANNER', '--source', dir)).toBe(0);
+      expect(out).toEqual(['agents:', '  planner  planner agent']);
+    });
+
     it('exits 2 on a non-interactive agent conflict', async () => {
       const dir = await writeAgentCatalog();
       await mkdir(join(tmp.cwd, '.claude', 'agents'), { recursive: true });

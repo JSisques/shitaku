@@ -54,6 +54,21 @@ describe('agents docs', () => {
     expect(text).toMatch(/--kind[^\n]*agent/);
   });
 
+  it.each([
+    ['README.md', /installs MCP servers, skills, scripts, slash commands, agents and hooks/],
+    ['README.md', /removes one MCP server, skill, script, slash command, agent or hook/],
+    ['README.md', /`commands`, `agents`, `hooks`\), and each/],
+    ['README.md', /`hooks` or `agents`, plural only\)/],
+    ['README.md', /`command`, `hook` or `agent` \(singular/],
+    ['website/src/content/docs/en/cli/commands.md', /Install MCP servers, skills, slash commands, agents and hooks/],
+    ['website/src/content/docs/en/cli/commands.md', /slash command, agent or hook that shitaku owns/],
+    ['website/src/content/docs/en/cli/commands.md', /`hooks` or `agents`, plural only\)/],
+    ['website/src/content/docs/es/cli/commands.md', /comandos slash, agentes y hooks/],
+    ['website/src/content/docs/es/cli/commands.md', /comando slash, agente o hook instalado/],
+  ])('lists agents among the kinds in %s (%s)', (file, pattern) => {
+    expect(readFileSync(join(ROOT, file), 'utf8')).toMatch(pattern);
+  });
+
   it('keeps the flag out of CONTRIBUTING.md, which links to the README for usage', () => {
     expect(readFileSync(join(ROOT, 'CONTRIBUTING.md'), 'utf8')).not.toMatch(/--kind agent/);
   });
