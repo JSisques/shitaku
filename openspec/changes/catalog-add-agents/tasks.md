@@ -58,11 +58,11 @@ Spec scenarios: catalog "Opt-in nested frontmatter reader" (Strict mode unchange
 
 Spec scenarios: catalog "Valid agent loads", "Name differs from file stem", "Required fields", "Empty body", "Name regex", "No allowed-field list", "Nested YAML preserved verbatim", "Old catalog without agents".
 
-- [ ] 3a.1 RED: `parseAgent` table in `test/domain/catalog/agent.test.ts`: missing/whitespace `name` or `description`, name != stem, opaque `description` -> `key 'description' must be a single-line value`, empty/whitespace body, regex (`Reviewer`, `-x`, `a_b` rejected; `reviewer2` ok), unknown key passes, nested YAML valid, bytes verbatim
-- [ ] 3a.2 GREEN: create `src/domain/catalog/agent.ts` (`parseAgent(stem, bytes)` using `allowNested`)
-- [ ] 3a.3 RED/GREEN: `items.agents` optional, default `[]`, a path-traversal agent name (dot-dot-slash prefix) fails whole catalog (`test/domain/catalog/schema.test.ts`, `src/domain/catalog/schema.ts`)
-- [ ] 3a.4 GREEN: `test/helpers/agents.ts` builder; add `agents: []` to catalog fixtures under `test/fixtures/`
-- [ ] 3a.5 REFACTOR: reuse the command-name regex constant; no duplicate
+- [x] 3a.1 RED: `parseAgent` table in `test/domain/catalog/agent.test.ts`: missing/whitespace `name` or `description`, name != stem, opaque `description` -> `key 'description' must be a single-line value`, empty/whitespace body, regex (`Reviewer`, `-x`, `a_b` rejected; `reviewer2` ok), unknown key passes, nested YAML valid, bytes verbatim
+- [x] 3a.2 GREEN: create `src/domain/catalog/agent.ts` (`parseAgent(stem, bytes)` using `allowNested`)
+- [x] 3a.3 RED/GREEN: `items.agents` optional, default `[]`, a path-traversal agent name (dot-dot-slash prefix) fails whole catalog (`test/domain/catalog/schema.test.ts`, `src/domain/catalog/schema.ts`)
+- [x] 3a.4 GREEN: `test/helpers/agents.ts` builder; add `agents: []` to catalog fixtures under `test/fixtures/`
+- [x] 3a.5 REFACTOR: reuse the command-name regex constant; no duplicate
 
 ## PR 3b: Loader, listing, profile (~200 lines)
 

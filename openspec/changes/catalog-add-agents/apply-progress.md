@@ -60,3 +60,21 @@ Command-specific branches to classify in PR 6 (task 6.8):
 ### Deviations
 
 - `readFrontmatter` uses overloads: strict mode still returns `{ data, body }` with no `opaque` key (so existing `toEqual` tests stay untouched); nested mode returns the new `NestedFrontmatterResult` with `opaque`. Design typed `opaque` as always present on `FrontmatterResult`.
+
+## PR 3a: Agent schema
+
+| Task | RED                                                          | GREEN                                                            | Refactor                                                        |
+| ---- | ------------------------------------------------------------ | ---------------------------------------------------------------- | --------------------------------------------------------------- |
+| 3a.1 | `agent.test.ts` failed (module missing, 19 tests)            | n/a                                                              | n/a                                                             |
+| 3a.2 | see 3a.1                                                     | 19/19 with `parseAgent` + `AgentNameSchema`                      | n/a                                                             |
+| 3a.3 | 2 new `schema.test.ts` tests failed (`items.agents` missing) | `agents: z.array(AgentNameSchema).default([])`                   | n/a                                                             |
+| 3a.4 | n/a                                                          | `test/helpers/agents.ts` (`agentBytes`, `makeAgent`, `REVIEWER`) | n/a                                                             |
+| 3a.5 | n/a                                                          | n/a                                                              | `NAME_PATTERN` exported from `command.ts`, reused by `agent.ts` |
+
+Files: `src/domain/catalog/agent.ts` (new), `command.ts`, `schema.ts`, `test/domain/catalog/{agent,schema}.test.ts`, `test/helpers/agents.ts`.
+Verification: typecheck, lint, format:check, build clean; full suite 1346/1346.
+
+### Deviations
+
+- No JSON catalog fixtures exist under `test/fixtures/`, and `Catalog.agents` is PR 3b (task 3b.2), so no `agents: []` literals were added; 3a.4 is the builder helper only.
+- `NAME_PATTERN` lives in `command.ts` (existing flat-file precedent); skill/script/hook keep their own inline regex (out of scope).
