@@ -11,6 +11,7 @@ import {
   LeakError,
   planInit,
   StaleFileError,
+  UnknownAgentError,
   UnknownCommandError,
   UnknownHookError,
   UnknownMcpError,
@@ -27,6 +28,7 @@ import { UnsafeTreeError } from '@/ports/file-system.js';
 import { parseManifest, type Manifest } from '@/domain/manifest.js';
 import { DEMO_V1, DEMO_V2, faultyFs, skillSource } from '@test/helpers/skills.js';
 import { SCRIPT_V1, SCRIPT_V2, scriptSource } from '@test/helpers/scripts.js';
+import { agentSource, REVIEWER, REVIEWER_V2 } from '@test/helpers/agents.js';
 import { commandSource, REVIEW_V1, REVIEW_V2 } from '@test/helpers/commands.js';
 import { FMT_V1, FMT_V2, GUARD, hookSource } from '@test/helpers/hooks.js';
 import type { Scope } from '@/ports/agent-target.js';
@@ -1106,6 +1108,135 @@ describe('initMcps (commands)', () => {
 
   it('aborts with StaleFileError when the file changed between planning and applying', async () => {
     const plan = await planInit(deps, { mcps: [], commands: ['review'], scope: 'project' });
+    await mine();
+    await expect(applyPlan(deps, plan)).rejects.toThrow(StaleFileError);
+    expect(await readFile(file(), 'utf8')).toBe('mine');
+  });
+});
+
+describe('initMcps (agents)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const real = new NodeFileSystem();
+  const dir = (scope: Scope = 'project') => join(scope === 'user' ? tmp.homeDir : tmp.cwd, '.claude', 'agents');
+  const file = (scope: Scope = 'project') => join(dir(scope), 'reviewer.md');
+  const manifest = async (): Promise<Manifest> => parseManifest(await readFile(manifestPath(tmp.homeDir), 'utf8'));
+  const install = (extra: { force?: boolean; dryRun?: boolean; scope?: Scope; agents?: string[] } = {}) =>
+    initMcps(deps, { mcps: [], agents: extra.agents ?? ['reviewer'], scope: extra.scope ?? 'project', ...extra });
+  const mine = async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), 'mine');
+  };
+  const withFault = (fault: Parameters<typeof faultyFs>[1]) => {
+    deps = { ...deps, fs: faultyFs(real, fault) };
+  };
+  const isManifest = (path: string) => path === manifestPath(tmp.homeDir);
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: agentSource([REVIEWER]),
+      fs: real,
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('plans no agents when none are requested, even if the catalog offers one', async () => {
+    expect((await planInit(deps, { mcps: [], scope: 'project' })).agents).toEqual([]);
+    expect((await planInit(deps, { mcps: [], agents: ['reviewer'], scope: 'project' })).agents).toHaveLength(1);
+  });
+
+  it('words a conflict with the noun agent', async () => {
+    await mine();
+    const { plan } = await install();
+    expect(plan.agents[0]).toMatchObject({ name: 'reviewer', action: 'conflict' });
+    expect(plan.agents[0]).toHaveProperty('reason');
+    expect((plan.agents[0] as { reason: string }).reason).toMatch(/agent/);
+  });
+
+  it.each<Scope>(['user', 'project'])(
+    'writes catalog-identical bytes, nested frontmatter included, at the %s root',
+    async (scope) => {
+      expect((await install({ scope })).applied).toBe(true);
+      expect(new Uint8Array(await readFile(file(scope)))).toEqual(REVIEWER.bytes);
+    },
+  );
+
+  it('records one agent file entry rooted at its path, with the directories it created', async () => {
+    await install();
+    const [record] = (await manifest()).installs;
+    expect(record!.createdDirs).toEqual([join(tmp.cwd, '.claude'), dir()]);
+    expect(record!.files[0]!.items).toEqual([
+      { kind: 'agent', name: 'reviewer', action: 'create', entryHash: sha256(REVIEWER.bytes), root: file() },
+    ]);
+  });
+
+  it('leaves a user-authored neighbor untouched', async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(join(dir(), 'mine.md'), 'mine');
+    await install();
+    expect(await readFile(join(dir(), 'mine.md'), 'utf8')).toBe('mine');
+  });
+
+  it('skips a byte-identical file without journaling it', async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), REVIEWER.bytes);
+    expect((await install()).applied).toBe(false);
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+
+  it('refuses to overwrite a user file without --force, writing nothing', async () => {
+    await mine();
+    const { applied } = await install();
+    expect(applied).toBe(false);
+    expect(await readFile(file(), 'utf8')).toBe('mine');
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+
+  it('replaces a user file with --force after a byte-identical backup', async () => {
+    await mine();
+    expect((await install({ force: true })).applied).toBe(true);
+    expect(new Uint8Array(await readFile(file()))).toEqual(REVIEWER.bytes);
+    const [entry] = (await manifest()).installs[0]!.files;
+    expect(await readFile(join(stateDir(tmp.homeDir), entry!.backup!), 'utf8')).toBe('mine');
+  });
+
+  it('updates an owned agent that is unmodified on disk', async () => {
+    await install();
+    deps = { ...deps, source: agentSource([REVIEWER_V2]) };
+    expect((await install()).plan.agents[0]).toMatchObject({ action: 'update' });
+    expect(new Uint8Array(await readFile(file()))).toEqual(REVIEWER_V2.bytes);
+  });
+
+  it('writes nothing on dry run', async () => {
+    expect((await install({ dryRun: true })).plan.agents[0]).toMatchObject({ action: 'create' });
+    expect(await readdir(tmp.cwd)).toEqual([]);
+    expect(await readdir(tmp.homeDir)).toEqual([]);
+  });
+
+  it('rejects an unknown agent naming it, writing nothing', async () => {
+    await expect(install({ agents: ['reviewer', 'ghost'] })).rejects.toThrow(UnknownAgentError);
+    await expect(install({ agents: ['ghost'] })).rejects.toThrow('ghost');
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('removes the file and created directories when recording the manifest fails', async () => {
+    withFault({ method: 'writeAtomic', nth: 1, match: isManifest });
+    await expect(install()).rejects.toThrow('injected writeAtomic failure');
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('restores a forced replace byte-identical when the apply fails after the backup', async () => {
+    await mine();
+    withFault({ method: 'writeAtomic', nth: 1, match: isManifest });
+    await expect(install({ force: true })).rejects.toThrow('injected writeAtomic failure');
+    expect(await readFile(file(), 'utf8')).toBe('mine');
+  });
+
+  it('aborts with StaleFileError when the file changed between planning and applying', async () => {
+    const plan = await planInit(deps, { mcps: [], agents: ['reviewer'], scope: 'project' });
     await mine();
     await expect(applyPlan(deps, plan)).rejects.toThrow(StaleFileError);
     expect(await readFile(file(), 'utf8')).toBe('mine');

@@ -4,6 +4,7 @@ import type { HookItem } from '@/domain/catalog/hook.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { FlatFileKind, Install, Manifest, OwnedHook } from '@/domain/manifest.js';
 import {
+  deriveAgentOwnership,
   deriveCommandOwnership,
   deriveHookOwnership,
   deriveOwnership,
@@ -55,6 +56,8 @@ export interface InitRequest {
   scripts?: string[];
   /** Command names to install; defaults to none. */
   commands?: string[];
+  /** Agent names to install; defaults to none. */
+  agents?: string[];
   /** Hook names to install; defaults to none. */
   hooks?: string[];
   scope: Scope;
@@ -66,6 +69,7 @@ export class UnknownMcpError extends Error {}
 export class UnknownSkillError extends Error {}
 export class UnknownScriptError extends Error {}
 export class UnknownCommandError extends Error {}
+export class UnknownAgentError extends Error {}
 export class UnknownHookError extends Error {}
 export { StaleFileError };
 /** A resolved env value would be written to disk. */
@@ -86,6 +90,10 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
   const commandNames = [...new Set(req.commands ?? [])];
   const unknownCommands = commandNames.filter((name) => !catalog.commands.some((c) => c.name === name));
   if (unknownCommands.length > 0) throw new UnknownCommandError(`unknown command: ${unknownCommands.join(', ')}`);
+
+  const agentNames = [...new Set(req.agents ?? [])];
+  const unknownAgents = agentNames.filter((name) => !catalog.agents.some((a) => a.name === name));
+  if (unknownAgents.length > 0) throw new UnknownAgentError(`unknown agent: ${unknownAgents.join(', ')}`);
 
   const hookNames = [...new Set(req.hooks ?? [])];
   const unknownHooks = hookNames.filter((name) => !catalog.hooks.some((h) => h.name === name));
@@ -115,18 +123,6 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
       present: await readPresent(deps.fs, root),
     });
   }
-  const commandsRoot = deps.target.commandsDir(req.scope, deps.paths);
-  const commandEntries: FlatFilePlanEntry[] = [];
-  for (const name of commandNames) {
-    const path = `${commandsRoot}/${name}.md`;
-    commandEntries.push({
-      name,
-      path,
-      scope: req.scope,
-      bytes: catalog.commands.find((c) => c.name === name)!.bytes,
-      present: await deps.fs.readBytes(path),
-    });
-  }
   return {
     ...mcpPlan,
     skills: buildSkillPlan({ skills: skillEntries, owned: deriveSkillOwnership(manifest), force: req.force }),
@@ -136,9 +132,27 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
       force: req.force,
     }),
     commands: buildFlatFilePlan({
-      entries: commandEntries,
+      entries: await flatFileEntries(
+        deps,
+        deps.target.commandsDir(req.scope, deps.paths),
+        req.scope,
+        commandNames,
+        catalog.commands,
+      ),
       owned: deriveCommandOwnership(manifest),
       noun: 'command',
+      force: req.force,
+    }),
+    agents: buildFlatFilePlan({
+      entries: await flatFileEntries(
+        deps,
+        deps.target.agentsDir(req.scope, deps.paths),
+        req.scope,
+        agentNames,
+        catalog.agents,
+      ),
+      owned: deriveAgentOwnership(manifest),
+      noun: 'agent',
       force: req.force,
     }),
     hooks: await planHooks(
@@ -148,6 +162,28 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
       manifest,
     ),
   };
+}
+
+/** One plan entry per requested command or agent: its catalog bytes and what is on disk now. */
+async function flatFileEntries(
+  deps: InitDeps,
+  root: string,
+  scope: Scope,
+  names: string[],
+  items: { name: string; bytes: Uint8Array }[],
+): Promise<FlatFilePlanEntry[]> {
+  const entries: FlatFilePlanEntry[] = [];
+  for (const name of names) {
+    const path = `${root}/${name}.md`;
+    entries.push({
+      name,
+      path,
+      scope,
+      bytes: items.find((i) => i.name === name)!.bytes,
+      present: await deps.fs.readBytes(path),
+    });
+  }
+  return entries;
 }
 
 /** All requested hooks go to the one settings file of the scope; malformed settings throw a ConfigError here. */
@@ -307,10 +343,24 @@ async function refreshFlatFile(
   return replanned!;
 }
 
+/** Re-reads every writable change of one flat-file kind. */
+async function refreshFlatFiles(
+  deps: InitDeps,
+  changes: FlatFileChange[],
+  owned: Record<string, string>,
+  force: boolean,
+  kind: FlatFileKind,
+): Promise<FlatFileChange[]> {
+  const fresh: FlatFileChange[] = [];
+  for (const change of changes.filter(writesFlatFile))
+    fresh.push(await refreshFlatFile(deps, change, owned, force, kind));
+  return fresh;
+}
+
 type TreeChange = SkillChange | ScriptChange;
 type TreeKind = 'skill' | 'script';
 
-/** One file write or removal of a skill, script or command, with the bytes needed to record and undo it. */
+/** One file write or removal of a skill, script, command or agent, with the bytes needed to record and undo it. */
 interface ByteStep {
   path: string;
   scope: Scope;
@@ -396,15 +446,14 @@ export async function applyPlan(deps: InitDeps, plan: ChangePlan, opts: { force?
   const scripts: ScriptChange[] = [];
   for (const change of plan.scripts.filter(writesScript))
     scripts.push(await refreshScript(deps, change, scriptOwners, force));
-  const commandOwners = deriveCommandOwnership(manifest);
-  const commands: FlatFileChange[] = [];
-  for (const change of plan.commands.filter(writesFlatFile))
-    commands.push(await refreshFlatFile(deps, change, commandOwners, force, 'command'));
+  const commands = await refreshFlatFiles(deps, plan.commands, deriveCommandOwnership(manifest), force, 'command');
+  const agents = await refreshFlatFiles(deps, plan.agents, deriveAgentOwnership(manifest), force, 'agent');
   const hookOwners = deriveHookOwnership(manifest);
   const hooks: HookFileChange[] = [];
   for (const change of plan.hooks.filter(writesHookFile))
     hooks.push(await refreshHooks(deps, change, hookOwners[change.path] ?? {}));
-  if (files.length + skills.length + scripts.length + commands.length + hooks.length === 0) return false;
+  if (files.length + skills.length + scripts.length + commands.length + agents.length + hooks.length === 0)
+    return false;
   assertNoLeak(plan, files, deps.env);
 
   const now = (deps.now ?? (() => new Date()))();
@@ -413,6 +462,7 @@ export async function applyPlan(deps: InitDeps, plan: ChangePlan, opts: { force?
     ...skills.flatMap((c) => treeSteps(c, 'skill')),
     ...scripts.flatMap((c) => treeSteps(c, 'script')),
     ...commands.map((c) => flatFileStep(c, 'command')),
+    ...agents.map((c) => flatFileStep(c, 'agent')),
   ];
   const createdDirs = await missingDirs(deps.fs, [
     ...steps.filter((s) => s.after !== null).map((s) => s.path),

@@ -11,6 +11,7 @@ import { sha256 } from '@/domain/hash.js';
 import { UndoSelectionError, UndoVerifyError, undoInstall } from '@/application/undo-install.js';
 import { DEMO_V1, DEMO_V2, skillSource } from '@test/helpers/skills.js';
 import { SCRIPT_V1, scriptSource } from '@test/helpers/scripts.js';
+import { agentSource, REVIEWER } from '@test/helpers/agents.js';
 import { commandSource, REVIEW_V1 } from '@test/helpers/commands.js';
 import { FMT_V1, FMT_V2, GUARD, hookSource } from '@test/helpers/hooks.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
@@ -470,6 +471,57 @@ describe('undoInstall (commands)', () => {
     await expect(undoInstall(undoDeps(), {})).rejects.toThrow(/missing/);
     expect(new Uint8Array(await readFile(file()))).toEqual(REVIEW_V1.bytes);
     expect(await readFile(manifestPath(tmp.homeDir), 'utf8')).toBe(manifestBefore);
+  });
+});
+
+describe('undoInstall (agents)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const dir = () => join(tmp.cwd, '.claude', 'agents');
+  const file = () => join(dir(), 'reviewer.md');
+  const undoDeps = () => ({ fs: deps.fs, paths: deps.paths });
+  const install = (extra: { force?: boolean } = {}) =>
+    initMcps(deps, { mcps: [], agents: ['reviewer'], scope: 'project', ...extra });
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: agentSource([REVIEWER]),
+      fs: new NodeFileSystem(),
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('removes the file and the agents directory the install created', async () => {
+    await install();
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'undone', exitCode: 0, changed: [] });
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('keeps a shared agents directory and its neighbor', async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(join(dir(), 'mine.md'), 'mine');
+    await install();
+    expect((await undoInstall(undoDeps(), {})).status).toBe('undone');
+    expect(await readdir(dir())).toEqual(['mine.md']);
+  });
+
+  it('refuses with exit 3 when the file was edited, unless forced', async () => {
+    await install();
+    await writeFile(file(), 'edited');
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'refused', exitCode: 3, changed: [file()] });
+    expect(await readFile(file(), 'utf8')).toBe('edited');
+    expect((await undoInstall(undoDeps(), { force: true })).status).toBe('undone');
+  });
+
+  it('restores the overwritten user file byte-identical', async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), 'mine');
+    await install({ force: true });
+    expect((await undoInstall(undoDeps(), {})).status).toBe('undone');
+    expect(await readFile(file(), 'utf8')).toBe('mine');
   });
 });
 
