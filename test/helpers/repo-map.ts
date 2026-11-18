@@ -178,6 +178,13 @@ export type TokenizeModule = {
   tokenize: (source: string) => Token[];
 };
 
+export type RawImport = { specifier: string; kind: 'static' | 'type' | 'reexport' | 'require' | 'dynamic' };
+export type RawExport = { name: string; kind: string; signature: string | null };
+
+export type ExtractModule = {
+  extractJs: (source: string) => { imports: RawImport[]; exports: RawExport[] };
+};
+
 /** Write a virtual tree under `dir`, creating parent directories. */
 export async function writeTree(dir: string, files: Tree): Promise<void> {
   for (const [path, content] of Object.entries(files)) {

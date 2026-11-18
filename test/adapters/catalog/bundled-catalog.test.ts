@@ -36,6 +36,7 @@ function danglingSkills(agents: readonly { name: string; text: string }[], regis
 const REPO_MAP_FILES = [
   'args.mjs',
   'build-map.mjs',
+  'extract-js.mjs',
   'extractors.mjs',
   'glob.mjs',
   'index.mjs',
