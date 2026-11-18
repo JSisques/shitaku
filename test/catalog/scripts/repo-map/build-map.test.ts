@@ -8,6 +8,7 @@ import {
   type BuildMapModule,
   type ScanModule,
   type TempTree,
+  workspaceMonorepo,
 } from '@test/helpers/repo-map.js';
 
 let build: BuildMapModule['buildRepoMap'];
@@ -150,5 +151,94 @@ describe('buildRepoMap (base document)', () => {
       if (previous === undefined) delete process.env['GIT_CEILING_DIRECTORIES'];
       else process.env['GIT_CEILING_DIRECTORIES'] = previous;
     }
+  });
+});
+
+describe('buildRepoMap (project detection)', () => {
+  it('includes stack, workspaces, commands, entry points and conventions for a simple app', () => {
+    const doc = build(snapshotFromTree(simpleApp));
+    expect(doc.stack).toMatchObject({
+      languages: [{ name: 'typescript', files: 3 }],
+      testRunners: ['vitest'],
+      typescript: { config: true, version: '^5.4.0' },
+    });
+    expect(doc.workspaces).toEqual([]);
+    expect(doc.commands).toEqual({
+      packageManager: null,
+      scripts: [
+        { path: '.', name: 'build', command: 'tsc' },
+        { path: '.', name: 'test', command: 'vitest run' },
+      ],
+    });
+    expect(doc.entryPoints).toEqual([
+      { path: '.', package: 'simple-app', field: 'main', key: null, file: 'dist/index.js' },
+    ]);
+    expect(doc.conventions).toEqual({
+      moduleSystem: 'esm',
+      testFiles: { pattern: 'test', dirs: ['test'] },
+      relativeImportExtensions: null,
+      pathAliases: ['@/*'],
+      tsStrict: true,
+    });
+  });
+
+  it('describes a workspace monorepo from its manifests', () => {
+    const doc = build(snapshotFromTree(workspaceMonorepo));
+    expect(doc.root).toEqual({ packageName: 'acme' });
+    expect(doc.workspaces).toEqual([
+      { name: '@acme/web', path: 'apps/web' },
+      { name: '@acme/core', path: 'packages/core' },
+    ]);
+    expect(doc.commands.packageManager).toBe('pnpm');
+    expect(doc.commands.scripts.map((script) => `${script.path}:${script.name}`)).toEqual([
+      '.:build',
+      'apps/web:dev',
+      'packages/core:build',
+    ]);
+    expect(doc.entryPoints).toHaveLength(3);
+    expect(doc.stack).toMatchObject({ packageManager: 'pnpm', typescript: { config: false, version: '^5.4.0' } });
+  });
+
+  it('records an invalid manifest as skipped and still builds the document', () => {
+    const doc = build(snapshotFromTree({ 'package.json': '{ nope', 'src/a.ts': 'export {};\n' }));
+    expect(doc.skipped).toEqual([{ path: 'package.json', reason: 'invalid-json' }]);
+    expect(doc.root).toEqual({ packageName: null });
+    expect(doc.commands).toEqual({ packageManager: null, scripts: [] });
+    expect(doc.entryPoints).toEqual([]);
+    expect(doc.modules.map((module) => module.path)).toEqual(['src/a.ts']);
+  });
+
+  it('keeps every collection in the documented sort order, whatever the input order', () => {
+    const tree = {
+      ...workspaceMonorepo,
+      'zeta/b.ts': '',
+      'alpha/a.ts': '',
+      'alpha-b/c.ts': '',
+      'bad/package.json': '{ nope',
+    };
+    const ordered = snapshotFromTree(tree);
+    const shuffled = snapshotFromTree(tree, { files: [...ordered.files].reverse() });
+    shuffled.skipped.reverse();
+    const doc = build(shuffled);
+    expect(JSON.stringify(doc)).toBe(JSON.stringify(build(ordered)));
+
+    const sorted = <T>(items: T[], key: (item: T) => string) =>
+      items.map(key).every((k, i, all) => i === 0 || (all[i - 1] ?? '') <= k);
+    expect(sorted(doc.tree, (e) => e.path)).toBe(true);
+    expect(sorted(doc.modules, (e) => e.path)).toBe(true);
+    expect(sorted(doc.skipped, (e) => e.path)).toBe(true);
+    expect(sorted(doc.workspaces, (e) => e.path)).toBe(true);
+    expect(sorted(doc.commands.scripts, (e) => `${e.path}\0${e.name}`)).toBe(true);
+    expect(doc.tree.map((entry) => entry.path)).toEqual([
+      '.',
+      'alpha',
+      'alpha-b',
+      'apps',
+      'apps/web',
+      'bad',
+      'packages',
+      'packages/core',
+      'zeta',
+    ]);
   });
 });

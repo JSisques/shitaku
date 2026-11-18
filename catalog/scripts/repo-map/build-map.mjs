@@ -3,6 +3,7 @@
  * No IO. Every collection is sorted here with explicit code-unit comparators.
  */
 import { extractorFor } from './extractors.mjs';
+import { detectCommands, detectConventions, detectEntryPoints, detectStack, detectWorkspaces } from './project.mjs';
 
 export const SCHEMA = 'shitaku.catalog.repo-map/v1';
 
@@ -75,34 +76,17 @@ export function buildRepoMap(snapshot) {
     schema: SCHEMA,
     commit: snapshot.commit,
     root: { packageName: rootPackageName(snapshot) },
-    // Filled in by project detection.
-    stack: {
-      languages: [],
-      packageManager: null,
-      node: null,
-      typescript: { config: false, version: null },
-      frameworks: [],
-      testRunners: [],
-      linters: [],
-      formatters: [],
-      bundlers: [],
-    },
-    workspaces: [],
-    commands: { packageManager: null, scripts: [] },
-    entryPoints: [],
+    stack: detectStack(snapshot),
+    workspaces: detectWorkspaces(snapshot),
+    commands: detectCommands(snapshot),
+    entryPoints: detectEntryPoints(snapshot),
     tree: buildTree(snapshot.files),
     modules,
     graph: {
       edges: [],
       importedByCount: Object.fromEntries(modules.map((module) => [module.path, 0])),
     },
-    conventions: {
-      moduleSystem: 'esm',
-      testFiles: { pattern: null, dirs: [] },
-      relativeImportExtensions: null,
-      pathAliases: [],
-      tsStrict: null,
-    },
+    conventions: detectConventions(snapshot),
     skipped: [...snapshot.skipped].sort((a, b) => compare(a.path, b.path) || compare(a.reason, b.reason)),
   };
 }
