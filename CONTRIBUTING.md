@@ -192,7 +192,7 @@ Install behavior: the file is copied flat to `~/.claude/commands/<name>.md` (`us
 An agent is a single Markdown file that Claude Code loads as a subagent. Its frontmatter can grant tools or permissions, so review an agent as you would code.
 
 1. Create `catalog/agents/<name>.md`. The file name (without `.md`) is the agent name and must match `^[a-z0-9][a-z0-9-]*$`.
-2. Start the file with frontmatter that has a single-line `name` equal to the file stem and a single-line `description`. The body after the frontmatter must not be empty.
+2. Start the file with frontmatter that has a `name` equal to the file stem and a `description`, each on one line or as a literal (`|`) or folded (`>`) block scalar. The body after the frontmatter must not be empty.
 
    ```md
    ---
@@ -215,7 +215,7 @@ An agent is a single Markdown file that Claude Code loads as a subagent. Its fro
 Validation limits:
 
 - Only `name` and `description` are validated. Other keys such as `tools`, `model`, `hooks` or `mcpServers` may span several lines, are copied verbatim and are not validated; unknown keys are ignored.
-- A `name` or `description` written as a block scalar (`|` or `>`) is rejected in v1 (single-line only). Support is tracked in https://github.com/JSisques/shitaku/issues/238.
+- A `name` or `description` may be a literal (`|`) or folded (`>`) block scalar, with optional chomping and indentation indicators. The description is shown on one line with whitespace collapsed and the file is installed verbatim. Other multi-line forms for these two keys (nested values, multi-line plain or quoted scalars) are rejected.
 
 Install behavior: the file is copied flat to `~/.claude/agents/<name>.md` (`user`) or `./.claude/agents/<name>.md` (`project`). Other files in that directory are never touched. A different `<name>.md` that shitaku did not install is a conflict and is never overwritten silently; `--force` backs it up first and `shitaku undo` restores it. `shitaku uninstall <name>` refuses a modified file without `--force`. The bundled catalog ships no agent yet, so tests use fixtures. Regenerate the README and website tables with `pnpm run docs:catalog` and `pnpm run docs:website-catalog`.
 

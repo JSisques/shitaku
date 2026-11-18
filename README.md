@@ -303,11 +303,11 @@ Before downgrading shitaku, run `shitaku undo` or `shitaku uninstall` for any in
 
 ### Agents (install)
 
-An agent is one Markdown file, `catalog/agents/<name>.md`, that Claude Code loads as a subagent. The file needs frontmatter with a single-line `name` and a single-line `description`, and a non-empty body. The `name` must equal the file name (without `.md`) and match `^[a-z0-9][a-z0-9-]*$`. List it under `items.agents` in `catalog/catalog.json`; an unlisted or invalid file is skipped with a warning.
+An agent is one Markdown file, `catalog/agents/<name>.md`, that Claude Code loads as a subagent. The file needs frontmatter with a `name` and a `description`, and a non-empty body. The `name` must equal the file name (without `.md`) and match `^[a-z0-9][a-z0-9-]*$`. List it under `items.agents` in `catalog/catalog.json`; an unlisted or invalid file is skipped with a warning.
 
 Other frontmatter keys such as `tools`, `model`, `hooks` or `mcpServers` may span several lines. They are copied verbatim and are not validated by shitaku; unknown keys are ignored. Claude Code decides what they mean.
 
-**Limit (v1):** a `name` or `description` written as a block scalar (`description: |` or `>`) is rejected, because shitaku reads those two keys line by line. Write them on one line. Block-scalar support is tracked in https://github.com/JSisques/shitaku/issues/238.
+`name` and `description` may be on one line or a literal (`|`) or folded (`>`) block scalar, with an optional chomping (`-`, `+`) and indentation indicator. shitaku shows the description on one line with whitespace collapsed; the file is installed verbatim. Other multi-line forms for these two keys (nested values, multi-line plain or quoted scalars) are rejected.
 
 **Agents can grant tools or permissions.** An agent's frontmatter can give a subagent tools, a permission mode, hooks or MCP servers. Installed agents are trusted like skills and slash commands: shitaku copies the file and does not analyze or sandbox it.
 
