@@ -576,6 +576,17 @@ describe('FolderCatalogSource', () => {
     expect(catalog.agents[0]?.bytes).toEqual(agentBytes('reviewer', ['tools:', '  - Read']));
   });
 
+  it('loads a block-scalar agent with a one-line description and its exact bytes', async () => {
+    const text = '---\nname: reviewer\ndescription: >\n  Reviews   code\n\n  carefully.\n---\nYou review.\n';
+    await put('catalog.json', { version: 1, items: { mcps: [], agents: ['reviewer'] } });
+    await put('agents/reviewer.md', text);
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.issues).toEqual([]);
+    expect(catalog.agents[0]?.description).toBe('Reviews code carefully.');
+    expect(new TextDecoder().decode(catalog.agents[0]?.bytes)).toBe(text);
+  });
+
   it('skips an invalid agent, reports its path, and keeps the valid ones', async () => {
     await put('catalog.json', { version: 1, items: { mcps: [], agents: ['good', 'nofront'] } });
     await put('agents/good.md', agentBytes('good'));

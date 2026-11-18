@@ -46,10 +46,50 @@ describe('parseAgent', () => {
     );
   });
 
-  it.each(['name', 'description'])('rejects an opaque %s as not single-line', (key) => {
+  it.each(['name', 'description'])('rejects a nested %s as neither single-line nor block scalar', (key) => {
     const other = key === 'name' ? 'description: d' : 'name: reviewer';
     const text = `---\n${other}\n${key}:\n  - a\n---\nbody`;
-    expect(issueOf(parseAgent('reviewer', enc(text)))).toBe(`key '${key}' must be a single-line value`);
+    expect(issueOf(parseAgent('reviewer', enc(text)))).toBe(
+      `key '${key}' must be a single-line or block scalar (| or >) value`,
+    );
+  });
+
+  const withDescription = (description: string): string =>
+    `---\nname: reviewer\ndescription: ${description}\n---\nbody`;
+  const descriptionOf = (text: string): string | undefined => {
+    const result = parseAgent('reviewer', enc(text));
+    return 'agent' in result ? result.agent.description : issueOf(result);
+  };
+
+  it.each([
+    ['folded paragraphs', '>\n  Reviews code.\n\n  Be strict.\n  Be kind.', 'Reviews code. Be strict. Be kind.'],
+    ['literal strip', '|-\n  line one\n  line two', 'line one line two'],
+    ['literal keep', '|+\n  line one\n\n', 'line one'],
+    ['indent indicator', '|2\n    lead\n  tail', 'lead tail'],
+    ['a single-line value with inner runs', '"a   b"', 'a b'],
+  ])('collapses a %s description to one line', (_title, value, expected) => {
+    expect(descriptionOf(withDescription(value))).toBe(expected);
+  });
+
+  it('loads a block-scalar name equal to the stem', () => {
+    const result = parseAgent('reviewer', enc('---\nname: >-\n  reviewer\ndescription: d\n---\nbody'));
+    expect(result).toMatchObject({ agent: { name: 'reviewer' } });
+  });
+
+  it('rejects a block-scalar name that differs from the stem', () => {
+    expect(issueOf(parseAgent('reviewer', enc('---\nname: |\n  other\ndescription: d\n---\nbody')))).toBe(
+      "frontmatter name 'other' must equal the file name 'reviewer'",
+    );
+  });
+
+  it.each(['|', '|+\n\n', '>-\n   '])('rejects an empty or whitespace-only block description (%j)', (value) => {
+    expect(descriptionOf(withDescription(value))).toBe('description: frontmatter key is required');
+  });
+
+  it('keeps the bytes of a block-scalar agent verbatim', () => {
+    const bytes = enc(withDescription('>\n  folded\n  text'));
+    const result = parseAgent('reviewer', bytes);
+    expect('agent' in result && result.agent.bytes).toBe(bytes);
   });
 
   it.each(['---\nname: reviewer\ndescription: d\n---\n', '---\nname: reviewer\ndescription: d\n---\n \n\n'])(
