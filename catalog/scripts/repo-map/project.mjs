@@ -2,6 +2,7 @@
  * Project detection from file presence and JSON manifests only: workspaces, commands, entry
  * points, stack and conventions. Pure functions over a scan snapshot; no content heuristics.
  */
+import { extractorFor } from './extractors.mjs';
 import { matchAny } from './glob.mjs';
 
 /** @typedef {import('./scan.mjs').Snapshot} Snapshot */
@@ -23,6 +24,16 @@ function compare(a, b) {
 function manifestAt(snapshot, dir) {
   const manifest = snapshot.manifests.get(dir);
   return manifest === undefined || 'invalid' in manifest ? null : manifest;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {Record<string, unknown> | null} the value when it is a plain object
+ */
+function asRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? /** @type {Record<string, unknown>} */ (value)
+    : null;
 }
 
 /** @param {unknown} value */
@@ -244,4 +255,157 @@ export function detectEntryPoints(snapshot) {
       compare(a.key ?? '', b.key ?? '') ||
       compare(a.file, b.file),
   );
+}
+
+/** Dependency name to label, per tool category. */
+const FRAMEWORK_DEPENDENCIES = {
+  '@angular/core': 'angular',
+  '@nestjs/core': 'nestjs',
+  '@remix-run/react': 'remix',
+  astro: 'astro',
+  express: 'express',
+  fastify: 'fastify',
+  hono: 'hono',
+  koa: 'koa',
+  next: 'next',
+  nuxt: 'nuxt',
+  react: 'react',
+  'react-native': 'react-native',
+  'solid-js': 'solid',
+  svelte: 'svelte',
+  vue: 'vue',
+};
+const TEST_RUNNER_DEPENDENCIES = {
+  '@playwright/test': 'playwright',
+  ava: 'ava',
+  cypress: 'cypress',
+  jasmine: 'jasmine',
+  jest: 'jest',
+  mocha: 'mocha',
+  vitest: 'vitest',
+};
+const LINTER_DEPENDENCIES = {
+  '@biomejs/biome': 'biome',
+  eslint: 'eslint',
+  oxlint: 'oxlint',
+  stylelint: 'stylelint',
+  tslint: 'tslint',
+};
+const FORMATTER_DEPENDENCIES = { '@biomejs/biome': 'biome', dprint: 'dprint', prettier: 'prettier' };
+const BUNDLER_DEPENDENCIES = {
+  '@swc/core': 'swc',
+  esbuild: 'esbuild',
+  parcel: 'parcel',
+  rolldown: 'rolldown',
+  rollup: 'rollup',
+  tsdown: 'tsdown',
+  tsup: 'tsup',
+  vite: 'vite',
+  webpack: 'webpack',
+};
+
+/** Config file name patterns to label, matched against files at the root or in a workspace. */
+const TEST_RUNNER_CONFIGS = [
+  [/^vitest\.config\.[cm]?[jt]s$/, 'vitest'],
+  [/^jest\.config\.(?:[cm]?[jt]s|json)$/, 'jest'],
+];
+const LINTER_CONFIGS = [
+  [/^eslint\.config\.[cm]?[jt]s$/, 'eslint'],
+  [/^\.eslintrc(?:\..+)?$/, 'eslint'],
+  [/^biome\.jsonc?$/, 'biome'],
+];
+const FORMATTER_CONFIGS = [
+  [/^\.prettierrc(?:\..+)?$/, 'prettier'],
+  [/^prettier\.config\.[cm]?[jt]s$/, 'prettier'],
+  [/^biome\.jsonc?$/, 'biome'],
+];
+const BUNDLER_CONFIGS = [
+  [/^vite\.config\.[cm]?[jt]s$/, 'vite'],
+  [/^webpack\.config\.[cm]?[jt]s$/, 'webpack'],
+  [/^rollup\.config\.[cm]?[jt]s$/, 'rollup'],
+  [/^tsup\.config\.[cm]?[jt]s$/, 'tsup'],
+];
+
+const DEPENDENCY_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies'];
+
+/**
+ * Dependency name to its declared range across the root and workspace manifests; the first
+ * declaration (root first, then workspaces by path) wins.
+ * @param {Snapshot} snapshot
+ * @returns {Map<string, string>}
+ */
+function collectDependencies(snapshot) {
+  /** @type {Map<string, string>} */
+  const dependencies = new Map();
+  for (const { manifest } of packageManifests(snapshot)) {
+    for (const field of DEPENDENCY_FIELDS) {
+      const declared = manifest[field];
+      if (declared === null || typeof declared !== 'object' || Array.isArray(declared)) continue;
+      for (const [name, range] of Object.entries(declared)) {
+        if (!dependencies.has(name)) dependencies.set(name, typeof range === 'string' ? range : '');
+      }
+    }
+  }
+  return dependencies;
+}
+
+/**
+ * Labels for a tool category from dependency names and config files, sorted and unique.
+ * @param {Map<string, string>} dependencies
+ * @param {Record<string, string>} byDependency
+ * @param {string[]} configFiles base names of files at the root and in workspaces
+ * @param {[RegExp, string][]} byConfig
+ * @returns {string[]}
+ */
+function toolLabels(dependencies, byDependency, configFiles, byConfig) {
+  const labels = new Set();
+  for (const name of dependencies.keys()) {
+    if (Object.hasOwn(byDependency, name)) labels.add(byDependency[name]);
+  }
+  for (const [pattern, label] of byConfig) {
+    if (configFiles.some((file) => pattern.test(file))) labels.add(label);
+  }
+  return [...labels].sort(compare);
+}
+
+/**
+ * Base names of the files that sit directly in the root or in a workspace directory.
+ * @param {Snapshot} snapshot
+ * @returns {string[]}
+ */
+function packageLevelFiles(snapshot) {
+  const dirs = new Set(['.', ...detectWorkspaces(snapshot).map((workspace) => workspace.path)]);
+  return snapshot.files
+    .filter((file) => dirs.has(file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : '.'))
+    .map((file) => file.slice(file.lastIndexOf('/') + 1));
+}
+
+/**
+ * @param {Snapshot} snapshot
+ */
+export function detectStack(snapshot) {
+  /** @type {Map<string, number>} */
+  const counts = new Map();
+  for (const path of snapshot.sources.keys()) {
+    const language = extractorFor(path)?.language;
+    if (language !== undefined) counts.set(language, (counts.get(language) ?? 0) + 1);
+  }
+  const languages = [...counts].map(([name, files]) => ({ name, files })).sort((a, b) => compare(a.name, b.name));
+
+  const dependencies = collectDependencies(snapshot);
+  const configFiles = packageLevelFiles(snapshot);
+  const nodeRange = asRecord(manifestAt(snapshot, '.')?.['engines'])?.['node'];
+  const node = typeof nodeRange === 'string' ? nodeRange : null;
+
+  return {
+    languages,
+    packageManager: detectPackageManager(snapshot),
+    node,
+    typescript: { config: snapshot.tsconfigs.size > 0, version: dependencies.get('typescript') || null },
+    frameworks: toolLabels(dependencies, FRAMEWORK_DEPENDENCIES, configFiles, []),
+    testRunners: toolLabels(dependencies, TEST_RUNNER_DEPENDENCIES, configFiles, TEST_RUNNER_CONFIGS),
+    linters: toolLabels(dependencies, LINTER_DEPENDENCIES, configFiles, LINTER_CONFIGS),
+    formatters: toolLabels(dependencies, FORMATTER_DEPENDENCIES, configFiles, FORMATTER_CONFIGS),
+    bundlers: toolLabels(dependencies, BUNDLER_DEPENDENCIES, configFiles, BUNDLER_CONFIGS),
+  };
 }

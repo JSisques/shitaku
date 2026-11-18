@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   loadRepoMapModule,
+  simpleApp,
   snapshotFromTree,
   workspaceMonorepo,
   type Snapshot,
@@ -16,6 +17,17 @@ type ProjectModule = {
     key: string | null;
     file: string;
   }[];
+  detectStack: (snapshot: Snapshot) => {
+    languages: { name: string; files: number }[];
+    packageManager: string | null;
+    node: string | null;
+    typescript: { config: boolean; version: string | null };
+    frameworks: string[];
+    testRunners: string[];
+    linters: string[];
+    formatters: string[];
+    bundlers: string[];
+  };
   detectPackageManager: (snapshot: Snapshot) => string | null;
   detectCommands: (snapshot: Snapshot) => {
     packageManager: string | null;
@@ -312,5 +324,133 @@ describe('detectEntryPoints', () => {
   it('returns nothing without manifests or with an invalid one', () => {
     expect(entries({})).toEqual([]);
     expect(entries({ 'package.json': '{ nope' })).toEqual([]);
+  });
+});
+
+describe('detectStack', () => {
+  const stack = (tree: Tree) => project.detectStack(snapshotFromTree(tree));
+
+  it('describes a simple TypeScript app', () => {
+    expect(stack(simpleApp)).toEqual({
+      languages: [{ name: 'typescript', files: 3 }],
+      packageManager: null,
+      node: null,
+      typescript: { config: true, version: '^5.4.0' },
+      frameworks: [],
+      testRunners: ['vitest'],
+      linters: [],
+      formatters: [],
+      bundlers: [],
+    });
+  });
+
+  it('counts analyzed files per extractor language, sorted by name', () => {
+    const result = stack({
+      'a.ts': '',
+      'b.mts': '',
+      'c.tsx': '',
+      'd.js': '',
+      'e.cjs': '',
+      'f.mjs': '',
+      'g.jsx': '',
+      'h.py': '',
+      'README.md': '',
+    });
+    expect(result.languages).toEqual([
+      { name: 'javascript', files: 3 },
+      { name: 'jsx', files: 1 },
+      { name: 'tsx', files: 1 },
+      { name: 'typescript', files: 2 },
+    ]);
+  });
+
+  it('leaves out languages without files and does not count skipped sources', () => {
+    const snapshot = snapshotFromTree({ 'a.js': '', 'big.ts': '' });
+    snapshot.sources.delete('big.ts');
+    expect(project.detectStack(snapshot).languages).toEqual([{ name: 'javascript', files: 1 }]);
+    expect(stack({ 'README.md': '' }).languages).toEqual([]);
+  });
+
+  it('reports the package manager and the node engine range', () => {
+    const tree: Tree = { 'package.json': pkg({ packageManager: 'pnpm@9.1.0', engines: { node: '>=22.13' } }) };
+    expect(stack(tree)).toMatchObject({ packageManager: 'pnpm', node: '>=22.13' });
+    expect(stack({ 'package.json': pkg({ engines: { npm: '>=9' } }) }).node).toBeNull();
+  });
+
+  it('detects TypeScript by config presence and takes the version from any dependency map', () => {
+    expect(stack({ 'tsconfig.json': '{}' }).typescript).toEqual({ config: true, version: null });
+    expect(stack({ 'package.json': pkg({ dependencies: { typescript: '5.6.2' } }) }).typescript).toEqual({
+      config: false,
+      version: '5.6.2',
+    });
+    const monorepo: Tree = {
+      'package.json': pkg({ workspaces: ['pkgs/*'] }),
+      'pkgs/a/package.json': pkg({ name: 'a', peerDependencies: { typescript: '>=5' } }),
+      'pkgs/a/tsconfig.json': '{}',
+    };
+    expect(stack(monorepo).typescript).toEqual({ config: true, version: '>=5' });
+    expect(stack({}).typescript).toEqual({ config: false, version: null });
+  });
+
+  it('maps dependency names from the root and workspaces to sorted, deduplicated labels', () => {
+    const tree: Tree = {
+      'package.json': pkg({
+        workspaces: ['pkgs/*'],
+        dependencies: { react: '^18', express: '^4' },
+        devDependencies: { vitest: '^1', eslint: '^9', prettier: '^3', vite: '^5' },
+      }),
+      'pkgs/a/package.json': pkg({
+        name: 'a',
+        dependencies: { react: '^18', '@nestjs/core': '^10' },
+        devDependencies: { jest: '^29', esbuild: '^0.20', '@playwright/test': '^1' },
+        peerDependencies: { next: '^14' },
+      }),
+    };
+    expect(stack(tree)).toMatchObject({
+      frameworks: ['express', 'nestjs', 'next', 'react'],
+      testRunners: ['jest', 'playwright', 'vitest'],
+      linters: ['eslint'],
+      formatters: ['prettier'],
+      bundlers: ['esbuild', 'vite'],
+    });
+  });
+
+  it('adds tools that are only present as config files at the root or in a workspace', () => {
+    const tree: Tree = {
+      'package.json': pkg({ workspaces: ['pkgs/*'] }),
+      'vitest.config.ts': '',
+      'eslint.config.js': '',
+      '.prettierrc.json': '',
+      'pkgs/a/package.json': pkg({ name: 'a' }),
+      'pkgs/a/jest.config.cjs': '',
+      'pkgs/a/vite.config.mts': '',
+    };
+    expect(stack(tree)).toMatchObject({
+      testRunners: ['jest', 'vitest'],
+      linters: ['eslint'],
+      formatters: ['prettier'],
+      bundlers: ['vite'],
+    });
+  });
+
+  it('counts a biome config as both a linter and a formatter, and .eslintrc variants', () => {
+    expect(stack({ 'biome.json': '{}', '.eslintrc.cjs': '' })).toMatchObject({
+      linters: ['biome', 'eslint'],
+      formatters: ['biome'],
+    });
+    expect(stack({ 'biome.jsonc': '{}' })).toMatchObject({ linters: ['biome'], formatters: ['biome'] });
+  });
+
+  it('ignores config files outside the root and the workspaces', () => {
+    const tree: Tree = { 'src/vitest.config.ts': '', 'src/eslint.config.js': '', 'tools/.prettierrc': '' };
+    expect(stack(tree)).toMatchObject({ testRunners: [], linters: [], formatters: [] });
+  });
+
+  it('survives an invalid manifest', () => {
+    expect(stack({ 'package.json': '{ nope', 'a.ts': '' })).toMatchObject({
+      languages: [{ name: 'typescript', files: 1 }],
+      node: null,
+      frameworks: [],
+    });
   });
 });
