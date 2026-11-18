@@ -53,6 +53,13 @@ const agent = (name: string, state: StatusState = 'installed', scope: Scope = 'p
   state,
 });
 
+const rule = (name: string, state: StatusState = 'installed', scope: Scope = 'project'): ItemObservation => ({
+  item: { kind: 'rule', scope, path: `/repo/.claude/rules/${name}.md`, name, hash: 'h', installId: 'i1' },
+  config: 'present',
+  current: state === 'missing' ? { kind: 'absent' } : { kind: 'hash', hash: 'h' },
+  state,
+});
+
 const HOOK_FILE = '/repo/.claude/settings.json';
 
 const hook = (
@@ -220,6 +227,33 @@ describe('diagnose: agents', () => {
     expect(run([agent('reviewer')])).toEqual([]);
     const edited = run([agent('reviewer', 'modified')]);
     expect(edited.map((f) => f.code)).toEqual(['modified']);
+  });
+});
+
+describe('diagnose: rules', () => {
+  it('reports rule-missing as a problem naming the rule file', () => {
+    const findings = run([rule('naming', 'missing'), rule('other')]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      code: 'rule-missing',
+      severity: 'problem',
+      kind: 'rule',
+      name: 'naming',
+      path: '/repo/.claude/rules/naming.md',
+      fix: 'run shitaku init again to reinstall the rule',
+    });
+    expect(findings[0]?.message).toContain('project rule naming is missing at /repo/.claude/rules/naming.md');
+  });
+
+  it('reports nothing for a healthy rule and only modified for an edited one', () => {
+    expect(run([rule('naming')])).toEqual([]);
+    const edited = run([rule('naming', 'modified')]);
+    expect(edited.map((f) => f.code)).toEqual(['modified']);
+    expect(edited[0]?.severity).toBe('info');
+  });
+
+  it('still reports agent-missing, not rule-missing, for an agent', () => {
+    expect(run([agent('reviewer', 'missing')]).map((f) => f.code)).toEqual(['agent-missing']);
   });
 });
 

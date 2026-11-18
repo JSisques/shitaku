@@ -7,12 +7,14 @@ import { initMcps, type InitDeps } from '@/application/init-mcps.js';
 import { loadManifest, manifestPath, saveManifest, stateDir } from '@/application/journal.js';
 import { getStatus } from '@/application/status.js';
 import type { AgentItem } from '@/domain/catalog/agent.js';
+import type { RuleItem } from '@/domain/catalog/rule.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
 import { ManifestError } from '@/domain/manifest.js';
 import type { LoadedCatalog } from '@/ports/catalog-source.js';
 import type { FileSystem } from '@/ports/file-system.js';
 import { REVIEWER, REVIEWER_V2 } from '@test/helpers/agents.js';
+import { ruleItem } from '@test/helpers/rules.js';
 import { DEMO_V1, DEMO_V2 } from '@test/helpers/skills.js';
 import { SCRIPT_V1, SCRIPT_V2, scriptSource } from '@test/helpers/scripts.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
@@ -465,5 +467,77 @@ describe('getStatus (agents)', () => {
     setCatalog([REVIEWER], [{ ...DEMO_V1, name: 'reviewer' }]);
     await initMcps(deps(), { mcps: [], skills: ['reviewer'], scope: 'project' });
     expect(await statesOf()).toEqual({ 'project/agent/reviewer': 'installed', 'project/skill/reviewer': 'installed' });
+  });
+});
+
+describe('getStatus (rules)', () => {
+  let tmp: TmpPaths;
+  let catalog: LoadedCatalog;
+  const fs = new NodeFileSystem();
+  const naming = ruleItem('naming');
+  const naming2 = ruleItem('naming', ['paths:', '  - "src/**"']);
+  const source = {
+    ref: () => ({ kind: 'folder' as const, location: '/catalog' }),
+    load: () => Promise.resolve(catalog),
+  };
+  const deps = (): InitDeps => ({
+    source,
+    fs,
+    target: claudeCodeTarget,
+    paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+    env: {},
+  });
+  const setCatalog = (rules: RuleItem[]): void => {
+    catalog = {
+      mcps: [],
+      skills: [],
+      scripts: [],
+      commands: [],
+      hooks: [],
+      agents: [],
+      rules,
+      profiles: [],
+      issues: [],
+    };
+  };
+  const file = () => join(tmp.cwd, '.claude', 'rules', 'naming.md');
+  const statesOf = async () =>
+    Object.fromEntries((await getStatus(deps(), {})).items.map((i) => [`${i.scope}/${i.kind}/${i.name}`, i.state]));
+
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    setCatalog([naming]);
+    await initMcps(deps(), { mcps: [], rules: ['naming'], scope: 'project' });
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('reports an installed rule with its file path', async () => {
+    expect((await getStatus(deps(), {})).items).toEqual([
+      expect.objectContaining({
+        scope: 'project',
+        kind: 'rule',
+        name: 'naming',
+        state: 'installed',
+        path: file(),
+      }),
+    ]);
+  });
+
+  it('reports out-of-date, missing-from-catalog, modified and missing', async () => {
+    setCatalog([naming2]);
+    expect(await statesOf()).toEqual({ 'project/rule/naming': 'out-of-date' });
+    setCatalog([]);
+    expect(await statesOf()).toEqual({ 'project/rule/naming': 'missing-from-catalog' });
+    setCatalog([naming]);
+    await writeFile(file(), 'edited');
+    expect(await statesOf()).toEqual({ 'project/rule/naming': 'modified' });
+    await rm(file());
+    expect(await statesOf()).toEqual({ 'project/rule/naming': 'missing' });
+  });
+
+  it('reports modified, not out-of-date, when the file was edited and the catalog moved on', async () => {
+    setCatalog([naming2]);
+    await writeFile(file(), 'edited');
+    expect(await statesOf()).toEqual({ 'project/rule/naming': 'modified' });
   });
 });

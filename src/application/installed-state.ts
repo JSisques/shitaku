@@ -1,7 +1,7 @@
 import { hashEntry, sha256, treeHash } from '@/domain/hash.js';
 import { hasHook } from '@/domain/hook-merge.js';
 import { ConfigError, readAtPath } from '@/domain/json-merge.js';
-import { isFlatFileKind, type OwnedItem } from '@/domain/manifest.js';
+import { isFlatFileKind, type FlatFileKind, type OwnedItem } from '@/domain/manifest.js';
 import { hookEntryHash } from '@/domain/plan/hook-plan.js';
 import type { Desired, Observed } from '@/domain/plan/status-plan.js';
 import type { AgentTarget } from '@/ports/agent-target.js';
@@ -14,7 +14,7 @@ export interface InstalledDeps {
   target: AgentTarget;
 }
 
-/** What is on disk for one owned item. `config` describes the MCP config or hook settings file; skills/scripts/commands/agents always report `present`. */
+/** What is on disk for one owned item. `config` describes the MCP config or hook settings file; skills/scripts/commands/agents/rules always report `present`. */
 export interface InstalledObservation {
   config: 'present' | 'missing' | 'unreadable';
   current: Observed;
@@ -86,7 +86,7 @@ export function observeInstalled(deps: InstalledDeps): (item: OwnedItem) => Prom
     }
   };
 
-  /** A command or agent is one file: read as bytes, never walked as a tree, so a directory or symlink there is only `unreadable`. */
+  /** A command, agent or rule is one file: read as bytes, never walked as a tree, so a directory or symlink there is only `unreadable`. */
   const observeFile = async (item: OwnedItem): Promise<InstalledObservation> => {
     try {
       const bytes = await deps.fs.readBytes(item.path);
@@ -143,6 +143,13 @@ export function observeInstalled(deps: InstalledDeps): (item: OwnedItem) => Prom
           : observeTree(item);
 }
 
+/** The catalog items of each flat-file kind; a record so a new flat-file kind cannot be forgotten. */
+const flatFileItems = (catalog: LoadedCatalog): Record<FlatFileKind, { name: string; bytes: Uint8Array }[]> => ({
+  command: catalog.commands,
+  agent: catalog.agents,
+  rule: catalog.rules,
+});
+
 /** What the catalog says the item should currently be, or `unavailable` when the catalog could not be loaded. */
 export function desiredFor(catalog: LoadedCatalog | null, target: AgentTarget, item: OwnedItem): Desired {
   if (catalog === null) return { kind: 'unavailable' };
@@ -161,13 +168,9 @@ export function desiredFor(catalog: LoadedCatalog | null, target: AgentTarget, i
       hash: hookEntryHash({ event, matcher: hook.matcher ?? null, handler: target.toHookHandler(hook) }),
     };
   }
-  if (item.kind === 'command') {
-    const command = catalog.commands.find((c) => c.name === item.name);
-    return command === undefined ? { kind: 'absent' } : { kind: 'hash', hash: sha256(command.bytes) };
-  }
-  if (item.kind === 'agent') {
-    const agent = catalog.agents.find((a) => a.name === item.name);
-    return agent === undefined ? { kind: 'absent' } : { kind: 'hash', hash: sha256(agent.bytes) };
+  if (isFlatFileKind(item.kind)) {
+    const flat = flatFileItems(catalog)[item.kind].find((i) => i.name === item.name);
+    return flat === undefined ? { kind: 'absent' } : { kind: 'hash', hash: sha256(flat.bytes) };
   }
   if (item.kind === 'script') {
     const hash = treeHash(catalog.scripts.find((s) => s.name === item.name)?.files ?? []);
