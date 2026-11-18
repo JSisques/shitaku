@@ -11,6 +11,7 @@ import {
   UnknownCommandError,
   UnknownHookError,
   UnknownMcpError,
+  UnknownRuleError,
   UnknownScriptError,
   UnknownSkillError,
 } from '@/application/init-mcps.js';
@@ -26,7 +27,7 @@ import { upgradeCli } from '@/application/upgrade-cli.js';
 import { collapseWhitespace, LIST_KINDS, type CatalogEntry, type ListKind } from '@/domain/catalog/listing.js';
 import type { InstallMethod } from '@/domain/install-method.js';
 import { ConfigError } from '@/domain/json-merge.js';
-import { ManifestError } from '@/domain/manifest.js';
+import { ManifestError, type OwnedItem } from '@/domain/manifest.js';
 import type { ChangePlan } from '@/domain/plan/change-plan.js';
 import type { Finding } from '@/domain/plan/doctor-plan.js';
 import type { PlannedHook } from '@/domain/plan/hook-plan.js';
@@ -84,6 +85,7 @@ interface InitOptions {
   scripts?: string[];
   commands?: string[];
   agents?: string[];
+  rules?: string[];
   hooks?: string[];
   /** The one flag that skips the hook confirmation; `--yes` never does. */
   allowHooks?: boolean;
@@ -169,6 +171,10 @@ function printPlan(deps: CliDeps, plan: ChangePlan): void {
     deps.out(`${agent.scope} scope: ${agent.path}`);
     deps.out(row(agent.name, agent.action, agent.reason));
   }
+  for (const rule of plan.rules) {
+    deps.out(`${rule.scope} scope: ${rule.path}`);
+    deps.out(row(rule.name, rule.action, rule.reason));
+  }
   for (const file of plan.hooks.filter((f) => f.items.length > 0)) {
     deps.out(`${file.scope} scope: ${file.path}`);
     for (const hook of file.items) deps.out(row(hook.name, hook.action, hook.reason));
@@ -201,6 +207,7 @@ function hasKindFlag(opts: InitOptions): boolean {
     opts.scripts !== undefined ||
     opts.commands !== undefined ||
     opts.agents !== undefined ||
+    opts.rules !== undefined ||
     opts.hooks !== undefined
   );
 }
@@ -214,7 +221,9 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
   const kindFlag = hasKindFlag(opts);
   const nonInteractive = initIsNonInteractive(opts);
   if (nonInteractive && !kindFlag) {
-    deps.err('error: select at least one kind: pass --mcps, --skills, --scripts, --commands, --agents and/or --hooks');
+    deps.err(
+      'error: select at least one kind: pass --mcps, --skills, --scripts, --commands, --agents, --rules and/or --hooks',
+    );
     return 1;
   }
   if (nonInteractive && opts.scope === undefined) {
@@ -252,15 +261,20 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
     (kindFlag || catalog.commands.length === 0 ? [] : await deps.prompter.selectCommands(catalog.commands));
   const agents =
     opts.agents ?? (kindFlag || catalog.agents.length === 0 ? [] : await deps.prompter.selectAgents(catalog.agents));
+  const rules =
+    opts.rules ?? (kindFlag || catalog.rules.length === 0 ? [] : await deps.prompter.selectRules(catalog.rules));
   const hooks =
     opts.hooks ?? (kindFlag || catalog.hooks.length === 0 ? [] : await deps.prompter.selectHooks(catalog.hooks));
-  if (mcps.length + skills.length + scripts.length + commands.length + agents.length + hooks.length === 0) {
-    deps.err('error: select at least one MCP, skill, script, command, agent or hook');
+  if (
+    mcps.length + skills.length + scripts.length + commands.length + agents.length + rules.length + hooks.length ===
+    0
+  ) {
+    deps.err('error: select at least one MCP, skill, script, command, agent, rule or hook');
     return 1;
   }
   const scope = opts.scope ?? (await deps.prompter.selectScope());
   let force = opts.force === true;
-  let request: InitRequest = { mcps, skills, scripts, commands, agents, hooks, scope, force };
+  let request: InitRequest = { mcps, skills, scripts, commands, agents, rules, hooks, scope, force };
   let plan = await planInit(initDeps, request);
 
   const conflicts = [
@@ -271,6 +285,7 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
     ...plan.scripts.filter((sc) => sc.action === 'conflict').map((sc) => ({ ...sc, kind: 'script' as const })),
     ...plan.commands.filter((c) => c.action === 'conflict').map((c) => ({ ...c, kind: 'command' as const })),
     ...plan.agents.filter((a) => a.action === 'conflict').map((a) => ({ ...a, kind: 'agent' as const })),
+    ...plan.rules.filter((r) => r.action === 'conflict').map((r) => ({ ...r, kind: 'rule' as const })),
   ];
   if (conflicts.length > 0) {
     if (nonInteractive) {
@@ -284,6 +299,7 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
       script: new Set(scripts),
       command: new Set(commands),
       agent: new Set(agents),
+      rule: new Set(rules),
     };
     for (const c of conflicts) {
       const choice = await deps.prompter.resolveConflict({
@@ -300,6 +316,7 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
       scripts: scripts.filter((sc) => keep.script.has(sc)),
       commands: commands.filter((c) => keep.command.has(c)),
       agents: agents.filter((a) => keep.agent.has(a)),
+      rules: rules.filter((r) => keep.rule.has(r)),
       hooks,
       scope,
       force,
@@ -319,7 +336,12 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
       request = { ...request, hooks: [] };
       plan = await planInit(initDeps, request);
       if (
-        plan.files.length + plan.skills.length + plan.scripts.length + plan.commands.length + plan.agents.length ===
+        plan.files.length +
+          plan.skills.length +
+          plan.scripts.length +
+          plan.commands.length +
+          plan.agents.length +
+          plan.rules.length ===
         0
       ) {
         deps.out('aborted: nothing was written');
@@ -369,7 +391,7 @@ async function runUndo(deps: CliDeps, opts: { id?: string; force?: boolean; dryR
 
 interface UninstallOptions {
   scope?: Scope;
-  kind?: 'mcp' | 'skill' | 'script' | 'command' | 'hook' | 'agent';
+  kind?: OwnedItem['kind'];
   dryRun?: boolean;
   force?: boolean;
 }
@@ -611,12 +633,13 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
   program
     .command('init')
-    .description('Install MCP servers, skills, scripts, slash commands, agents and hooks for Claude Code')
+    .description('Install MCP servers, skills, scripts, slash commands, agents, rules and hooks for Claude Code')
     .option('--mcps <names>', 'comma-separated MCP names', csv)
     .option('--skills <names>', 'comma-separated skill names', csv)
     .option('--scripts <names>', 'comma-separated script names', csv)
     .option('--commands <names>', 'comma-separated slash command names', csv)
     .option('--agents <names>', 'comma-separated agent names (agents can grant tools or permissions)', csv)
+    .option('--rules <names>', 'comma-separated rule names (rules instruct the agent)', csv)
     .option('--hooks <names>', 'comma-separated hook names (hooks run code: you confirm the exact commands first)', csv)
     .option(
       '--allow-hooks',
@@ -625,16 +648,16 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     .addOption(new Option('--scope <scope>', 'where to install').choices(['project', 'user']))
     .option(
       '--source <folder>',
-      'use a catalog folder instead of the bundled one (trusted: its commands and hooks run code, and its agents can grant tools or permissions)',
+      'use a catalog folder instead of the bundled one (trusted: its commands and hooks run code, its agents can grant tools or permissions, and its rules instruct the agent)',
     )
     .option('--dry-run', 'print the plan without writing anything')
     .option(
       '--yes',
-      'skip confirmation (requires --scope and --mcps, --skills, --scripts, --commands, --agents and/or --hooks)',
+      'skip confirmation (requires --scope and --mcps, --skills, --scripts, --commands, --agents, --rules and/or --hooks)',
     )
     .option(
       '--force',
-      'overwrite existing entries, skill/script directories and command/agent files that differ (backed up first)',
+      'overwrite existing entries, skill/script directories and command/agent/rule files that differ (backed up first)',
     )
     .action(async (opts: InitOptions) => void (exitCode = await guarded(deps, () => runInit(deps, opts))));
 
@@ -652,18 +675,14 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
   program
     .command('uninstall <name>')
     .description(
-      'Remove one MCP server, skill, script, slash command, agent or hook that shitaku installed (undo reverts it)',
+      'Remove one MCP server, skill, script, slash command, agent, rule or hook that shitaku installed (undo reverts it)',
     )
     .addOption(new Option('--scope <scope>', 'scope to remove from (default: inferred)').choices(['project', 'user']))
     .addOption(
-      new Option('--kind <kind>', 'resolve a name that is an MCP, skill, script, command, hook and/or agent').choices([
-        'mcp',
-        'skill',
-        'script',
-        'command',
-        'hook',
-        'agent',
-      ]),
+      new Option(
+        '--kind <kind>',
+        'resolve a name that is an MCP, skill, script, command, hook, agent and/or rule',
+      ).choices(['mcp', 'skill', 'script', 'command', 'hook', 'agent', 'rule']),
     )
     .option('--dry-run', 'show what would be removed')
     .option('--force', 'remove even if the item changed since the install')
@@ -685,7 +704,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
   program
     .command('list')
-    .description('List the MCPs, skills, profiles, scripts, slash commands, agents and hooks a catalog offers')
+    .description('List the MCPs, skills, profiles, scripts, slash commands, agents, rules and hooks a catalog offers')
     .addArgument(new Argument('[kind]', 'only list this kind').choices(LIST_KINDS))
     .option('--search <text>', 'only items whose name or description contains this text (case-insensitive)')
     .option('--source <folder>', 'list a catalog folder instead of the bundled one')
@@ -762,6 +781,7 @@ async function guarded(deps: CliDeps, run: () => Promise<number>): Promise<numbe
       UnknownScriptError,
       UnknownCommandError,
       UnknownAgentError,
+      UnknownRuleError,
       UnknownHookError,
       UnsafeTreeError,
       StaleFileError,

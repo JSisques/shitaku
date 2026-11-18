@@ -8,6 +8,7 @@ import type { SkillItem } from '@/domain/catalog/skill.js';
 import type { ChangePlan } from '@/domain/plan/change-plan.js';
 import { PromptCancelled, type HookPreview } from '@/ports/prompter.js';
 import { makeAgent } from '@test/helpers/agents.js';
+import { ruleItem } from '@test/helpers/rules.js';
 
 const CANCEL = Symbol('clack:cancel');
 // Clack types its cancel symbol privately; `never` lets the mocks resolve with it.
@@ -37,6 +38,7 @@ const planOf = (files: number, skills: number, emptyFiles = 0, scripts = 0, comm
     scripts: Array.from({ length: scripts }, () => ({})),
     commands: Array.from({ length: commands }, () => ({})),
     agents: [],
+    rules: [],
     hooks: [
       ...Array.from({ length: hooks }, () => ({ items: [{ action: 'create' }] })),
       { items: [{ action: 'skip' }] },
@@ -300,7 +302,72 @@ describe('ClackPrompter', () => {
     });
   });
 
+  describe('selectRules', () => {
+    it('preselects the recommended rules and hints them', async () => {
+      multiselect.mockResolvedValueOnce(['naming']);
+
+      const result = await prompter.selectRules([
+        ruleItem('naming', [], true),
+        ruleItem('explain-why'),
+        ruleItem('no-secrets', [], true),
+      ]);
+
+      expect(result).toEqual(['naming']);
+      expect(multiselect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringMatching(/rules/) as string,
+          options: [
+            { value: 'naming', label: 'naming', hint: 'naming rule (recommended)' },
+            { value: 'explain-why', label: 'explain-why', hint: 'explain-why rule' },
+            { value: 'no-secrets', label: 'no-secrets', hint: 'no-secrets rule (recommended)' },
+          ],
+          initialValues: ['naming', 'no-secrets'],
+          required: false,
+        }),
+      );
+    });
+
+    it('preselects nothing when no rule is recommended and lets the user return an empty selection', async () => {
+      multiselect.mockResolvedValueOnce([]);
+
+      await expect(prompter.selectRules([ruleItem('naming'), ruleItem('explain-why')])).resolves.toEqual([]);
+      expect(multiselect).toHaveBeenCalledWith(expect.objectContaining({ initialValues: [], required: false }));
+    });
+
+    it('throws PromptCancelled when the prompt is dismissed', async () => {
+      multiselect.mockResolvedValueOnce(CANCELLED);
+
+      await expect(prompter.selectRules([])).rejects.toBeInstanceOf(PromptCancelled);
+    });
+  });
+
+  describe('resolveConflict for rules', () => {
+    it('words a rule conflict as a single-file overwrite', async () => {
+      select.mockResolvedValueOnce('overwrite');
+
+      await prompter.resolveConflict({ kind: 'rule', name: 'naming', reason: 'modified' });
+
+      expect(select).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "Rule 'naming' already exists with different content (modified). What now?",
+          options: [
+            { value: 'skip', label: 'Keep the existing one' },
+            { value: 'overwrite', label: 'Overwrite it' },
+          ],
+        }),
+      );
+    });
+  });
+
   describe('confirm', () => {
+    it('counts rule files as locations', async () => {
+      confirm.mockResolvedValueOnce(true);
+
+      await prompter.confirm({ ...planOf(0, 0), rules: [{}, {}, {}] } as unknown as ChangePlan);
+
+      expect(confirm).toHaveBeenCalledWith({ message: 'Apply the changes to 3 locations?' });
+    });
+
     it('counts agent files as locations', async () => {
       confirm.mockResolvedValueOnce(true);
 

@@ -21,7 +21,7 @@ const TOKEN = 'abc123-secret-value';
 function fakePrompter(
   script: Partial<
     Record<
-      'mcps' | 'skills' | 'scripts' | 'commands' | 'agents' | 'hooks' | 'scope' | 'confirm' | 'confirmHooks',
+      'mcps' | 'skills' | 'scripts' | 'commands' | 'agents' | 'rules' | 'hooks' | 'scope' | 'confirm' | 'confirmHooks',
       unknown
     >
   > & {
@@ -52,6 +52,10 @@ function fakePrompter(
       Promise.resolve((script.commands as string[] | undefined) ?? unscripted('commands'))
     ),
     selectAgents: () => (calls.push('agents'), Promise.resolve((script.agents as string[] | undefined) ?? [])),
+    selectRules: () => (
+      calls.push('rules'),
+      Promise.resolve((script.rules as string[] | undefined) ?? unscripted('rules'))
+    ),
     selectHooks: () => (
       calls.push('hooks'),
       Promise.resolve((script.hooks as string[] | undefined) ?? unscripted('hooks'))
@@ -206,14 +210,14 @@ describe('runCli', () => {
   });
 
   it('prompts for MCPs, scope and confirmation interactively', async () => {
-    usePrompter({ mcps: ['context7'], skills: [], scripts: [], scope: 'project', confirm: true });
+    usePrompter({ mcps: ['context7'], skills: [], scripts: [], rules: [], scope: 'project', confirm: true });
     expect(await run('init')).toBe(0);
-    expect(calls).toEqual(['mcps', 'skills', 'scripts', 'agents', 'scope', 'confirm']);
+    expect(calls).toEqual(['mcps', 'skills', 'scripts', 'agents', 'rules', 'scope', 'confirm']);
     expect(Object.keys(parseDoc(await readFile(mcpFile(), 'utf8')).mcpServers)).toEqual(['context7']);
   });
 
   it('writes nothing when the confirmation is declined', async () => {
-    usePrompter({ mcps: ['context7'], skills: [], scripts: [], scope: 'project', confirm: false });
+    usePrompter({ mcps: ['context7'], skills: [], scripts: [], rules: [], scope: 'project', confirm: false });
     expect(await run('init')).toBe(0);
     await expect(readFile(mcpFile(), 'utf8')).rejects.toThrow();
     expect(await readdir(tmp.homeDir)).toEqual([]);
@@ -310,9 +314,9 @@ describe('runCli', () => {
     });
 
     it('prompts for MCPs, skills, scope and confirmation, then installs the skill', async () => {
-      usePrompter({ mcps: [], skills: ['example-skill'], scripts: [], scope: 'project', confirm: true });
+      usePrompter({ mcps: [], skills: ['example-skill'], scripts: [], rules: [], scope: 'project', confirm: true });
       expect(await run('init')).toBe(0);
-      expect(calls).toEqual(['mcps', 'skills', 'scripts', 'agents', 'scope', 'confirm']);
+      expect(calls).toEqual(['mcps', 'skills', 'scripts', 'agents', 'rules', 'scope', 'confirm']);
       expect(await readFile(skillFile(), 'utf8')).toBe(await bundled());
       await expect(readFile(mcpFile(), 'utf8')).rejects.toThrow();
     });
@@ -331,14 +335,14 @@ describe('runCli', () => {
     });
 
     it('exits 1 when the interactive selection is empty for both kinds', async () => {
-      usePrompter({ mcps: [], skills: [], scripts: [], scope: 'project' });
+      usePrompter({ mcps: [], skills: [], scripts: [], rules: [], scope: 'project' });
       expect(await run('init')).toBe(1);
       expect(text()).toMatch(/at least one/i);
       expect(calls).not.toContain('confirm');
     });
 
     it('writes nothing when the interactive confirmation is declined', async () => {
-      usePrompter({ mcps: [], skills: ['example-skill'], scripts: [], scope: 'project', confirm: false });
+      usePrompter({ mcps: [], skills: ['example-skill'], scripts: [], rules: [], scope: 'project', confirm: false });
       expect(await run('init')).toBe(0);
       await expect(readdir(join(tmp.cwd, '.claude'))).rejects.toThrow();
     });
@@ -375,6 +379,7 @@ describe('runCli', () => {
           mcps: [],
           skills: ['example-skill'],
           scripts: [],
+          rules: [],
           scope: 'project',
           conflict: 'skip',
           confirm: true,
@@ -390,6 +395,7 @@ describe('runCli', () => {
           mcps: [],
           skills: ['example-skill'],
           scripts: [],
+          rules: [],
           scope: 'project',
           conflict: 'overwrite',
           confirm: true,
@@ -425,6 +431,7 @@ describe('runCli', () => {
         mcps: ['github', 'context7'],
         skills: [],
         scripts: [],
+        rules: [],
         scope: 'project',
         conflict: 'skip',
         confirm: true,
@@ -442,6 +449,7 @@ describe('runCli', () => {
         mcps: ['github'],
         skills: [],
         scripts: [],
+        rules: [],
         scope: 'project',
         conflict: 'overwrite',
         confirm: true,
@@ -610,7 +618,7 @@ describe('runCli', () => {
 
     it('asks for commands when the catalog has some, and installs the selection', async () => {
       const dir = await writeCommandCatalog();
-      usePrompter({ mcps: [], commands: ['review'], scope: 'project', confirm: true });
+      usePrompter({ mcps: [], commands: ['review'], rules: [], scope: 'project', confirm: true });
       expect(await run('init', '--source', dir)).toBe(0);
       expect(calls).toEqual(['mcps', 'commands', 'scope', 'confirm']);
       expect(await readFile(commandFile(), 'utf8')).toBe(REVIEW);
@@ -618,7 +626,7 @@ describe('runCli', () => {
 
     it('does not ask for commands when the catalog has none', async () => {
       const dir = await writeCommandCatalog([]);
-      usePrompter({ mcps: [], skills: [], scripts: [], scope: 'project', confirm: true });
+      usePrompter({ mcps: [], skills: [], scripts: [], rules: [], scope: 'project', confirm: true });
       await run('init', '--source', dir);
       expect(calls).not.toContain('commands');
     });
@@ -627,11 +635,18 @@ describe('runCli', () => {
       const dir = await writeCommandCatalog();
       await mkdir(join(tmp.cwd, '.claude', 'commands'), { recursive: true });
       await writeFile(commandFile(), 'mine\n');
-      usePrompter({ mcps: [], commands: ['review'], scope: 'project', conflict: 'skip', confirm: true });
+      usePrompter({ mcps: [], commands: ['review'], rules: [], scope: 'project', conflict: 'skip', confirm: true });
       expect(await run('init', '--source', dir)).toBe(0);
       expect(conflicts).toEqual([expect.objectContaining({ kind: 'command', name: 'review' })]);
       expect(await readFile(commandFile(), 'utf8')).toBe('mine\n');
-      usePrompter({ mcps: [], commands: ['review'], scope: 'project', conflict: 'overwrite', confirm: true });
+      usePrompter({
+        mcps: [],
+        commands: ['review'],
+        rules: [],
+        scope: 'project',
+        conflict: 'overwrite',
+        confirm: true,
+      });
       expect(await run('init', '--source', dir)).toBe(0);
       expect(await readFile(commandFile(), 'utf8')).toBe(REVIEW);
     });
@@ -682,6 +697,149 @@ describe('runCli', () => {
       expect(out[0]).toBe('rules:');
       expect(out).toHaveLength(11);
       expect(out).toContainEqual(expect.stringMatching(/^ {2}no-secrets\s+\S/));
+    });
+
+    const ruleFile = (name = 'no-secrets', root = tmp.cwd) => join(root, '.claude', 'rules', `${name}.md`);
+    const bundledRule = (name: string) => readFile(join(CATALOG, 'rules', `${name}.md`));
+
+    it('lists --rules in init help and the --source trust copy says its rules instruct the agent', async () => {
+      expect(await run('init', '--help')).toBe(0);
+      const help = text().replace(/\s+/g, ' ');
+      expect(help).toContain('--rules <names>');
+      expect(help).toMatch(/--source.*its rules instruct the agent/);
+    });
+
+    it('installs only the named bundled rule byte-identical in project scope', async () => {
+      expect(await run('init', '--rules', 'no-secrets', '--scope', 'project', '--yes')).toBe(0);
+      expect(await readFile(ruleFile())).toEqual(await bundledRule('no-secrets'));
+      expect(await readdir(join(tmp.cwd, '.claude', 'rules'))).toEqual(['no-secrets.md']);
+      expect(calls).toEqual([]);
+    });
+
+    it('installs a rule in user scope under the sandboxed home', async () => {
+      expect(await run('init', '--rules', 'naming,no-secrets', '--scope', 'user', '--yes')).toBe(0);
+      expect(await readFile(ruleFile('naming', tmp.homeDir))).toEqual(await bundledRule('naming'));
+      expect(await readFile(ruleFile('no-secrets', tmp.homeDir))).toEqual(await bundledRule('no-secrets'));
+    });
+
+    it('treats --rules as a kind flag: no other kind is installed or asked', async () => {
+      expect(await run('init', '--rules', 'naming', '--scope', 'project')).toBe(0);
+      expect(calls).toEqual([]);
+      expect(await readdir(tmp.cwd)).toEqual(['.claude']);
+    });
+
+    it('installs no rules on --yes without --rules and fails asking for a kind', async () => {
+      expect(await run('init', '--yes', '--scope', 'project')).toBe(1);
+      expect(err.join('\n')).toContain('--rules');
+      expect(await readdir(tmp.cwd)).toEqual([]);
+      expect(await run('init', '--yes', '--mcps', 'github', '--scope', 'project')).toBe(0);
+      await expect(readdir(join(tmp.cwd, '.claude', 'rules'))).rejects.toThrow();
+    });
+
+    it('exits 1 naming an unknown rule and writes nothing', async () => {
+      expect(await run('init', '--rules', 'ghost', '--scope', 'project', '--yes')).toBe(1);
+      expect(err.join('\n')).toMatch(/^error: .*ghost/);
+      expect(await readdir(tmp.cwd)).toEqual([]);
+    });
+
+    it('exits 2 on a conflict without --force and writes nothing else', async () => {
+      await mkdir(join(tmp.cwd, '.claude', 'rules'), { recursive: true });
+      await writeFile(ruleFile(), 'mine\n');
+      expect(await run('init', '--rules', 'no-secrets,naming', '--scope', 'project', '--yes')).toBe(2);
+      expect(err).toContain("conflict: rule 'no-secrets' already exists with different content");
+      expect(await readFile(ruleFile(), 'utf8')).toBe('mine\n');
+      expect(await readdir(join(tmp.cwd, '.claude', 'rules'))).toEqual(['no-secrets.md']);
+    });
+
+    it('overwrites a conflicting rule with --force', async () => {
+      await mkdir(join(tmp.cwd, '.claude', 'rules'), { recursive: true });
+      await writeFile(ruleFile(), 'mine\n');
+      expect(await run('init', '--rules', 'no-secrets', '--scope', 'project', '--yes', '--force')).toBe(0);
+      expect(await readFile(ruleFile())).toEqual(await bundledRule('no-secrets'));
+    });
+
+    it('prints the rule in the plan on --dry-run and writes nothing', async () => {
+      expect(await run('init', '--rules', 'no-secrets', '--scope', 'project', '--dry-run')).toBe(0);
+      expect(out).toContain(`project scope: ${ruleFile()}`);
+      expect(out).toContain('  no-secrets: create');
+      expect(await readdir(tmp.cwd)).toEqual([]);
+    });
+
+    it('asks for rules after agents and before hooks, only when the catalog has rules', async () => {
+      const dir = await writeRuleCatalog();
+      usePrompter({ mcps: [], rules: ['naming'], scope: 'project', confirm: true });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(calls).toEqual(['mcps', 'rules', 'scope', 'confirm']);
+      expect(await readFile(ruleFile('naming'), 'utf8')).toBe(Buffer.from(ruleBytes('naming')).toString());
+      const empty = join(tmp.root, 'no-rules');
+      await mkdir(empty, { recursive: true });
+      await writeFile(join(empty, 'catalog.json'), JSON.stringify({ version: 1, items: { mcps: [] } }));
+      usePrompter({ mcps: [], skills: [], scripts: [], commands: [], agents: [], hooks: [], scope: 'project' });
+      await run('init', '--source', empty);
+      expect(calls).not.toContain('rules');
+    });
+
+    it('skips the rules prompt when a kind flag is given', async () => {
+      usePrompter({ confirm: true });
+      expect(await run('init', '--mcps', 'github', '--scope', 'project')).toBe(0);
+      expect(calls).toEqual([]);
+      await expect(readdir(join(tmp.cwd, '.claude', 'rules'))).rejects.toThrow();
+    });
+
+    it('resolves an interactive rule conflict: skip keeps the file, overwrite replaces it', async () => {
+      const dir = await writeRuleCatalog();
+      await mkdir(join(tmp.cwd, '.claude', 'rules'), { recursive: true });
+      await writeFile(ruleFile('naming'), 'mine\n');
+      usePrompter({ mcps: [], rules: ['naming'], scope: 'project', conflict: 'skip', confirm: true });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(conflicts).toEqual([expect.objectContaining({ kind: 'rule', name: 'naming' })]);
+      expect(await readFile(ruleFile('naming'), 'utf8')).toBe('mine\n');
+      usePrompter({ mcps: [], rules: ['naming'], scope: 'project', conflict: 'overwrite', confirm: true });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(await readFile(ruleFile('naming'), 'utf8')).toBe(Buffer.from(ruleBytes('naming')).toString());
+    });
+
+    it('does not abort a declined hook gate when only a rule is planned', async () => {
+      const dir = await writeRuleCatalog();
+      await mkdir(join(dir, 'hooks'), { recursive: true });
+      await writeFile(
+        join(dir, 'hooks', 'fmt.json'),
+        JSON.stringify({ description: 'fmt', event: 'Stop', handler: { type: 'command', command: 'true' } }),
+      );
+      await writeFile(
+        join(dir, 'catalog.json'),
+        JSON.stringify({ version: 1, items: { mcps: [], rules: ['naming'], hooks: ['fmt'] } }),
+      );
+      usePrompter({
+        mcps: [],
+        rules: ['naming'],
+        hooks: ['fmt'],
+        scope: 'project',
+        confirmHooks: false,
+        confirm: true,
+      });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(out).not.toContain('aborted: nothing was written');
+      expect(await readFile(ruleFile('naming'), 'utf8')).toBe(Buffer.from(ruleBytes('naming')).toString());
+    });
+
+    it('uninstalls a rule with --kind rule and undo restores it', async () => {
+      await run('init', '--rules', 'no-secrets', '--scope', 'project', '--yes');
+      expect(await run('uninstall', 'no-secrets', '--kind', 'rule')).toBe(0);
+      expect(text()).toMatch(/uninstalled rule 'no-secrets' \(project scope\)/);
+      await expect(readFile(ruleFile())).rejects.toThrow();
+      expect(await run('undo')).toBe(0);
+      expect(await readFile(ruleFile())).toEqual(await bundledRule('no-secrets'));
+    });
+
+    it('lists rule among the --kind choices on an invalid kind', async () => {
+      expect(await run('uninstall', 'no-secrets', '--kind', 'widget')).toBe(1);
+      expect(err.join('\n')).toContain('Allowed choices are mcp, skill, script, command, hook, agent, rule');
+    });
+
+    it('mentions rules in the list and init descriptions', async () => {
+      expect(await run('list', '--help')).toBe(0);
+      expect(text().replace(/\s+/g, ' ')).toMatch(/agents, rules and hooks a catalog offers/);
     });
   });
 
@@ -744,7 +902,16 @@ describe('runCli', () => {
       expect(await run('init', '--source', dir)).toBe(0);
       expect(calls).toEqual(['mcps', 'agents', 'scope', 'confirm']);
       expect(await readFile(agentFile(), 'utf8')).toBe(AGENT('reviewer'));
-      usePrompter({ mcps: [], skills: [], scripts: [], commands: [], hooks: [], scope: 'project', confirm: true });
+      usePrompter({
+        mcps: [],
+        skills: [],
+        scripts: [],
+        commands: [],
+        hooks: [],
+        rules: [],
+        scope: 'project',
+        confirm: true,
+      });
       await run('init', '--source', await writeCatalogWithoutAgents());
       expect(calls).not.toContain('agents');
     });
@@ -922,7 +1089,7 @@ describe('runCli', () => {
 
     it('asks for hooks when the catalog has some, shows the previews and installs after confirmation', async () => {
       const dir = await writeHookCatalog();
-      usePrompter({ mcps: [], hooks: ['fmt'], scope: 'project', confirmHooks: true, confirm: true });
+      usePrompter({ mcps: [], hooks: ['fmt'], rules: [], scope: 'project', confirmHooks: true, confirm: true });
       expect(await run('init', '--source', dir)).toBe(0);
       expect(calls).toEqual(['mcps', 'hooks', 'scope', 'confirmHooks', 'confirm']);
       expect(hookPreviews).toEqual([
@@ -943,7 +1110,7 @@ describe('runCli', () => {
 
     it('skips the confirmation prompt with --allow-hooks even when interactive', async () => {
       const dir = await writeHookCatalog();
-      usePrompter({ mcps: [], hooks: ['fmt'], scope: 'project', confirm: true });
+      usePrompter({ mcps: [], hooks: ['fmt'], rules: [], scope: 'project', confirm: true });
       expect(await run('init', '--allow-hooks', '--source', dir)).toBe(0);
       expect(calls).toEqual(['mcps', 'hooks', 'scope', 'confirm']);
       expect(parseDoc(await readFile(settings(), 'utf8'))).toEqual(installed);
@@ -967,7 +1134,7 @@ describe('runCli', () => {
 
     it('stops with nothing written when the user declines and only hooks were selected', async () => {
       const dir = await writeHookCatalog();
-      usePrompter({ mcps: [], hooks: ['fmt'], scope: 'project', confirmHooks: false });
+      usePrompter({ mcps: [], hooks: ['fmt'], rules: [], scope: 'project', confirmHooks: false });
       expect(await run('init', '--source', dir)).toBe(0);
       expect(out).toContain('aborted: nothing was written');
       expect(calls).not.toContain('confirm');
@@ -976,7 +1143,7 @@ describe('runCli', () => {
 
     it('does not ask for hooks when the catalog has none', async () => {
       const dir = await writeHookCatalog({ hooks: false, commands: true });
-      usePrompter({ mcps: [], commands: ['review'], scope: 'project', confirm: true });
+      usePrompter({ mcps: [], commands: ['review'], rules: [], scope: 'project', confirm: true });
       expect(await run('init', '--source', dir)).toBe(0);
       expect(calls).toEqual(['mcps', 'commands', 'scope', 'confirm']);
     });
@@ -1571,7 +1738,7 @@ describe('runCli', () => {
       useUpdates('0.3.0');
       expect(await run('init', '--yes')).toBe(1);
       expect(err).toEqual([
-        'error: select at least one kind: pass --mcps, --skills, --scripts, --commands, --agents and/or --hooks',
+        'error: select at least one kind: pass --mcps, --skills, --scripts, --commands, --agents, --rules and/or --hooks',
         NOTICE,
       ]);
     });
@@ -1815,7 +1982,7 @@ describe('runCli', () => {
     const art = () => plain()[1] ?? '';
 
     const interactive = () => {
-      usePrompter({ mcps: ['context7'], skills: [], scripts: [], scope: 'project', confirm: true });
+      usePrompter({ mcps: ['context7'], skills: [], scripts: [], rules: [], scope: 'project', confirm: true });
       terminal = { tty: true, color: false, unicode: false };
       cliVersion = '0.2.0';
     };
@@ -1905,7 +2072,7 @@ describe('runCli', () => {
     ])('hides the banner with --no-banner %s', async (_label, args) => {
       interactive();
       expect(await run(...args)).toBe(0);
-      expect(calls).toEqual(['mcps', 'skills', 'scripts', 'agents', 'scope', 'confirm']);
+      expect(calls).toEqual(['mcps', 'skills', 'scripts', 'agents', 'rules', 'scope', 'confirm']);
       expect(shown()).not.toContain(art());
     });
 
@@ -1921,7 +2088,7 @@ describe('runCli', () => {
     });
 
     it('still prints the banner when init will prompt for the remaining answers', async () => {
-      usePrompter({ scope: 'project', confirm: true });
+      usePrompter({ rules: [], scope: 'project', confirm: true });
       terminal = { tty: true, color: false, unicode: false };
       cliVersion = '0.2.0';
       expect(await run('init', '--mcps', 'github')).toBe(0);
