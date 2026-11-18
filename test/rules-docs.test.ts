@@ -18,7 +18,7 @@ const NOTE: Record<string, Record<string, RegExp>> = {
     'quote paths': /quote[^\n]*`paths`/i,
   },
   'CONTRIBUTING.md': {
-    section: /^### Adding to the catalog: rules$/m,
+    section: /^### Adding catalog items: rules$/m,
     'reserved keys': /`check`[^\n]*`severity`[^\n]*reserved/i,
     'quote paths': /quote[^\n]*`paths`/i,
     'size cap': /1,500 bytes/,

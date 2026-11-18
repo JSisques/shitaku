@@ -220,7 +220,7 @@ Validation limits:
 
 Install behavior: the file is copied flat to `~/.claude/agents/<name>.md` (`user`) or `./.claude/agents/<name>.md` (`project`). Other files in that directory are never touched. A different `<name>.md` that shitaku did not install is a conflict and is never overwritten silently; `--force` backs it up first and `shitaku undo` restores it. `shitaku uninstall <name>` refuses a modified file without `--force`. The bundled catalog ships one agent, `pr-creator`, a least-privilege example that combines the `pr-writing` skill with `github` MCP tools; install behavior tests still use fixtures. Regenerate the README and website tables with `pnpm run docs:catalog` and `pnpm run docs:website-catalog`.
 
-### Adding to the catalog: rules
+### Adding catalog items: rules
 
 A rule is a single Markdown file that Claude Code loads as an instruction. A rule without `paths` is loaded in every session, so keep rules short and review one as you would a prompt: it steers the agent.
 
