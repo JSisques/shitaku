@@ -1357,6 +1357,85 @@ describe('planInit (rules)', () => {
   });
 });
 
+describe('initMcps (rules)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const real = new NodeFileSystem();
+  const nested = ruleItem('naming', ['paths:', '  - "src/**"', '  - "test/**"']);
+  const dir = (scope: Scope = 'project') => join(scope === 'user' ? tmp.homeDir : tmp.cwd, '.claude', 'rules');
+  const file = (scope: Scope = 'project') => join(dir(scope), 'naming.md');
+  const manifest = async (): Promise<Manifest> => parseManifest(await readFile(manifestPath(tmp.homeDir), 'utf8'));
+  const install = (extra: { force?: boolean; scope?: Scope } = {}) =>
+    initMcps(deps, { mcps: [], rules: ['naming'], scope: extra.scope ?? 'project', ...extra });
+  const mine = async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), 'mine');
+  };
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: ruleSource([nested]),
+      fs: real,
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it.each<Scope>(['user', 'project'])(
+    'writes catalog-identical bytes, nested paths included, at the %s root',
+    async (scope) => {
+      expect((await install({ scope })).applied).toBe(true);
+      expect(new Uint8Array(await readFile(file(scope)))).toEqual(nested.bytes);
+    },
+  );
+
+  it('records one rule file entry rooted at its path, with the directories it created', async () => {
+    await install();
+    const [record] = (await manifest()).installs;
+    expect(record!.createdDirs).toEqual([join(tmp.cwd, '.claude'), dir()]);
+    expect(record!.files[0]!.items).toEqual([
+      { kind: 'rule', name: 'naming', action: 'create', entryHash: sha256(nested.bytes), root: file() },
+    ]);
+  });
+
+  it('does not journal a created directory that already existed', async () => {
+    await mkdir(dir(), { recursive: true });
+    await install();
+    expect((await manifest()).installs[0]!.createdDirs).toEqual([]);
+  });
+
+  it('skips a byte-identical file without journaling it', async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), nested.bytes);
+    expect((await install()).applied).toBe(false);
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+
+  it('replaces a user file with --force after a byte-identical backup', async () => {
+    await mine();
+    expect((await install({ force: true })).applied).toBe(true);
+    expect(new Uint8Array(await readFile(file()))).toEqual(nested.bytes);
+    const [entry] = (await manifest()).installs[0]!.files;
+    expect(await readFile(join(stateDir(tmp.homeDir), entry!.backup!), 'utf8')).toBe('mine');
+  });
+
+  it('refuses to overwrite a user file without --force, writing nothing', async () => {
+    await mine();
+    expect((await install()).applied).toBe(false);
+    expect(await readFile(file(), 'utf8')).toBe('mine');
+    await expect(readFile(manifestPath(tmp.homeDir))).rejects.toThrow();
+  });
+
+  it('aborts with StaleFileError when the file changed between planning and applying', async () => {
+    const plan = await planInit(deps, { mcps: [], rules: ['naming'], scope: 'project' });
+    await mine();
+    await expect(applyPlan(deps, plan)).rejects.toThrow(StaleFileError);
+    expect(await readFile(file(), 'utf8')).toBe('mine');
+  });
+});
+
 describe('initMcps (hooks)', () => {
   let tmp: TmpPaths;
   let deps: InitDeps;
