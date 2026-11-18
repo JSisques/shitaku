@@ -172,7 +172,7 @@ function evaluatePatternAbsent(check: Check<'pattern-absent'>, snapshot: Project
 }
 
 /** `\n`-separated lines ignoring one trailing newline: `'a\n'` is 1, `''` is 0. */
-function countLines(text: string): number {
+export function countLines(text: string): number {
   if (text === '') return 0;
   const breaks = text.split('\n').length - 1;
   return text.endsWith('\n') ? breaks : breaks + 1;

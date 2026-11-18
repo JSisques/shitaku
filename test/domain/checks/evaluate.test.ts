@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { parseRule } from '@/domain/catalog/rule.js';
 import type { RuleCheck } from '@/domain/catalog/rule-check.js';
 import {
   evaluateRuleCheck,
   finalizeEvaluation,
+  countLines,
   MAX_FINDINGS,
   MAX_LINE_LENGTH,
   type CheckEvaluation,
@@ -296,5 +298,63 @@ describe('evaluateRuleCheck max-lines', () => {
     const result = run(check, [{ path: 'src/gen/a.ts', text: rows(999) }, { path: 'src/b.ts' }]);
     expect(result.findings).toEqual([]);
     expect(result.skipped).toEqual(['src/b.ts']);
+  });
+});
+
+describe('evaluateRuleCheck end to end', () => {
+  const check: CheckOf<'pattern-absent'> = { type: 'pattern-absent', files: ['**/*.ts'], pattern: 'TODO' };
+  const files = [
+    { path: 'b.ts', text: 'ok\nTODO two' },
+    { path: 'a.ts', text: 'TODO one' },
+  ];
+
+  it('returns equal results for the same call made twice', () => {
+    expect(run(check, files)).toEqual(run(check, files));
+    expect(run(check, files).findings.length).toBeGreaterThan(0);
+  });
+
+  it('returns the full empty tuple when nothing violates the check', () => {
+    expect(run(check, [{ path: 'a.ts', text: 'clean' }])).toEqual({
+      status: 'evaluated',
+      findings: [],
+      skipped: [],
+      truncated: false,
+    });
+  });
+
+  it('reports severity error for a parsed rule that declares no severity', () => {
+    const bytes = new TextEncoder().encode(
+      [
+        '---',
+        'name: x',
+        'description: x rule',
+        'check:',
+        '  type: pattern-absent',
+        "  files: '**/*.ts'",
+        '  pattern: TODO',
+        '---',
+        'body',
+        '',
+      ].join('\n'),
+    );
+    const parsed = parseRule('x', bytes);
+    if (!('rule' in parsed) || parsed.rule.check === undefined || parsed.rule.severity === undefined) {
+      throw new Error('expected a rule with a check');
+    }
+    const result = evaluateRuleCheck(
+      { name: parsed.rule.name, check: parsed.rule.check, severity: parsed.rule.severity },
+      { files },
+    );
+    expect(result.findings).toHaveLength(2);
+    expect(result.findings.every((f) => f.severity === 'error')).toBe(true);
+  });
+});
+
+describe('countLines', () => {
+  it('counts the empty string as 0 lines and ignores one trailing newline', () => {
+    expect(countLines('')).toBe(0);
+    expect(countLines('a')).toBe(1);
+    expect(countLines('a\n')).toBe(1);
+    expect(countLines('a\n\n')).toBe(2);
   });
 });
