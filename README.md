@@ -151,6 +151,7 @@ Installable Claude Code subagents live as single files under `catalog/agents/<na
 
 | Name                  | Description                                                                                                                                                                                                        |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `docs-writer`         | Writes and updates documentation, README sections, guides, code comments and JSDoc without changing code behavior, and asks the caller to run docs generators it cannot run. Requires the docs-writing skill.      |
 | `pr-creator`          | Drafts a pull request with the pr-writing skill and opens or edits it through the GitHub MCP only after explicit user confirmation. Requires the pr-writing skill, the github MCP server and a pushed head branch. |
 | `qa`                  | Reviews a change for missing tests, untested edge cases and likely regressions, writes a failing test for each confirmed bug, edits only test files and never claims a check it could not run.                     |
 | `socratic-challenger` | Challenges an idea, plan or decision with Socratic questions on demand, optionally summarizes the decisions reached and keeps a Q&A log, and never implements features. Requires the socratic-method skill.        |
