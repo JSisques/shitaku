@@ -54,17 +54,18 @@ const exists = (path: string): Promise<boolean> =>
     () => false,
   );
 
+const BOTH_REPORTED = 'wrote .shitaku/repo-map.json\nwrote .shitaku/repo-map.md\n';
+
 describe('repo-map CLI', () => {
   it('writes .shitaku/repo-map.json by default, reports it and exits 0', async () => {
     const dir = await project(simpleApp);
     const result = await run(dir);
-    expect(result).toEqual({ code: 0, stdout: 'wrote .shitaku/repo-map.json\n', stderr: '' });
+    expect(result).toEqual({ code: 0, stdout: BOTH_REPORTED, stderr: '' });
     const doc = await readMap(dir);
     expect(doc.schema).toBe('shitaku.catalog.repo-map/v1');
     expect(doc.commit).toBeNull();
     expect(doc.root).toEqual({ packageName: 'simple-app' });
     expect(doc.modules.map((m) => m.path)).toEqual(['src/index.ts', 'src/util.ts', 'test/util.test.ts']);
-    expect(await readdir(join(dir, '.shitaku'))).toEqual(['repo-map.json']);
   });
 
   it('writes the file with canonical formatting: sorted keys, two-space indent, trailing newline', async () => {
@@ -79,7 +80,7 @@ describe('repo-map CLI', () => {
   it('writes to --out and not to .shitaku', async () => {
     const dir = await project(simpleApp);
     const result = await run(dir, ['--out', 'maps']);
-    expect(result).toEqual({ code: 0, stdout: 'wrote maps/repo-map.json\n', stderr: '' });
+    expect(result).toEqual({ code: 0, stdout: 'wrote maps/repo-map.json\nwrote maps/repo-map.md\n', stderr: '' });
     expect((await readMap(dir, 'maps/repo-map.json')).schema).toBe('shitaku.catalog.repo-map/v1');
     expect(await exists(join(dir, '.shitaku'))).toBe(false);
   });
@@ -107,16 +108,100 @@ describe('repo-map CLI', () => {
     expect((await readFile(join(dir, 'repo-map.json'))).equals(first)).toBe(true);
   });
 
-  it('accepts --format json', async () => {
+  it('writes both files by default and reports each', async () => {
     const dir = await project(simpleApp);
-    expect((await run(dir, ['--format', 'json'])).code).toBe(0);
-    expect(await exists(join(dir, '.shitaku', 'repo-map.json'))).toBe(true);
+    const result = await run(dir);
+    expect(result).toEqual({ code: 0, stdout: BOTH_REPORTED, stderr: '' });
+    expect(await readdir(join(dir, '.shitaku'))).toEqual(['repo-map.json', 'repo-map.md']);
+    const markdown = await readFile(join(dir, '.shitaku', 'repo-map.md'), 'utf8');
+    expect(markdown).toContain('# Repository map');
+    expect(markdown).toContain('### `src/util.ts` (imported by 2)');
+  });
+
+  it('writes only the JSON with --format json', async () => {
+    const dir = await project(simpleApp);
+    const result = await run(dir, ['--format', 'json']);
+    expect(result).toEqual({ code: 0, stdout: 'wrote .shitaku/repo-map.json\n', stderr: '' });
+    expect(await readdir(join(dir, '.shitaku'))).toEqual(['repo-map.json']);
+  });
+
+  it('writes only the Markdown with --format markdown', async () => {
+    const dir = await project(simpleApp);
+    const result = await run(dir, ['--format', 'markdown']);
+    expect(result).toEqual({ code: 0, stdout: 'wrote .shitaku/repo-map.md\n', stderr: '' });
+    expect(await readdir(join(dir, '.shitaku'))).toEqual(['repo-map.md']);
+  });
+
+  it('neither writes nor deletes an output that --format did not select', async () => {
+    const dir = await project({
+      ...simpleApp,
+      '.shitaku/repo-map.md': 'old markdown\n',
+    });
+    await run(dir, ['--format', 'json']);
+    expect(await readFile(join(dir, '.shitaku', 'repo-map.md'), 'utf8')).toBe('old markdown\n');
+
+    await writeFile(join(dir, '.shitaku', 'repo-map.json'), 'old json\n');
+    await run(dir, ['--format', 'markdown']);
+    expect(await readFile(join(dir, '.shitaku', 'repo-map.json'), 'utf8')).toBe('old json\n');
+    expect(await readFile(join(dir, '.shitaku', 'repo-map.md'), 'utf8')).toContain('# Repository map');
+  });
+
+  it('writes both files to --out', async () => {
+    const dir = await project(simpleApp);
+    expect((await run(dir, ['--out', 'maps'])).code).toBe(0);
+    expect(await readdir(join(dir, 'maps'))).toEqual(['repo-map.json', 'repo-map.md']);
+    expect(await exists(join(dir, '.shitaku'))).toBe(false);
+  });
+
+  it('limits only the Markdown tree with --max-depth', async () => {
+    const dir = await project({ ...simpleApp, 'a/b/c/d/deep.ts': 'export const deep = 1;\n' });
+    expect((await run(dir, ['--max-depth', '2'])).code).toBe(0);
+    const markdown = await readFile(join(dir, '.shitaku', 'repo-map.md'), 'utf8');
+    const treeSection = (markdown.split('## Tree\n')[1] ?? '').split('\n## ')[0] ?? '';
+    expect(treeSection).toContain('`a/b`');
+    expect(treeSection).not.toContain('`a/b/c`');
+    const doc = await readMap(dir);
+    expect(doc.tree.map((entry) => entry.path)).toContain('a/b/c/d');
+  });
+
+  it('keeps the JSON complete when the Markdown is truncated', async () => {
+    const files: Tree = { ...simpleApp };
+    for (let i = 0; i < 300; i++) {
+      const id = String(i).padStart(4, '0');
+      files[`src/gen/m${id}.ts`] =
+        `export function first${id}(argument: string, other: number): Promise<void> { return Promise.resolve(); }\n` +
+        `export function second${id}(argument: string, other: number): Promise<void> { return Promise.resolve(); }\n`;
+    }
+    const dir = await project(files);
+    expect((await run(dir)).code).toBe(0);
+    const markdown = await readFile(join(dir, '.shitaku', 'repo-map.md'), 'utf8');
+    expect(markdown.length).toBeLessThanOrEqual(32000);
+    expect(markdown).toContain('## Omitted');
+    const doc = await readMap(dir);
+    expect(doc.modules.filter((m) => m.path.startsWith('src/gen/'))).toHaveLength(300);
+    expect(doc.modules.find((m) => m.path === 'src/gen/m0299.ts')?.exports).toHaveLength(2);
+  });
+
+  it('renders everything before writing, so a render failure leaves old files untouched', async () => {
+    const broken = await copyScript();
+    temps.push(broken);
+    await writeFile(
+      join(broken.dir, 'render-markdown.mjs'),
+      "export const renderMarkdown = () => {\n  throw new Error('boom');\n};\n",
+    );
+    const dir = await project({ ...simpleApp, '.shitaku/repo-map.json': 'old json\n' });
+    const result = await runRepoMap(broken.dir, [], { cwd: dir, env: noGit(dir) });
+    expect(result).toEqual({ code: 2, stdout: '', stderr: 'repo-map: boom\n' });
+    expect(await readFile(join(dir, '.shitaku', 'repo-map.json'), 'utf8')).toBe('old json\n');
+    expect(await exists(join(dir, '.shitaku', 'repo-map.md'))).toBe(false);
   });
 
   it.each([
     [['--bogus'], 'repo-map: unsupported option --bogus'],
     [['--out'], 'repo-map: --out requires a value'],
-    [['--format', 'markdown'], 'repo-map: unsupported --format markdown'],
+    [['--format', 'xml'], 'repo-map: unsupported --format xml'],
+    [['--max-depth', '0'], 'repo-map: --max-depth must be a positive integer, got 0'],
+    [['--max-depth', 'abc'], 'repo-map: --max-depth must be a positive integer, got abc'],
     [['stray'], 'repo-map: unexpected argument stray'],
   ])('exits 2 with a usage message and writes nothing for %j', async (args, message) => {
     const dir = await project(simpleApp);
@@ -147,7 +232,7 @@ describe('repo-map CLI', () => {
     const dir = await project(simpleApp);
     await run(dir);
     await run(dir);
-    expect(await readdir(join(dir, '.shitaku'))).toEqual(['repo-map.json']);
+    expect(await readdir(join(dir, '.shitaku'))).toEqual(['repo-map.json', 'repo-map.md']);
   });
 
   it('does not touch .gitignore', async () => {
@@ -217,6 +302,17 @@ describe('repo-map determinism', () => {
     expect(second.equals(first)).toBe(true);
   });
 
+  it('gives identical Markdown and JSON bytes on two runs, the second seeing the first outputs', async () => {
+    const dir = await project(workspaceMonorepo);
+    await run(dir);
+    const first = await Promise.all(['json', 'md'].map((ext) => readFile(join(dir, '.shitaku', `repo-map.${ext}`))));
+    await run(dir);
+    const second = await Promise.all(['json', 'md'].map((ext) => readFile(join(dir, '.shitaku', `repo-map.${ext}`))));
+    expect(second[0]?.equals(first[0] ?? Buffer.alloc(0))).toBe(true);
+    expect(second[1]?.equals(first[1] ?? Buffer.alloc(0))).toBe(true);
+    expect(first[1]?.length).toBeGreaterThan(0);
+  });
+
   it('gives identical bytes for the same tree in two different directories', async () => {
     const one = await project(simpleApp);
     const two = await project(simpleApp);
@@ -259,7 +355,7 @@ describe('repo-map determinism', () => {
 async function mapOf(files: Tree): Promise<{ dir: string; doc: RepoMapDocument; text: string }> {
   const dir = await project(files);
   const result = await run(dir);
-  expect(result).toEqual({ code: 0, stdout: 'wrote .shitaku/repo-map.json\n', stderr: '' });
+  expect(result).toEqual({ code: 0, stdout: BOTH_REPORTED, stderr: '' });
   const text = await readFile(join(dir, '.shitaku', 'repo-map.json'), 'utf8');
   return { dir, doc: JSON.parse(text) as RepoMapDocument, text };
 }

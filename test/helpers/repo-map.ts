@@ -13,8 +13,9 @@ export async function loadRepoMapModule<T>(name: string): Promise<T> {
 }
 
 export type RepoMapOptions = {
-  format: 'json';
+  format: 'json' | 'markdown' | 'both';
   out: string;
+  maxDepth: number;
   ignore: string[];
 };
 

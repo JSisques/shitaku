@@ -277,6 +277,16 @@ describe('bundled catalog', () => {
     }
   });
 
+  it('documents the repo-map formats, depth option and both outputs in its metadata', () => {
+    const meta = JSON.parse(readFileSync(join(catalogRoot, 'scripts', 'repo-map', 'script.json'), 'utf8')) as {
+      args: string[];
+      output: string;
+    };
+    expect(meta.args).toEqual(['--format json|markdown|both', '--out <dir>', '--max-depth <n>', '--ignore <glob>']);
+    expect(meta.output).toContain('.shitaku/repo-map.json');
+    expect(meta.output).toContain('.shitaku/repo-map.md');
+  });
+
   it('ships repo-map as a flat set of modules without script-root npm bootstrap artifacts', () => {
     const scriptDir = join(catalogRoot, 'scripts', 'repo-map');
     expect(statSync(scriptDir).isDirectory()).toBe(true);

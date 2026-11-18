@@ -3,7 +3,8 @@
  */
 
 export const DEFAULT_OUT = '.shitaku';
-const SUPPORTED_FORMATS = ['json'];
+export const DEFAULT_MAX_DEPTH = 4;
+const SUPPORTED_FORMATS = ['json', 'markdown', 'both'];
 
 /**
  * @param {string} message without the `repo-map: ` prefix
@@ -17,11 +18,12 @@ function usageError(message) {
 
 /**
  * @param {string[]} argv
- * @returns {{ format: string, out: string, ignore: string[] }}
+ * @returns {{ format: string, out: string, maxDepth: number, ignore: string[] }}
  */
 export function parseArgs(argv) {
-  let format = 'json';
+  let format = 'both';
   let out = DEFAULT_OUT;
+  let maxDepth = DEFAULT_MAX_DEPTH;
   /** @type {string[]} */
   const ignore = [];
 
@@ -38,6 +40,13 @@ export function parseArgs(argv) {
       format = valueOf(arg, ++i);
     } else if (arg === '--out') {
       out = valueOf(arg, ++i);
+    } else if (arg === '--max-depth') {
+      const value = valueOf(arg, ++i);
+      // Digits only: rejects signs, decimals and exponents such as `1e2`.
+      if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < 1) {
+        throw usageError(`--max-depth must be a positive integer, got ${value}`);
+      }
+      maxDepth = Number(value);
     } else if (arg === '--ignore') {
       ignore.push(valueOf(arg, ++i));
     } else if (arg.startsWith('-')) {
@@ -48,5 +57,5 @@ export function parseArgs(argv) {
   }
 
   if (!SUPPORTED_FORMATS.includes(format)) throw usageError(`unsupported --format ${format}`);
-  return { format, out, ignore };
+  return { format, out, maxDepth, ignore };
 }

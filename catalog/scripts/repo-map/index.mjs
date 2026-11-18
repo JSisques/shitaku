@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 /**
  * Catalog repo-map script: writes a deterministic structural map of the working directory to
- * <out>/repo-map.json (default .shitaku/). No timestamps and no absolute paths, so equal trees
- * give equal bytes. Git is optional. Exit 0 when written, 2 for CLI, IO or fatal failures.
+ * <out>/repo-map.json and a size-capped digest to <out>/repo-map.md (default .shitaku/, see
+ * --format). No timestamps and no absolute paths, so equal trees give equal bytes. Git is
+ * optional. Exit 0 when written, 2 for CLI, IO or fatal failures.
  */
 import { mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from './args.mjs';
 import { buildRepoMap } from './build-map.mjs';
 import { renderJson } from './render-json.mjs';
+import { renderMarkdown } from './render-markdown.mjs';
 import { scan } from './scan.mjs';
 
 const JSON_FILE = 'repo-map.json';
+const MARKDOWN_FILE = 'repo-map.md';
 
 /**
  * The output directory relative to the root as a POSIX path (`''` for the root itself), or
@@ -47,12 +50,23 @@ function main() {
   const outDir = resolve(root, options.out);
 
   const snapshot = scan(root, { ignore: options.ignore, outRel: outputRelative(root, outDir) });
-  const json = renderJson(buildRepoMap(snapshot));
+  const map = buildRepoMap(snapshot);
+
+  // Render every selected output before writing any, so a failure never leaves a mixed pair of
+  // old and new files. An output that --format did not select is neither written nor deleted.
+  /** @type {{ name: string, text: string }[]} */
+  const outputs = [];
+  if (options.format !== 'markdown') outputs.push({ name: JSON_FILE, text: renderJson(map) });
+  if (options.format !== 'json') {
+    outputs.push({ name: MARKDOWN_FILE, text: renderMarkdown(map, { maxDepth: options.maxDepth }) });
+  }
 
   mkdirSync(outDir, { recursive: true });
-  const target = join(outDir, JSON_FILE);
-  writeAtomic(target, json);
-  process.stdout.write(`wrote ${relative(root, target).split(sep).join('/')}\n`);
+  for (const { name, text } of outputs) {
+    const target = join(outDir, name);
+    writeAtomic(target, text);
+    process.stdout.write(`wrote ${relative(root, target).split(sep).join('/')}\n`);
+  }
 }
 
 try {
