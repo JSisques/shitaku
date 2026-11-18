@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -122,4 +122,34 @@ export function runRepoMap(
     child.on('error', reject);
     child.on('close', (code) => resolve({ code, stdout, stderr }));
   });
+}
+
+/** True when a `git` executable is on PATH. Git-dependent tests use `it.skipIf(!hasGit)`. */
+export const hasGit = spawnSync('git', ['--version']).status === 0;
+
+/** Fixed identity and dates so commit hashes are reproducible; tests never read global git config. */
+export const GIT_ENV: NodeJS.ProcessEnv = {
+  GIT_AUTHOR_NAME: 'Repo Map Test',
+  GIT_AUTHOR_EMAIL: 'repo-map@example.com',
+  GIT_AUTHOR_DATE: '2024-01-02T03:04:05Z',
+  GIT_COMMITTER_NAME: 'Repo Map Test',
+  GIT_COMMITTER_EMAIL: 'repo-map@example.com',
+  GIT_COMMITTER_DATE: '2024-01-02T03:04:05Z',
+  GIT_CONFIG_NOSYSTEM: '1',
+};
+
+/** Run git in `dir` with the fixed identity; returns trimmed stdout. */
+export function git(dir: string, args: string[]): string {
+  const env = { ...process.env, ...GIT_ENV };
+  for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) delete env[key];
+  return execFileSync('git', args, { cwd: dir, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+}
+
+/** `git init` in `dir`; with `commit`, stage everything and commit it with the fixed identity. */
+export function initGitRepo(dir: string, opts: { commit?: boolean } = {}): void {
+  git(dir, ['init', '-q']);
+  if (opts.commit === true) {
+    git(dir, ['add', '-A']);
+    git(dir, ['commit', '-q', '-m', 'initial']);
+  }
 }

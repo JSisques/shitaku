@@ -3,6 +3,7 @@
  * size guards and returns an in-memory snapshot. Together with index.mjs it is the only module
  * allowed to touch the filesystem.
  */
+import { spawnSync } from 'node:child_process';
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { isIgnored } from './glob.mjs';
@@ -71,6 +72,74 @@ function walk(root, excluded, skipped) {
   return files;
 }
 
+/** Variables that would redirect git away from the directory it is spawned in. */
+const GIT_REDIRECT_VARS = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_PREFIX'];
+const GIT_MAX_BUFFER = 256 * 1024 * 1024;
+
+/**
+ * Run git read-only with a fixed argument array: no shell, `cwd` is the root, never `-C`.
+ * @param {string} root absolute, real path
+ * @param {string[]} args
+ * @returns {string | null} stdout, or null on any failure (missing git, not a repository, ...)
+ */
+function runGit(root, args) {
+  const env = { ...process.env, GIT_OPTIONAL_LOCKS: '0' };
+  for (const name of GIT_REDIRECT_VARS) delete env[name];
+  const result = spawnSync('git', args, { cwd: root, shell: false, encoding: 'utf8', env, maxBuffer: GIT_MAX_BUFFER });
+  if (result.error || result.status !== 0) return null;
+  return result.stdout;
+}
+
+/**
+ * Tracked plus untracked-not-ignored paths relative to `root`, or null when git is unusable.
+ * Paths that leave the root (any `..` segment) or are absolute are dropped.
+ * @param {string} root
+ * @returns {string[] | null}
+ */
+function gitListing(root) {
+  const out = runGit(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard']);
+  if (out === null) return null;
+  const paths = out
+    .split('\0')
+    .filter((path) => path !== '' && !path.startsWith('/') && !path.split('/').includes('..'));
+  return [...new Set(paths)];
+}
+
+/**
+ * @param {string} root
+ * @returns {string | null} HEAD hash, or null (no git, no commits)
+ */
+function gitHead(root) {
+  const out = runGit(root, ['rev-parse', 'HEAD']);
+  const hash = out === null ? '' : out.trim();
+  return /^[0-9a-f]{40,64}$/.test(hash) ? hash : null;
+}
+
+/**
+ * Keep regular files only: tracked-but-deleted paths and submodule gitlinks fail or are
+ * directories, and symlinks are recorded as skipped.
+ * @param {string} root
+ * @param {string[]} paths
+ * @param {(path: string) => boolean} excluded
+ * @param {Skipped[]} skipped
+ */
+function regularFiles(root, paths, excluded, skipped) {
+  /** @type {string[]} */
+  const files = [];
+  for (const path of paths) {
+    if (excluded(path)) continue;
+    let stats;
+    try {
+      stats = lstatSync(join(root, path));
+    } catch {
+      continue;
+    }
+    if (stats.isSymbolicLink()) skipped.push({ path, reason: 'symlink' });
+    else if (stats.isFile()) files.push(path);
+  }
+  return files;
+}
+
 /**
  * @param {string} root absolute
  * @param {string} path
@@ -104,7 +173,11 @@ export function scan(root, { ignore, outRel }) {
   const excluded = (path) =>
     (outRel !== null && (path === outRel || path.startsWith(`${outRel}/`))) || isIgnored(path, patterns);
 
-  const files = walk(root, excluded, skipped).sort(compare);
+  const listed = gitListing(root);
+  const commit = listed === null ? null : gitHead(root);
+  const files = (listed === null ? walk(root, excluded, skipped) : regularFiles(root, listed, excluded, skipped)).sort(
+    compare,
+  );
 
   /** @type {Map<string, string>} */
   const sources = new Map();
@@ -149,5 +222,5 @@ export function scan(root, { ignore, outRel }) {
   }
 
   skipped.sort((a, b) => compare(a.path, b.path) || compare(a.reason, b.reason));
-  return { commit: null, files, sources, manifests, tsconfigs, skipped, textFiles };
+  return { commit, files, sources, manifests, tsconfigs, skipped, textFiles };
 }
