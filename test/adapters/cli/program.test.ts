@@ -1586,6 +1586,7 @@ describe('runCli', () => {
         expect(out).toContainEqual(expect.stringMatching(/^ {2}pr-creator\s+\S/));
         expect(out).toContainEqual(expect.stringMatching(/^ {2}qa\s+\S/));
         expect(out).toContainEqual(expect.stringMatching(/^ {2}socratic-challenger\s+\S/));
+        expect(out).toContainEqual(expect.stringMatching(/^ {2}docs-writer\s+\S/));
       });
     });
 

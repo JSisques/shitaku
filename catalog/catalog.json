@@ -22,7 +22,7 @@
     "profiles": ["base", "web", "backend"],
     "scripts": ["complexity", "dead-code", "duplication"],
     "commands": [],
-    "agents": ["pr-creator", "qa", "socratic-challenger"],
+    "agents": ["pr-creator", "qa", "socratic-challenger", "docs-writer"],
     "rules": [
       "naming",
       "small-changes",

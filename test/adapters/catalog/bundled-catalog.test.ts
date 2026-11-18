@@ -6,6 +6,32 @@ import { resolveProfile } from '@/domain/catalog/profile.js';
 
 const catalogRoot = join(import.meta.dirname, '..', '..', '..', 'catalog');
 
+/** Skill names from a top-level `skills:` block sequence; [] when absent; throws on any other form. */
+function agentSkills(text: string): string[] {
+  const [, frontmatter = ''] = text.split(/^---\r?\n|\r?\n---\r?\n/);
+  const lines = frontmatter.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^skills:/.test(line));
+  if (start === -1) return [];
+  if (lines[start]?.trim() !== 'skills:') throw new Error('unsupported skills form in frontmatter');
+  const skills: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (!/^\s/.test(line)) break;
+    const match = /^\s+- ([a-z0-9-]+)\s*$/.exec(line);
+    if (!match?.[1]) throw new Error(`unsupported skills entry in frontmatter: ${line}`);
+    skills.push(match[1]);
+  }
+  return skills;
+}
+
+/** "<agent>: <skill>" for every agent skill missing from `registered`. */
+function danglingSkills(agents: readonly { name: string; text: string }[], registered: readonly string[]): string[] {
+  return agents.flatMap((agent) =>
+    agentSkills(agent.text)
+      .filter((skill) => !registered.includes(skill))
+      .map((skill) => `${agent.name}: ${skill}`),
+  );
+}
+
 function expectSkillContract(
   name: string,
   { required, forbidden }: { required: readonly string[]; forbidden: readonly (string | RegExp)[] },
@@ -309,16 +335,16 @@ describe('bundled catalog', () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { agents?: unknown };
     };
-    expect(index.items.agents).toEqual(['pr-creator', 'qa', 'socratic-challenger']);
+    expect(index.items.agents).toEqual(['pr-creator', 'qa', 'socratic-challenger', 'docs-writer']);
 
     const entries = readdirSync(join(catalogRoot, 'agents'))
       .filter((name) => !name.startsWith('.'))
       .sort();
-    expect(entries).toEqual(['pr-creator.md', 'qa.md', 'socratic-challenger.md']);
+    expect(entries).toEqual(['docs-writer.md', 'pr-creator.md', 'qa.md', 'socratic-challenger.md']);
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.agents.map((a) => a.name)).toEqual(['pr-creator', 'qa', 'socratic-challenger']);
+    expect(catalog.agents.map((a) => a.name)).toEqual(['pr-creator', 'qa', 'socratic-challenger', 'docs-writer']);
     for (const agent of catalog.agents) {
       expect(agent.description.length).toBeGreaterThan(0);
     }
@@ -518,6 +544,73 @@ describe('bundled catalog', () => {
     }
     expect(raw).not.toMatch(/shitaku/i);
     expect(raw).not.toContain('Co-Authored-By');
+  });
+
+  it('keeps the docs-writer agent content contract', () => {
+    const raw = readFileSync(join(catalogRoot, 'agents', 'docs-writer.md'), 'utf8');
+    const [, frontmatter = '', body = ''] = raw.split(/^---\r?\n|\r?\n---\r?\n/);
+    const lines = frontmatter.split(/\r?\n/).filter((line) => line.length > 0);
+    expect(lines).toHaveLength(5);
+    expect(lines[0]).toBe('name: docs-writer');
+    const descriptionLine = lines.find((line) => line.startsWith('description:')) ?? '';
+    const description = descriptionLine.slice('description:'.length).trim();
+    expect(description.length).toBeGreaterThan(0);
+    expect(description).not.toMatch(/: |['"|]/);
+    expect(description).toContain('docs-writing');
+    expect(description).toContain('documentation');
+    expect(description).toContain('code comments');
+    expect(description).not.toMatch(/pull request|commit message|instruction file/i);
+    expect(lines.filter((line) => line.startsWith('skills:'))).toEqual(['skills:']);
+    expect(lines.filter((line) => /^\s+- /.test(line))).toEqual(['  - docs-writing']);
+    expect(lines.filter((line) => line.startsWith('tools:'))).toHaveLength(1);
+    expect(frontmatter).not.toMatch(/[>|]\s*$/m);
+
+    const toolsLine = lines.find((line) => line.startsWith('tools:')) ?? '';
+    const tools = toolsLine
+      .slice('tools:'.length)
+      .split(',')
+      .map((tool) => tool.trim());
+    expect([...tools].sort()).toEqual(['Edit', 'Glob', 'Grep', 'Read', 'Write']);
+    for (const forbidden of ['Bash', '*', 'mcp__']) {
+      expect(toolsLine).not.toContain(forbidden);
+    }
+
+    expect(body).toContain('## Requirements');
+    for (const required of [
+      'Follow its rules',
+      'stop and report that it must be installed',
+      'Do not improvise a documentation style',
+      'Use Edit and Write only on documentation files and on comments or JSDoc inside source files',
+      'only write documentation and comments',
+      'Never change code logic, configuration or tests',
+      'agent instruction files',
+      'pull request text or commit messages',
+      'cannot run docs generators, check scripts or `git diff`',
+      'ask the caller to run it',
+      'report it as not run',
+      'ask the caller to provide the diff',
+      'Never claim that generated documentation is in sync',
+      'Never hand-edit generated output',
+    ]) {
+      expect(body).toContain(required);
+    }
+    expect(raw).not.toMatch(/shitaku/i);
+    expect(raw).not.toContain('Co-Authored-By');
+  });
+
+  it('keeps every bundled agent skill registered in the catalog', async () => {
+    const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
+      items: { skills: string[] };
+    };
+    const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
+    const agents = catalog.agents.map((agent) => ({ name: agent.name, text: new TextDecoder().decode(agent.bytes) }));
+    expect(agents.flatMap((agent) => agentSkills(agent.text)).length).toBeGreaterThan(0);
+    expect(danglingSkills(agents, index.items.skills)).toEqual([]);
+  });
+
+  it('detects an agent skill missing from the registered skills', () => {
+    const agents = [{ name: 'broken', text: '---\nname: broken\nskills:\n  - missing-skill\n---\nbody\n' }];
+    expect(danglingSkills(agents, ['docs-writing'])).toEqual(['broken: missing-skill']);
   });
 
   it('documents scripts in README with generated markers and shitaku run', () => {
