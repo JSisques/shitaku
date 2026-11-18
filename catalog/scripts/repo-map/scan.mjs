@@ -5,7 +5,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import { extractorFor } from './extractors.mjs';
 import { isIgnored } from './glob.mjs';
 import { parseJsonc } from './jsonc.mjs';
@@ -24,7 +24,7 @@ const OUTPUT_FILES = new Set(['repo-map.json', 'repo-map.md']);
  *   files: string[],
  *   sources: Map<string, string>,
  *   manifests: Map<string, Record<string, unknown> | { invalid: true }>,
- *   tsconfigs: Map<string, unknown>,
+ *   tsconfigs: Map<string, unknown>, keyed by directory for tsconfig.json, by file path for extended configs
  *   skipped: Skipped[],
  *   textFiles: Map<string, string>,
  * }} Snapshot
@@ -48,6 +48,21 @@ function dirOf(path) {
 /** @param {string} path */
 function baseOf(path) {
   return path.slice(path.lastIndexOf('/') + 1);
+}
+
+/**
+ * Repository-relative path of the config that a tsconfig extends, for relative `extends` values
+ * that stay inside the root; null otherwise. A missing `.json` extension is added.
+ * @param {string} dir directory of the extending tsconfig.json
+ * @param {unknown} config parsed tsconfig
+ */
+function extendedConfigPath(dir, config) {
+  const target =
+    config !== null && typeof config === 'object' ? /** @type {{ extends?: unknown }} */ (config).extends : null;
+  if (typeof target !== 'string' || !(target.startsWith('./') || target.startsWith('../'))) return null;
+  const joined = posix.normalize(posix.join(dir, target));
+  if (joined === '..' || joined.startsWith('../')) return null;
+  return joined.endsWith('.json') ? joined : `${joined}.json`;
 }
 
 /**
@@ -235,6 +250,21 @@ export function scan(root, { ignore, outRel }) {
       textFiles.set(path, text);
     } else {
       sources.set(path, text);
+    }
+  }
+
+  // Read the relative configs that a tsconfig.json extends (one level), keyed by file path.
+  const fileSet = new Set(files);
+  for (const [dir, config] of [...tsconfigs]) {
+    const target = extendedConfigPath(dir, config);
+    if (target === null || baseOf(target) === 'tsconfig.json' || tsconfigs.has(target) || !fileSet.has(target))
+      continue;
+    const text = readGuarded(root, target, skipped);
+    if (text === null) continue;
+    try {
+      tsconfigs.set(target, parseJsonc(text));
+    } catch {
+      tsconfigs.set(target, null);
     }
   }
 

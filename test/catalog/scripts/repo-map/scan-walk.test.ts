@@ -142,6 +142,30 @@ describe('scan (walk)', () => {
     expect(snapshot.skipped).toEqual([]);
   });
 
+  it('also reads the relative config a tsconfig extends, keyed by file path, one level deep', async () => {
+    const { snapshot } = await scanTree({
+      'tsconfig.json': '{ "extends": "./tsconfig.base.json" }',
+      'tsconfig.base.json':
+        '{\n  // shared\n  "compilerOptions": { "baseUrl": ".", },\n  "extends": "./deeper.json"\n}\n',
+      'deeper.json': '{ "compilerOptions": { "strict": true } }',
+      'packages/a/tsconfig.json': '{ "extends": "../../tsconfig.base" }',
+      'packages/b/tsconfig.json': '{ "extends": "@tsconfig/node20/tsconfig.json" }',
+      'packages/c/tsconfig.json': '{ "extends": "./missing.json" }',
+    });
+    expect([...snapshot.tsconfigs.keys()].sort()).toEqual([
+      '.',
+      'packages/a',
+      'packages/b',
+      'packages/c',
+      'tsconfig.base.json',
+    ]);
+    expect(snapshot.tsconfigs.get('tsconfig.base.json')).toEqual({
+      compilerOptions: { baseUrl: '.' },
+      extends: './deeper.json',
+    });
+    expect(snapshot.skipped).toEqual([]);
+  });
+
   it('returns the documented snapshot shape for a simple app', async () => {
     const { snapshot } = await scanTree({ ...simpleApp, 'pnpm-workspace.yaml': "packages:\n  - 'packages/*'\n" });
     expect(Object.keys(snapshot).sort()).toEqual([
