@@ -309,16 +309,16 @@ describe('bundled catalog', () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { agents?: unknown };
     };
-    expect(index.items.agents).toEqual(['pr-creator', 'socratic-challenger']);
+    expect(index.items.agents).toEqual(['pr-creator', 'qa', 'socratic-challenger']);
 
     const entries = readdirSync(join(catalogRoot, 'agents'))
       .filter((name) => !name.startsWith('.'))
       .sort();
-    expect(entries).toEqual(['pr-creator.md', 'socratic-challenger.md']);
+    expect(entries).toEqual(['pr-creator.md', 'qa.md', 'socratic-challenger.md']);
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.agents.map((a) => a.name)).toEqual(['pr-creator', 'socratic-challenger']);
+    expect(catalog.agents.map((a) => a.name)).toEqual(['pr-creator', 'qa', 'socratic-challenger']);
     for (const agent of catalog.agents) {
       expect(agent.description.length).toBeGreaterThan(0);
     }
@@ -440,6 +440,79 @@ describe('bundled catalog', () => {
       'decision summary',
       'Never implement features',
       'Never invent answers or decisions',
+    ]) {
+      expect(body).toContain(required);
+    }
+    expect(raw).not.toMatch(/shitaku/i);
+    expect(raw).not.toContain('Co-Authored-By');
+  });
+
+  it('keeps the qa agent content contract', () => {
+    const raw = readFileSync(join(catalogRoot, 'agents', 'qa.md'), 'utf8');
+    const [, frontmatter = '', body = ''] = raw.split(/^---\r?\n|\r?\n---\r?\n/);
+    const lines = frontmatter.split(/\r?\n/).filter((line) => line.length > 0);
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe('name: qa');
+    const descriptionLine = lines.find((line) => line.startsWith('description:')) ?? '';
+    const description = descriptionLine.slice('description:'.length).trim();
+    expect(description.length).toBeGreaterThan(0);
+    expect(description).not.toMatch(/: |['"|]/);
+    expect(description).toContain('missing tests');
+    expect(description).toContain('never claims a check it could not run');
+    expect(lines.some((line) => line.startsWith('skills:'))).toBe(false);
+    expect(lines.filter((line) => line.startsWith('tools:'))).toHaveLength(1);
+    expect(frontmatter).not.toMatch(/[>|]\s*$/m);
+
+    const toolsLine = lines.find((line) => line.startsWith('tools:')) ?? '';
+    const tools = toolsLine
+      .slice('tools:'.length)
+      .split(',')
+      .map((tool) => tool.trim());
+    const playwrightTools = [
+      'browser_navigate',
+      'browser_snapshot',
+      'browser_take_screenshot',
+      'browser_console_messages',
+      'browser_resize',
+      'browser_click',
+      'browser_type',
+      'browser_wait_for',
+      'browser_close',
+    ].map((tool) => `mcp__playwright__${tool}`);
+    expect([...tools].sort()).toEqual(['Edit', 'Glob', 'Grep', 'Read', 'Write', ...playwrightTools].sort());
+    for (const tool of tools.filter((t) => t.startsWith('mcp__'))) {
+      expect(tool).toMatch(/^mcp__playwright__[a-z_]+$/);
+    }
+    for (const forbidden of [
+      'Bash',
+      '*',
+      'browser_evaluate',
+      'browser_run_code',
+      'browser_run_code_unsafe',
+      'browser_file_upload',
+      'browser_install',
+    ]) {
+      expect(toolsLine).not.toContain(forbidden);
+    }
+
+    for (const required of [
+      'stop and ask for it, and write nothing',
+      'Every invocation is independent',
+      'Missing tests for changed behavior fail the gate',
+      'never claim coverage you could not locate',
+      'Write a failing test that reproduces each confirmed bug',
+      'Use Write and Edit only for test files',
+      'never remove or weaken an existing test',
+      'Not run',
+      'command unknown',
+      '`unavailable`',
+      'Never invent a baseline',
+      '`static review passed`',
+      'Never claim a check you could not run',
+      'Never invent test output',
+      'Never edit source, configuration, specs, docs or any other non-test file',
+      'Never fix the bug',
+      'mcp__playwright__<tool>',
     ]) {
       expect(body).toContain(required);
     }
