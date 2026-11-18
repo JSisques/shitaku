@@ -1312,6 +1312,18 @@ describe('planInit (rules)', () => {
     ]);
   });
 
+  it('plans the exact catalog bytes of a rule that declares a check and a severity', async () => {
+    const checked = ruleItem('naming', [
+      'check:',
+      '  type: max-lines',
+      "  files: '*.md'",
+      '  max: 300',
+      'severity: warn',
+    ]);
+    deps = { ...deps, source: ruleSource([checked]) };
+    expect((await plan()).rules).toEqual([expect.objectContaining({ action: 'create', bytes: checked.bytes })]);
+  });
+
   it('plans a skip, not journaled, for a byte-identical unowned file', async () => {
     await mkdir(dir(), { recursive: true });
     await writeFile(file(), naming.bytes);

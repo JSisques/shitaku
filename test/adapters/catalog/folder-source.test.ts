@@ -689,6 +689,42 @@ describe('FolderCatalogSource', () => {
       expect(catalog.issues.map((i) => i.file)).toEqual(['rules/nofront.md', 'rules/checked.md']);
     });
 
+    describe('rule checks', () => {
+      const check = ['check:', '  type: pattern-absent', "  files: 'src/**/*.ts'", "  pattern: ':\\s*any\\b'"];
+
+      it('loads a rule with a valid check, bytes equal to disk, exposing check and severity', async () => {
+        await put('catalog.json', { version: 1, items: { mcps: [], rules: ['no-any'] } });
+        await put('rules/no-any.md', ruleBytes('no-any', [...check, 'severity: warn']));
+
+        const catalog = await new FolderCatalogSource(dir, 'folder').load();
+        expect(catalog.issues).toEqual([]);
+        expect(catalog.rules[0]?.bytes).toEqual(ruleBytes('no-any', [...check, 'severity: warn']));
+        expect(catalog.rules[0]?.severity).toBe('warn');
+        expect(catalog.rules[0]?.check).toMatchObject({ type: 'pattern-absent', files: ['src/**/*.ts'] });
+      });
+
+      it('rejects only the rule with an unknown check type, naming its file', async () => {
+        await put('catalog.json', { version: 1, items: { mcps: [], rules: ['bad', 'good'] } });
+        await put('rules/bad.md', ruleBytes('bad', ['check:', '  type: run-script']));
+        await put('rules/good.md', ruleBytes('good', check));
+
+        const catalog = await new FolderCatalogSource(dir, 'folder').load();
+        expect(catalog.rules.map((r) => r.name)).toEqual(['good']);
+        expect(catalog.issues).toHaveLength(1);
+        expect(catalog.issues[0]?.file).toBe('rules/bad.md');
+        expect(catalog.issues[0]?.reason).toMatch(/^invalid check: type: /);
+      });
+
+      it('rejects a severity without a check, naming the file and the key', async () => {
+        await put('catalog.json', { version: 1, items: { mcps: [], rules: ['x'] } });
+        await put('rules/x.md', ruleBytes('x', ['severity: error']));
+
+        const catalog = await new FolderCatalogSource(dir, 'folder').load();
+        expect(catalog.rules).toEqual([]);
+        expect(catalog.issues).toEqual([{ file: 'rules/x.md', reason: 'severity requires a check' }]);
+      });
+    });
+
     it('flags a listed rule with no file', async () => {
       await put('catalog.json', { version: 1, items: { mcps: [], rules: ['ghost'] } });
       const catalog = await new FolderCatalogSource(dir, 'folder').load();

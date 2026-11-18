@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RESERVED_RULE_KEYS, RuleNameSchema, parseRule } from '@/domain/catalog/rule.js';
+import { RuleNameSchema, parseRule } from '@/domain/catalog/rule.js';
 import { ruleBytes, ruleItem } from '@test/helpers/rules.js';
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
@@ -81,19 +81,74 @@ describe('parseRule', () => {
     expect('rule' in res && res.rule.description).toBe('x rule');
   });
 
-  it('reserves exactly check and severity', () => {
-    expect([...RESERVED_RULE_KEYS]).toEqual(['check', 'severity']);
-  });
+  describe('check and severity', () => {
+    const check = ['check:', '  type: pattern-absent', "  files: 'src/**/*.ts'", "  pattern: ':\\s*any\\b'"];
 
-  it.each(['check', 'severity'])('rejects the reserved key %s', (key) => {
-    expect(issueOf(parseRule('x', ruleBytes('x', [`${key}: high`])))).toBe(
-      `key '${key}' is reserved for rule checks (see #288)`,
-    );
-  });
+    it('exposes a valid check with its explicit severity', () => {
+      const res = parseRule('x', ruleBytes('x', [...check, 'severity: warn']));
+      expect('rule' in res && res.rule.severity).toBe('warn');
+      expect('rule' in res && res.rule.check).toEqual({
+        type: 'pattern-absent',
+        files: ['src/**/*.ts'],
+        pattern: ':\\s*any\\b',
+      });
+    });
 
-  it('rejects a reserved key even when its value is nested', () => {
-    expect(issueOf(parseRule('x', ruleBytes('x', ['check:', '  run: ls'])))).toBe(
-      "key 'check' is reserved for rule checks (see #288)",
-    );
+    it('defaults the severity to error when a check has none', () => {
+      const res = parseRule('x', ruleBytes('x', check));
+      expect('rule' in res && res.rule.severity).toBe('error');
+      expect('rule' in res && res.rule.check?.type).toBe('pattern-absent');
+    });
+
+    it('keeps the bytes verbatim, check and severity included', () => {
+      const bytes = ruleBytes('x', [...check, 'severity: warn']);
+      const res = parseRule('x', bytes);
+      expect('rule' in res && res.rule.bytes).toEqual(bytes);
+    });
+
+    it('lets paths and check coexist in either order', () => {
+      const paths = ['paths:', '  - "src/**"'];
+      expect('rule' in parseRule('x', ruleBytes('x', [...paths, ...check]))).toBe(true);
+      expect('rule' in parseRule('x', ruleBytes('x', [...check, ...paths]))).toBe(true);
+    });
+
+    it('produces exactly the pre-change object for a rule without a check', () => {
+      const bytes = ruleBytes('x');
+      const res = parseRule('x', bytes);
+      expect(res).toEqual({ rule: { name: 'x', description: 'x rule', bytes, recommended: false } });
+      expect('rule' in res && Object.keys(res.rule)).toEqual(['name', 'description', 'bytes', 'recommended']);
+    });
+
+    it.each([
+      ['an unknown severity', [...check, 'severity: fatal'], "severity must be 'error' or 'warn'"],
+      ['a severity without a check', ['severity: error'], 'severity requires a check'],
+      ['a severity of another value without a check', ['severity: high'], 'severity requires a check'],
+      ['an inline check', ['check: pattern-absent'], 'check must be a nested mapping'],
+      ['a multi-line severity', [...check, 'severity:', '  - warn'], "key 'severity' must be a single-line value"],
+    ])('rejects %s', (_title, extra, issue) => {
+      expect(issueOf(parseRule('x', ruleBytes('x', extra)))).toBe(issue);
+    });
+
+    it('rejects an invalid check with its dotted path and reason', () => {
+      const issue = issueOf(parseRule('x', ruleBytes('x', ['check:', '  type: run-script'])));
+      expect(issue).toMatch(/^invalid check: type: /);
+    });
+
+    it('rejects an unknown field inside the check, naming it', () => {
+      const issue = issueOf(parseRule('x', ruleBytes('x', [...check, '  extra: 1'])));
+      expect(issue).toMatch(/^invalid check: extra: /);
+    });
+
+    it('surfaces a mapping reader issue as a rule issue', () => {
+      expect(issueOf(parseRule('x', ruleBytes('x', ['check:', '  files: [a, b]'])))).toContain(
+        "frontmatter key 'check'",
+      );
+      expect(issueOf(parseRule('x', ruleBytes('x', ['check:'])))).toContain("frontmatter key 'check'");
+    });
+
+    it.each(['check', 'severity'])('never calls %s reserved', (key) => {
+      const extra = key === 'check' ? ['check:', '  type: run-script'] : ['severity: high'];
+      expect(issueOf(parseRule('x', ruleBytes('x', extra)))).not.toMatch(/reserved/i);
+    });
   });
 });
