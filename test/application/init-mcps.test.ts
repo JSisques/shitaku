@@ -15,6 +15,7 @@ import {
   UnknownCommandError,
   UnknownHookError,
   UnknownMcpError,
+  UnknownRuleError,
   UnknownScriptError,
   UnknownSkillError,
   type InitDeps,
@@ -29,6 +30,7 @@ import { parseManifest, type Manifest } from '@/domain/manifest.js';
 import { DEMO_V1, DEMO_V2, faultyFs, skillSource } from '@test/helpers/skills.js';
 import { SCRIPT_V1, SCRIPT_V2, scriptSource } from '@test/helpers/scripts.js';
 import { agentSource, REVIEWER, REVIEWER_V2 } from '@test/helpers/agents.js';
+import { ruleItem, ruleSource } from '@test/helpers/rules.js';
 import { commandSource, REVIEW_V1, REVIEW_V2 } from '@test/helpers/commands.js';
 import { FMT_V1, FMT_V2, GUARD, hookSource } from '@test/helpers/hooks.js';
 import type { Scope } from '@/ports/agent-target.js';
@@ -1250,6 +1252,108 @@ describe('initMcps (agents)', () => {
     await mine();
     await expect(applyPlan(deps, plan)).rejects.toThrow(StaleFileError);
     expect(await readFile(file(), 'utf8')).toBe('mine');
+  });
+});
+
+describe('planInit (rules)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const naming = ruleItem('naming');
+  const naming2 = ruleItem('naming', ['paths:', '  - "src/**"']);
+  const dir = (scope: Scope = 'project') => join(scope === 'user' ? tmp.homeDir : tmp.cwd, '.claude', 'rules');
+  const file = (scope: Scope = 'project') => join(dir(scope), 'naming.md');
+  const plan = (extra: { force?: boolean; scope?: Scope; rules?: string[] } = {}) =>
+    planInit(deps, { mcps: [], rules: extra.rules ?? ['naming'], scope: extra.scope ?? 'project', ...extra });
+  const mine = async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), 'mine');
+  };
+  /** Records an owned install of `naming` at the project path, then leaves the file as `content`. */
+  const own = async (installed: typeof naming, content: Uint8Array | string) => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), content);
+    await appendInstall(deps.fs, tmp.homeDir, {
+      id: 'i1',
+      createdAt: '2026-10-01T00:00:00.000Z',
+      undoneAt: null,
+      source: { kind: 'bundled', location: '/catalog', catalogVersion: 1 },
+      createdDirs: [],
+      files: [
+        {
+          path: file(),
+          scope: 'project',
+          backup: null,
+          beforeHash: null,
+          afterHash: sha256(installed.bytes),
+          items: [{ kind: 'rule', name: 'naming', action: 'create', entryHash: sha256(installed.bytes), root: file() }],
+        },
+      ],
+    });
+  };
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: ruleSource([naming]),
+      fs: new NodeFileSystem(),
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('plans no rules when none are requested, even if the catalog offers one', async () => {
+    expect((await planInit(deps, { mcps: [], scope: 'project' })).rules).toEqual([]);
+  });
+
+  it.each<Scope>(['user', 'project'])('plans a create at the %s rules root when the file is absent', async (scope) => {
+    expect((await plan({ scope })).rules).toEqual([
+      expect.objectContaining({ name: 'naming', path: file(scope), action: 'create', bytes: naming.bytes }),
+    ]);
+  });
+
+  it('plans a skip, not journaled, for a byte-identical unowned file', async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), naming.bytes);
+    expect((await plan()).rules[0]).toMatchObject({ action: 'skip' });
+    expect((await initMcps(deps, { mcps: [], rules: ['naming'], scope: 'project' })).applied).toBe(false);
+  });
+
+  it('plans an update for an owned, unmodified file whose catalog bytes changed', async () => {
+    await own(naming, naming.bytes);
+    deps = { ...deps, source: ruleSource([naming2]) };
+    expect((await plan()).rules[0]).toMatchObject({ action: 'update' });
+  });
+
+  it('plans a conflict worded with the noun rule for an unmanaged, different file', async () => {
+    await mine();
+    const [change] = (await plan()).rules;
+    expect(change).toMatchObject({ action: 'conflict' });
+    expect(change?.reason).toMatch(/rule/);
+  });
+
+  it('plans a conflict for an owned file the user edited', async () => {
+    await own(naming, 'edited by the user');
+    expect((await plan()).rules[0]).toMatchObject({ action: 'conflict' });
+  });
+
+  it('plans an update with --force over a conflicting file', async () => {
+    await mine();
+    expect((await plan({ force: true })).rules[0]).toMatchObject({ action: 'update' });
+  });
+
+  it('rejects an unknown rule naming it, writing nothing', async () => {
+    await expect(plan({ rules: ['naming', 'ghost'] })).rejects.toThrow(UnknownRuleError);
+    await expect(plan({ rules: ['ghost'] })).rejects.toThrow('ghost');
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('never plans a user-authored neighbor or CLAUDE.md', async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(join(dir(), 'mine.md'), 'mine');
+    await writeFile(join(tmp.cwd, 'CLAUDE.md'), 'mine');
+    const { rules } = await plan();
+    expect(rules.map((r) => r.path)).toEqual([file()]);
   });
 });
 

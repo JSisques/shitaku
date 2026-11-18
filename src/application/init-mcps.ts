@@ -8,6 +8,7 @@ import {
   deriveCommandOwnership,
   deriveHookOwnership,
   deriveOwnership,
+  deriveRuleOwnership,
   deriveScriptOwnership,
   deriveSkillOwnership,
 } from '@/domain/manifest.js';
@@ -58,6 +59,8 @@ export interface InitRequest {
   commands?: string[];
   /** Agent names to install; defaults to none. */
   agents?: string[];
+  /** Rule names to install; defaults to none. */
+  rules?: string[];
   /** Hook names to install; defaults to none. */
   hooks?: string[];
   scope: Scope;
@@ -70,6 +73,7 @@ export class UnknownSkillError extends Error {}
 export class UnknownScriptError extends Error {}
 export class UnknownCommandError extends Error {}
 export class UnknownAgentError extends Error {}
+export class UnknownRuleError extends Error {}
 export class UnknownHookError extends Error {}
 export { StaleFileError };
 /** A resolved env value would be written to disk. */
@@ -94,6 +98,10 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
   const agentNames = [...new Set(req.agents ?? [])];
   const unknownAgents = agentNames.filter((name) => !catalog.agents.some((a) => a.name === name));
   if (unknownAgents.length > 0) throw new UnknownAgentError(`unknown agent: ${unknownAgents.join(', ')}`);
+
+  const ruleNames = [...new Set(req.rules ?? [])];
+  const unknownRules = ruleNames.filter((name) => !catalog.rules.some((r) => r.name === name));
+  if (unknownRules.length > 0) throw new UnknownRuleError(`unknown rule: ${unknownRules.join(', ')}`);
 
   const hookNames = [...new Set(req.hooks ?? [])];
   const unknownHooks = hookNames.filter((name) => !catalog.hooks.some((h) => h.name === name));
@@ -155,6 +163,18 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
       noun: 'agent',
       force: req.force,
     }),
+    rules: buildFlatFilePlan({
+      entries: await flatFileEntries(
+        deps,
+        deps.target.rulesDir(req.scope, deps.paths),
+        req.scope,
+        ruleNames,
+        catalog.rules,
+      ),
+      owned: deriveRuleOwnership(manifest),
+      noun: 'rule',
+      force: req.force,
+    }),
     hooks: await planHooks(
       deps,
       req.scope,
@@ -164,7 +184,7 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
   };
 }
 
-/** One plan entry per requested command or agent: its catalog bytes and what is on disk now. */
+/** One plan entry per requested command, agent or rule: its catalog bytes and what is on disk now. */
 async function flatFileEntries(
   deps: InitDeps,
   root: string,
@@ -220,6 +240,7 @@ async function planMcps(
       scripts: [],
       commands: [],
       agents: [],
+      rules: [],
       hooks: [],
     };
   const items = req.mcps.map((name) => catalogMcps.find((m) => m.name === name)!);
