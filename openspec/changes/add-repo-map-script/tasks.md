@@ -176,63 +176,63 @@ Prerequisite: PR 1 merged to main (stacked-to-main); branch from updated main.
 
 ## Phase 2.A: Tokenizer
 
-- [ ] 2.1 **`tokenize-js.mjs` core** (commit `feat(repo-map): add a JS/TS tokenizer`).
+- [x] 2.1 **`tokenize-js.mjs` core** [d2b28b9] (commit `feat(repo-map): add a JS/TS tokenizer`).
   - Files: `test/catalog/scripts/repo-map/tokenize-js.test.ts`, `catalog/scripts/repo-map/tokenize-js.mjs`, bundled-catalog file list.
   - RED: token shape `{ type, value, start, end, line }`; types `ident|punct|string|template|number`; line and block comments are not emitted but flag the gap before the next token; strings with escapes; template literals with `${}` and nested templates via a mode stack; numbers; the tokenizer never throws on arbitrary input (property-style loop over random byte strings with a fixed seed); unknown characters become `punct`.
   - GREEN. Checks: C.
 
-- [ ] 2.2 **Tokenizer regex versus division and recovery** (commit `feat(repo-map): tokenizer regex and recovery rules`).
+- [x] 2.2 **Tokenizer regex versus division and recovery** [3f3d2bf] (commit `feat(repo-map): tokenizer regex and recovery rules`).
   - Files: `test/catalog/scripts/repo-map/tokenize-js.test.ts`, `catalog/scripts/repo-map/tokenize-js.mjs`.
   - RED: `/` starts a regex unless the previous significant token is an identifier, number, `)`, `]` or `}`, or it is one of `return typeof instanceof in of new delete void throw case do else yield await`; regex containing `import x from 'y'` is one token; an unterminated quoted string ends at end of line; JSX apostrophe (`<p>Don't</p>`) damages only that line; CRLF line counting; known residuals (`/*` in JSX text, `/` after `)` in `if (x) /re/`) degrade without a crash.
   - GREEN. Checks: C. Spec: Tricky syntax.
 
 ## Phase 2.B: Extractor
 
-- [ ] 2.3 **`extract-js.mjs` imports** (commit `feat(repo-map): extract imports`).
+- [x] 2.3 **`extract-js.mjs` imports** [7643f6c] (commit `feat(repo-map): extract imports`).
   - Files: `test/catalog/scripts/repo-map/extract-js.test.ts`, `catalog/scripts/repo-map/extract-js.mjs`, bundled-catalog file list.
   - RED: `import ... from`, `import 's'` (static), `import type` (type), `export ... from`, `export * from`, `export * as ns from` (reexport); `require('s')` at any depth; `import('s')` at any depth (dynamic); non-literal `import(x)` and `require(x)` ignored; `import.meta` ignored; text inside comments, strings, templates and regex yields nothing; imports nested inside functions at depth greater than 0 ignored except `require` and `import()`; broken syntax returns what was found without throwing; dedupe by `(specifier, kind)`.
   - GREEN. Checks: C. Spec: Import kinds, Dynamic non-literal ignored, Tricky syntax, Unparsable file.
 
-- [ ] 2.4 **`extract-js.mjs` exports** (commit `feat(repo-map): extract exports`).
+- [x] 2.4 **`extract-js.mjs` exports** [474d410] (commit `feat(repo-map): extract exports`).
   - Files: `test/catalog/scripts/repo-map/extract-js.test.ts`, `catalog/scripts/repo-map/extract-js.mjs`.
   - RED: `export function|class|const|let|var|type|interface|enum|namespace` with `async`, `declare`, `abstract`, `const enum`; destructured `const { a, b }`; `export default` (function, class, expression); `export { a, b as c }`; `export * from` gives `{ name: '*', kind: 'reexport-all' }`; `module.exports =`, `exports.x =`, `module.exports.x =` with `kind: 'commonjs'`; nested exports in function bodies and `declare module`/`namespace` blocks ignored; sorted by `(name, kind)`.
   - GREEN. Checks: C. Spec: Signatures without bodies (kinds).
 
-- [ ] 2.5 **`extract-js.mjs` signatures** (commit `feat(repo-map): build export signatures`).
+- [x] 2.5 **`extract-js.mjs` signatures** [7274540] (commit `feat(repo-map): build export signatures`).
   - Files: `test/catalog/scripts/repo-map/extract-js.test.ts`, `catalog/scripts/repo-map/extract-js.mjs`.
   - RED: headers end at body `{` at paren and angle depth 0 (functions, classes, interfaces, enums, namespaces), at `=` (const/let/var), at the statement end (type alias); comments never leak and a single space replaces whitespace or comment gaps; CRLF does not matter; signatures over 200 chars are clipped and end in `...`; `export { a }` copies the signature of the local declaration when found, else `null`; no body text ever appears.
   - GREEN. Checks: C. Spec: Signatures without bodies.
 
 ## Phase 2.C: Resolver
 
-- [ ] 2.6 **`resolve.mjs` relative resolution** (commit `feat(repo-map): resolve relative imports`).
+- [x] 2.6 **`resolve.mjs` relative resolution** [6d07cae] (commit `feat(repo-map): resolve relative imports`).
   - Files: `test/catalog/scripts/repo-map/resolve.test.ts`, `catalog/scripts/repo-map/resolve.mjs`, bundled-catalog file list.
   - RED (in-memory file sets only; assert no `fs` call): probe order exact, `.js/.jsx/.mjs/.cjs` to `.ts/.tsx/.mts/.cts`, extension order `.ts .tsx .mts .cts .js .jsx .mjs .cjs`, then `<path>/index.*`; a JSON or CSS target in the listing resolves to that file; no match gives `{ resolved: null, status: 'unresolved' }`; resolved gives `status: 'internal'`; case-sensitive matching (`./Foo` does not match `foo.ts`).
   - GREEN. Checks: C. Spec: Relative with extension probing, Index resolution, Unresolved relative.
 
-- [ ] 2.7 **`resolve.mjs` tsconfig `paths`** (commit `feat(repo-map): resolve tsconfig path aliases`).
+- [x] 2.7 **`resolve.mjs` tsconfig `paths`** [1d85771] (commit `feat(repo-map): resolve tsconfig path aliases`).
   - Files: `test/catalog/scripts/repo-map/resolve.test.ts`, `catalog/scripts/repo-map/resolve.mjs`, `test/helpers/repo-map.ts` (add `aliases` fixture).
   - RED: nearest `tsconfig.json` among the importer's workspace directory and the root; JSONC; `extends` followed one level and only for relative files; `baseUrl` relative to the declaring tsconfig; longest-prefix pattern first; candidates probed as relative; matching pattern with no candidate gives `unresolved`.
   - GREEN. Checks: C. Spec: Path alias.
 
-- [ ] 2.8 **`resolve.mjs` workspaces, externals, unresolved** (commit `feat(repo-map): resolve workspace and external specifiers`).
+- [x] 2.8 **`resolve.mjs` workspaces, externals, unresolved** [6ae84f5] (commit `feat(repo-map): resolve workspace and external specifiers`).
   - Files: `test/catalog/scripts/repo-map/resolve.test.ts`, `catalog/scripts/repo-map/resolve.mjs`.
   - RED: `pkg` and `@scope/pkg` equal to a workspace name; subpath probed under the workspace directory; no subpath tries `exports['.']` string leaf (`import`, then `default`), `module`, `main`, `src/index.*`, `index.*`; no hit gives `unresolved`; `node:fs` and other bare specifiers give `{ resolved: null, status: 'external' }`; `#imports`, absolute paths and URLs give `unresolved`.
   - GREEN. Checks: C. Spec: Workspace package import, External package.
 
 ## Phase 2.D: Wiring and integration
 
-- [ ] 2.9 **Wire extraction and graph into `build-map.mjs`** (commit `feat(repo-map): populate imports, exports and the graph`).
+- [x] 2.9 **Wire extraction and graph into `build-map.mjs`** [c5a70c4] (commit `feat(repo-map): populate imports, exports and the graph`).
   - Files: `test/catalog/scripts/repo-map/build-map.test.ts`, `catalog/scripts/repo-map/extractors.mjs` (add `extract: extractJs`), `catalog/scripts/repo-map/build-map.mjs`, `catalog/scripts/repo-map/project.mjs` (`relativeImportExtensions` `js|none|mixed|null` by majority over relative specifiers in TypeScript files), `test/helpers/repo-map.ts` (add `trickySyntax` fixture; complete `workspaceMonorepo` with sources).
   - RED: module `imports[{ specifier, kind, status, resolved }]` and `exports[{ name, kind, signature }]` populated; `graph.edges` only internal resolved edges, deduplicated, sorted by `(from, to)`; `importedByCount` counts inbound edges and holds a zero for every module; A imported by B and C gives 2; external imports create no edge; sort table obeyed; `relativeImportExtensions` majority tests; a module whose extraction throws is recorded with empty arrays (never crashes the run).
   - GREEN. Checks: C. Spec: Imported-by count, Tricky syntax, Unparsable file.
 
-- [ ] 2.10 **Slice 2 spawn and determinism tests** (commit `test(repo-map): cover extraction through the CLI`).
+- [x] 2.10 **Slice 2 spawn and determinism tests** [676cc80] (commit `test(repo-map): cover extraction through the CLI`).
   - Files: `test/catalog/scripts/repo-map.test.ts`.
   - RED/GREEN as coverage: run on `trickySyntax`, `aliases` and `workspaceMonorepo`; exit 0 with an unparsable file and an unresolved import (`resolved: null`, `status: 'unresolved'`); two-run byte equality still holds with populated modules; JSON complete; git and walk produce identical `modules` on a tree without `.gitignore`.
   - If a test passes immediately because behavior already exists, record that no RED was possible and why. Checks: C.
 
-- [ ] 2.11 **Slice 2 closure.** Run C, runtime check on this repository (`modules`, `graph`, `importedByCount` look sane; compare a few known imports), record evidence, `review assess` outcome, and prepare PR 2.
+- [x] 2.11 **Slice 2 closure.** [docs(openspec) closure commit] Run C, runtime check on this repository (`modules`, `graph`, `importedByCount` look sane; compare a few known imports), record evidence, `review assess` outcome, and prepare PR 2.
 
 ---
 
