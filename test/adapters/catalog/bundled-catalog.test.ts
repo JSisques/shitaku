@@ -33,7 +33,7 @@ function danglingSkills(agents: readonly { name: string; text: string }[], regis
 }
 
 /** Exact flat file list of catalog/scripts/repo-map/. Update it in the same commit that adds a module. */
-const REPO_MAP_FILES = ['args.mjs', 'glob.mjs', 'index.mjs', 'jsonc.mjs', 'scan.mjs', 'script.json'];
+const REPO_MAP_FILES = ['args.mjs', 'glob.mjs', 'index.mjs', 'jsonc.mjs', 'render-json.mjs', 'scan.mjs', 'script.json'];
 
 function expectSkillContract(
   name: string,
