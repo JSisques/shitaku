@@ -479,10 +479,7 @@ describe('docs:website-catalog (rule pages)', () => {
   });
 });
 
-const BLOCK_CASES = {
-  agent: { kind: 'agents', rendered: 'Review code carefully' },
-  rule: { kind: 'rules', rendered: 'Name things clearly' },
-} as const;
+const RULE_RENDERED = 'Name things clearly';
 
 describe('block scalar descriptions (agents and rules)', () => {
   it('renders an agent literal block scalar as one line in the README and en/es pages', () => {
@@ -516,11 +513,11 @@ describe('block scalar descriptions (agents and rules)', () => {
     const box = sandbox({ commands: [], rules: { naming: `${indicator}\n  Name things\n  clearly` } });
     expect(box.run('catalog').status).toBe(0);
     expect(box.run('website').status).toBe(0);
-    expect(box.read('README.md')).toContain(`| \`naming\` | ${BLOCK_CASES.rule.rendered} |`);
+    expect(box.read('README.md')).toContain(`| \`naming\` | ${RULE_RENDERED} |`);
     for (const lang of ['en', 'es']) {
       const page = box.read(`${PAGES}/${lang}/catalog/rules/naming.md`);
-      expect(page).toContain(`description: '${BLOCK_CASES.rule.rendered}'`);
-      expect(page).toContain(`\n${BLOCK_CASES.rule.rendered}\n`);
+      expect(page).toContain(`description: '${RULE_RENDERED}'`);
+      expect(page).toContain(`\n${RULE_RENDERED}\n`);
     }
   });
 
@@ -528,6 +525,32 @@ describe('block scalar descriptions (agents and rules)', () => {
     const box = sandbox({ commands: [], agents: { reviewer: '|\n  Review | code\n  carefully' } });
     expect(box.run('catalog').status).toBe(0);
     expect(box.read('README.md')).toContain('| `reviewer` | Review \\| code carefully |');
+  });
+});
+
+describe('missing description and missing item file', () => {
+  it.each([
+    ['catalog', 'agent', 'agents/reviewer.md'],
+    ['website', 'agent', 'agents/reviewer.md'],
+    ['catalog', 'command', 'commands/review.md'],
+    ['website', 'command', 'commands/review.md'],
+  ] as const)('%s generator reports a %s without a description', (script, kind, label) => {
+    const box = sandbox({
+      commands: kind === 'command' ? ['review'] : [],
+      agents: kind === 'agent' ? { reviewer: 'x' } : undefined,
+    });
+    box.write(`catalog/${label}`, `---\nname: item\ndescription: "   "\n---\n\nBody\n`);
+    const run = box.run(script);
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain(`${label} has no description`);
+  });
+
+  it.each(['catalog', 'website'] as const)('%s generator prefixes a missing listed file with its label', (script) => {
+    const box = sandbox({ commands: [], agents: { reviewer: 'x' } });
+    rmSync(join(box.dir, 'catalog/agents/reviewer.md'));
+    const run = box.run(script);
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain('agents/reviewer.md: ');
   });
 });
 
