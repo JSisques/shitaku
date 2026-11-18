@@ -193,3 +193,163 @@ describe('render-markdown sections', () => {
     expect(JSON.stringify(doc)).toBe(before);
   });
 });
+
+const CAP = 32000;
+const pad = (n: number): string => String(n).padStart(4, '0');
+
+/** Synthetic modules `src/m0000.ts`..; the lower the index, the more imported (with ties). */
+function bigDoc(opts: { modules: number; exportsPer?: number; tree?: RepoMapDocument['tree'] }): RepoMapDocument {
+  const base = smallDoc();
+  const importedByCount: Record<string, number> = {};
+  const modules = Array.from({ length: opts.modules }, (_, i) => {
+    const path = `src/m${pad(i)}.ts`;
+    importedByCount[path] = Math.floor((opts.modules - i) / 2);
+    return {
+      path,
+      language: 'typescript',
+      imports: [],
+      exports: Array.from({ length: opts.exportsPer ?? 0 }, (__, j) => ({
+        name: `fn${pad(i)}x${j}`,
+        kind: 'function',
+        signature: `export function fn${pad(i)}x${j}(argument: string, other: number): Promise<void>`,
+      })),
+    };
+  });
+  return { ...base, modules, graph: { edges: [], importedByCount }, ...(opts.tree ? { tree: opts.tree } : {}) };
+}
+
+/** Module blocks in display order with whether they were collapsed to a names line. */
+function blocks(text: string): { path: string; collapsed: boolean; signatures: number }[] {
+  const modulesSection = text.split('\n## Modules\n')[1] ?? '';
+  return modulesSection
+    .split('\n### ')
+    .slice(1)
+    .map((block) => ({
+      path: /^`([^`]+)`/.exec(block)?.[1] ?? '',
+      collapsed: block.includes('\nexports: '),
+      signatures: block.split('\n').filter((line) => line.startsWith('- export ')).length,
+    }));
+}
+
+const note = (text: string): string =>
+  text.includes('\n## Omitted\n') ? `## Omitted\n${text.split('\n## Omitted\n')[1] ?? ''}` : '';
+
+describe('render-markdown size cap', () => {
+  it('holds a 2,000-module map to the cap with an omission note, deterministically and quickly', () => {
+    const doc = bigDoc({ modules: 2000, exportsPer: 3 });
+    const started = performance.now();
+    const first = render(doc, { maxDepth: 4 });
+    const elapsed = performance.now() - started;
+    expect(first.length).toBeLessThanOrEqual(CAP);
+    expect(first.endsWith('\n')).toBe(true);
+    expect(first).toContain('## Omitted');
+    expect(first).toContain('`repo-map.json` is complete');
+    expect(render(doc, { maxDepth: 4 })).toBe(first);
+    expect(elapsed).toBeLessThan(5000);
+  });
+
+  it('collapses signatures first, least important modules first', () => {
+    const text = render(bigDoc({ modules: 60, exportsPer: 10 }), { maxDepth: 4 });
+    const shown = blocks(text);
+    expect(shown).toHaveLength(60);
+    const flags = shown.map((block) => block.collapsed);
+    expect(flags[0]).toBe(false);
+    expect(flags[59]).toBe(true);
+    // Collapsed modules form a suffix of the display order: the exact reverse of importance.
+    const firstCollapsed = flags.indexOf(true);
+    expect(flags.slice(firstCollapsed).every(Boolean)).toBe(true);
+    expect(flags.slice(0, firstCollapsed).every((flag) => !flag)).toBe(true);
+    expect(shown[firstCollapsed]?.signatures).toBe(0);
+    const collapsedCount = flags.filter(Boolean).length;
+    expect(note(text)).toContain(`Signatures collapsed to export names for ${collapsedCount} modules.`);
+    expect(note(text)).not.toContain('Tree limited');
+    expect(note(text)).not.toContain('not listed');
+    expect(text).toContain('exports: fn0059x0, fn0059x1');
+    expect(text.length).toBeLessThanOrEqual(CAP);
+  });
+
+  it('lowers the tree depth only after every signature was collapsed', () => {
+    const tree: RepoMapDocument['tree'] = [{ path: '.', files: 0, totalFiles: 1200 }];
+    for (let i = 0; i < 300; i++) {
+      for (const path of [`a${i}`, `a${i}/b`, `a${i}/b/c`, `a${i}/b/c/d`]) tree.push({ path, files: 1, totalFiles: 1 });
+    }
+    const text = render(bigDoc({ modules: 3, exportsPer: 4, tree }), { maxDepth: 4 });
+    const treeSection = (text.split('## Tree\n')[1] ?? '').split('\n## ')[0] ?? '';
+    const depths = [...treeSection.matchAll(/^ *- `([^`]+)`/gm)].map((m) => (m[1] ?? '').split('/').length);
+    const limit = /Tree limited to depth (\d+)\./.exec(note(text))?.[1];
+    expect(limit).toBeDefined();
+    expect(Number(limit)).toBeLessThan(4);
+    expect(Number(limit)).toBeGreaterThanOrEqual(1);
+    expect(Math.max(...depths)).toBe(Number(limit));
+    expect(note(text)).toContain('Signatures collapsed to export names for 3 modules.');
+    expect(note(text)).not.toContain('not listed');
+    expect(text.length).toBeLessThanOrEqual(CAP);
+  });
+
+  it('drops whole module blocks, least important first, after signatures and tree depth', () => {
+    const text = render(bigDoc({ modules: 2000 }), { maxDepth: 4 });
+    const shown = blocks(text);
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.length).toBeLessThan(2000);
+    expect(shown[0]?.path).toBe('src/m0000.ts');
+    // The kept blocks are a prefix of the display order; the dropped ones are the tail.
+    expect(shown.map((block) => block.path)).toEqual(
+      Array.from({ length: shown.length }, (_, i) => `src/m${pad(i)}.ts`),
+    );
+    expect(note(text)).toContain(`${2000 - shown.length} modules not listed.`);
+    expect(note(text)).not.toContain('Signatures collapsed');
+    expect(text.length).toBeLessThanOrEqual(CAP);
+  });
+
+  it('cuts at a line boundary when the fixed sections alone exceed the cap', () => {
+    const doc: RepoMapDocument = {
+      ...bigDoc({ modules: 5, exportsPer: 2 }),
+      commands: {
+        packageManager: 'pnpm',
+        scripts: Array.from({ length: 700 }, (_, i) => ({
+          path: '.',
+          name: `task${pad(i)}`,
+          command: `node scripts/run-task.mjs --name task${pad(i)} --verbose`,
+        })),
+      },
+    };
+    const text = render(doc, { maxDepth: 4 });
+    expect(text.length).toBeLessThanOrEqual(CAP);
+    expect(text.endsWith('\n')).toBe(true);
+    expect(note(text)).toContain('Output cut at the size limit.');
+    // No half line: every task line that survived is complete.
+    for (const line of text.split('\n').filter((l) => l.includes('task'))) {
+      expect(line.endsWith('--verbose`')).toBe(true);
+    }
+    expect(render(doc, { maxDepth: 4 })).toBe(text);
+  });
+
+  it('keeps the omission note within its 512 character reservation in the worst case', () => {
+    const doc: RepoMapDocument = {
+      ...bigDoc({ modules: 9999, exportsPer: 3 }),
+      commands: {
+        packageManager: 'pnpm',
+        scripts: Array.from({ length: 700 }, (_, i) => ({ path: '.', name: `t${pad(i)}`, command: 'x'.repeat(60) })),
+      },
+    };
+    const text = render(doc, { maxDepth: 4 });
+    const section = note(text);
+    expect(section.length).toBeGreaterThan(0);
+    expect(section.length + 1).toBeLessThanOrEqual(512);
+    expect(text.length).toBeLessThanOrEqual(CAP);
+  });
+
+  it('leaves the document untouched, so the JSON stays complete', () => {
+    const doc = bigDoc({ modules: 300, exportsPer: 5 });
+    const before = JSON.stringify(doc);
+    render(doc, { maxDepth: 4 });
+    expect(JSON.stringify(doc)).toBe(before);
+  });
+
+  it('does not add a note when the full digest is within the cap', () => {
+    const text = render(bigDoc({ modules: 20, exportsPer: 2 }), { maxDepth: 4 });
+    expect(text.length).toBeLessThanOrEqual(CAP);
+    expect(text).not.toContain('## Omitted');
+    expect(blocks(text).every((block) => !block.collapsed)).toBe(true);
+  });
+});
