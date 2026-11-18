@@ -90,6 +90,47 @@ describe('bundled catalog', () => {
     });
   });
 
+  it('ships the ten seed rules with the recommended set flagged', async () => {
+    const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
+    expect(catalog.issues).toEqual([]);
+    expect(catalog.rules.map((r) => r.name).sort()).toEqual(
+      [
+        'ask-when-unsure',
+        'conventional-commits',
+        'error-handling',
+        'explain-why',
+        'module-readme',
+        'naming',
+        'no-new-deps',
+        'no-secrets',
+        'small-changes',
+        'tests-for-changes',
+      ].sort(),
+    );
+    expect(
+      catalog.rules
+        .filter((r) => r.recommended)
+        .map((r) => r.name)
+        .sort(),
+    ).toEqual(['ask-when-unsure', 'conventional-commits', 'module-readme', 'no-secrets', 'tests-for-changes']);
+  });
+
+  it('keeps every seed rule small, global and instruction-only', () => {
+    const names = readdirSync(join(catalogRoot, 'rules'));
+    expect(names).toHaveLength(10);
+    for (const file of names) {
+      const bytes = readFileSync(join(catalogRoot, 'rules', file));
+      expect(bytes.length, file).toBeLessThanOrEqual(1500);
+      const [, frontmatter = '', body = ''] = bytes.toString('utf8').split(/^---\r?\n|\r?\n---\r?\n/);
+      const keys = frontmatter
+        .split(/\r?\n/)
+        .filter((line) => line.length > 0)
+        .map((line) => line.slice(0, line.indexOf(':')));
+      expect(keys, file).toEqual(['name', 'description']);
+      expect(body.trim().length, file).toBeGreaterThan(0);
+    }
+  });
+
   it('ships rea as a pinned stdio MCP without env, outside every profile', async () => {
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     const rea = catalog.mcps.find((m) => m.name === 'rea');

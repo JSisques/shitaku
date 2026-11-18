@@ -677,9 +677,11 @@ describe('runCli', () => {
       expect(out).toEqual(['rules:', '  no-secrets  no-secrets rule']);
     });
 
-    it('lists no rules from the bundled catalog yet', async () => {
+    it('lists the ten bundled rules', async () => {
       expect(await run('list', 'rules')).toBe(0);
-      expect(text()).not.toContain('rules:');
+      expect(out[0]).toBe('rules:');
+      expect(out).toHaveLength(11);
+      expect(out).toContainEqual(expect.stringMatching(/^ {2}no-secrets\s+\S/));
     });
   });
 
@@ -1404,7 +1406,14 @@ describe('runCli', () => {
 
       it('lists the bundled catalog with a header per kind', async () => {
         expect(await run('list')).toBe(0);
-        expect(out.filter((l) => !l.startsWith(' '))).toEqual(['agents:', 'mcps:', 'profiles:', 'scripts:', 'skills:']);
+        expect(out.filter((l) => !l.startsWith(' '))).toEqual([
+          'agents:',
+          'mcps:',
+          'profiles:',
+          'rules:',
+          'scripts:',
+          'skills:',
+        ]);
         expect(out).toContainEqual(expect.stringMatching(/^ {2}github\s+\S/));
         expect(out).toContainEqual(expect.stringMatching(/^ {2}complexity\s+\S/));
         expect(out).toContainEqual(expect.stringMatching(/^ {2}pr-creator\s+\S/));
