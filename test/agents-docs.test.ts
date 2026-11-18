@@ -56,16 +56,19 @@ describe('agents docs', () => {
   });
 
   it.each([
-    ['README.md', /installs MCP servers, skills, scripts, slash commands, agents and hooks/],
-    ['README.md', /removes one MCP server, skill, script, slash command, agent or hook/],
-    ['README.md', /`commands`, `agents`, `hooks`\), and each/],
-    ['README.md', /`hooks` or `agents`, plural only\)/],
-    ['README.md', /`command`, `hook` or `agent` \(singular/],
-    ['website/src/content/docs/en/cli/commands.md', /Install MCP servers, skills, slash commands, agents and hooks/],
-    ['website/src/content/docs/en/cli/commands.md', /slash command, agent or hook that shitaku owns/],
-    ['website/src/content/docs/en/cli/commands.md', /`hooks` or `agents`, plural only\)/],
-    ['website/src/content/docs/es/cli/commands.md', /comandos slash, agentes y hooks/],
-    ['website/src/content/docs/es/cli/commands.md', /comando slash, agente o hook instalado/],
+    ['README.md', /installs MCP servers, skills, scripts, slash commands, agents, rules and hooks/],
+    ['README.md', /removes one MCP server, skill, script, slash command, agent, rule or hook/],
+    ['README.md', /`commands`, `agents`, `rules`, `hooks`\), and each/],
+    ['README.md', /`hooks`, `agents` or `rules`, plural only\)/],
+    ['README.md', /`command`, `hook`, `agent` or `rule` \(singular/],
+    [
+      'website/src/content/docs/en/cli/commands.md',
+      /Install MCP servers, skills, slash commands, agents, rules and hooks/,
+    ],
+    ['website/src/content/docs/en/cli/commands.md', /slash command, agent, rule or hook that shitaku owns/],
+    ['website/src/content/docs/en/cli/commands.md', /`hooks`, `agents` or `rules`, plural only\)/],
+    ['website/src/content/docs/es/cli/commands.md', /comandos slash, agentes, reglas y hooks/],
+    ['website/src/content/docs/es/cli/commands.md', /comando slash, agente, regla o hook instalado/],
   ])('lists agents among the kinds in %s (%s)', (file, pattern) => {
     expect(readFileSync(join(ROOT, file), 'utf8')).toMatch(pattern);
   });
