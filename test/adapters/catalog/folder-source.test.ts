@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FolderCatalogSource } from '@/adapters/catalog/folder-source.js';
 import { MAX_DEPTH, MAX_FILE_BYTES, MAX_SKILL_FILES } from '@/domain/catalog/limits.js';
 import { agentBytes } from '@test/helpers/agents.js';
+import { ruleBytes } from '@test/helpers/rules.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
 const mcp = (name: string): object => ({
@@ -656,5 +657,105 @@ describe('FolderCatalogSource', () => {
     const catalog = await new FolderCatalogSource(dir, 'folder').load();
     expect(catalog.profiles.map((p) => p.name)).toEqual(['ok']);
     expect(catalog.issues[0]?.reason).toContain("unknown agent 'ghost'");
+  });
+
+  describe('rules', () => {
+    it('loads an empty rules list when items.rules is absent', async () => {
+      await put('catalog.json', { version: 1, items: { mcps: [] } });
+      const catalog = await new FolderCatalogSource(dir, 'folder').load();
+      expect(catalog.rules).toEqual([]);
+      expect(catalog.issues).toEqual([]);
+    });
+
+    it('loads a valid rule with its exact bytes, not recommended by default', async () => {
+      await put('catalog.json', { version: 1, items: { mcps: [], rules: ['naming'] } });
+      await put('rules/naming.md', ruleBytes('naming', ['paths:', '  - "src/**"']));
+
+      const catalog = await new FolderCatalogSource(dir, 'folder').load();
+      expect(catalog.issues).toEqual([]);
+      expect(catalog.rules).toHaveLength(1);
+      expect(catalog.rules[0]).toMatchObject({ name: 'naming', description: 'naming rule', recommended: false });
+      expect(catalog.rules[0]?.bytes).toEqual(ruleBytes('naming', ['paths:', '  - "src/**"']));
+    });
+
+    it('skips an invalid rule, reports its path, and keeps the valid ones', async () => {
+      await put('catalog.json', { version: 1, items: { mcps: [], rules: ['good', 'nofront', 'checked'] } });
+      await put('rules/good.md', ruleBytes('good'));
+      await put('rules/nofront.md', '# body only\n');
+      await put('rules/checked.md', ruleBytes('checked', ['severity: high']));
+
+      const catalog = await new FolderCatalogSource(dir, 'folder').load();
+      expect(catalog.rules.map((r) => r.name)).toEqual(['good']);
+      expect(catalog.issues.map((i) => i.file)).toEqual(['rules/nofront.md', 'rules/checked.md']);
+    });
+
+    it('flags a listed rule with no file', async () => {
+      await put('catalog.json', { version: 1, items: { mcps: [], rules: ['ghost'] } });
+      const catalog = await new FolderCatalogSource(dir, 'folder').load();
+      expect(catalog.rules).toEqual([]);
+      expect(catalog.issues).toEqual([
+        { file: 'rules/ghost.md', reason: 'listed in catalog.json but the file is missing' },
+      ]);
+    });
+
+    it('flags an unlisted rules/*.md file and does not scan subdirectories', async () => {
+      await put('catalog.json', { version: 1, items: { mcps: [], rules: ['listed'] } });
+      await put('rules/listed.md', ruleBytes('listed'));
+      await put('rules/stray.md', ruleBytes('stray'));
+      await put('rules/nested/deep.md', ruleBytes('deep'));
+
+      const catalog = await new FolderCatalogSource(dir, 'folder').load();
+      expect(catalog.rules.map((r) => r.name)).toEqual(['listed']);
+      expect(catalog.issues).toEqual([{ file: 'rules/stray.md', reason: 'not listed in catalog.json' }]);
+    });
+
+    it('skips a rule file that is a symlink', async () => {
+      await put('catalog.json', { version: 1, items: { mcps: [], rules: ['linked'] } });
+      await put('secret.md', ruleBytes('linked'));
+      await mkdir(join(dir, 'rules'), { recursive: true });
+      await symlink(join(dir, 'secret.md'), join(dir, 'rules', 'linked.md'));
+
+      const catalog = await new FolderCatalogSource(dir, 'folder').load();
+      expect(catalog.rules).toEqual([]);
+      expect(catalog.issues[0]?.reason).toContain('symbolic link');
+    });
+
+    it('flags recommended rules that are in the catalog', async () => {
+      await put('catalog.json', {
+        version: 1,
+        items: { mcps: [], rules: ['a', 'b'] },
+        recommended: { rules: ['b'] },
+      });
+      await put('rules/a.md', ruleBytes('a'));
+      await put('rules/b.md', ruleBytes('b'));
+
+      const catalog = await new FolderCatalogSource(dir, 'folder').load();
+      expect(catalog.issues).toEqual([]);
+      expect(catalog.rules.map((r) => [r.name, r.recommended])).toEqual([
+        ['a', false],
+        ['b', true],
+      ]);
+    });
+
+    it('drops a recommended name that is not listed, with an issue', async () => {
+      await put('catalog.json', { version: 1, items: { mcps: [], rules: ['a'] }, recommended: { rules: ['ghost'] } });
+      await put('rules/a.md', ruleBytes('a'));
+
+      const catalog = await new FolderCatalogSource(dir, 'folder').load();
+      expect(catalog.rules.map((r) => r.recommended)).toEqual([false]);
+      expect(catalog.issues).toEqual([
+        { file: 'catalog.json', reason: "recommended rule 'ghost' is not a loaded rule" },
+      ]);
+    });
+
+    it('drops a recommended name whose rule failed to load, with an issue', async () => {
+      await put('catalog.json', { version: 1, items: { mcps: [], rules: ['bad'] }, recommended: { rules: ['bad'] } });
+      await put('rules/bad.md', '# no frontmatter\n');
+
+      const catalog = await new FolderCatalogSource(dir, 'folder').load();
+      expect(catalog.rules).toEqual([]);
+      expect(catalog.issues.map((i) => i.file)).toEqual(['rules/bad.md', 'catalog.json']);
+      expect(catalog.issues[1]?.reason).toBe("recommended rule 'bad' is not a loaded rule");
+    });
   });
 });

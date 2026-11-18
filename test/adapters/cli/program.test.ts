@@ -11,6 +11,7 @@ import type { InstallMethod } from '@/domain/install-method.js';
 import { PromptCancelled, type HookPreview, type Prompter } from '@/ports/prompter.js';
 import type { ProcessRunner } from '@/ports/process-runner.js';
 import { parseDoc } from '@test/helpers/parse-doc.js';
+import { ruleBytes } from '@test/helpers/rules.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
 
 const CATALOG = join(import.meta.dirname, '..', '..', '..', 'catalog');
@@ -648,6 +649,37 @@ describe('runCli', () => {
     it('rejects --kind widget with the allowed choices', async () => {
       expect(await run('uninstall', 'review', '--kind', 'widget')).toBe(1);
       expect(err.join('\n')).toContain('Allowed choices are mcp, skill, script, command');
+    });
+  });
+
+  describe('rules', () => {
+    /** A folder catalog that offers the given rules only. */
+    const writeRuleCatalog = async (names: string[] = ['naming', 'no-secrets']): Promise<string> => {
+      const dir = join(tmp.root, 'rules-catalog');
+      await mkdir(join(dir, 'rules'), { recursive: true });
+      await writeFile(
+        join(dir, 'catalog.json'),
+        JSON.stringify({ version: 1, items: { mcps: [], rules: names }, recommended: { rules: ['naming'] } }),
+      );
+      for (const name of names) await writeFile(join(dir, 'rules', `${name}.md`), ruleBytes(name));
+      return dir;
+    };
+
+    it('lists the rules of a --source catalog', async () => {
+      const dir = await writeRuleCatalog();
+      expect(await run('list', 'rules', '--source', dir)).toBe(0);
+      expect(out).toEqual(['rules:', '  naming      naming rule', '  no-secrets  no-secrets rule']);
+    });
+
+    it('lists only the rules matching --search', async () => {
+      const dir = await writeRuleCatalog();
+      expect(await run('list', 'rules', '--search', 'SECRETS', '--source', dir)).toBe(0);
+      expect(out).toEqual(['rules:', '  no-secrets  no-secrets rule']);
+    });
+
+    it('lists no rules from the bundled catalog yet', async () => {
+      expect(await run('list', 'rules')).toBe(0);
+      expect(text()).not.toContain('rules:');
     });
   });
 
