@@ -144,3 +144,151 @@ describe('extractJs: imports', () => {
     ]);
   });
 });
+
+const exportsOf = (source: string): { name: string; kind: string }[] =>
+  extractJs(source).exports.map(({ name, kind }) => ({ name, kind }));
+
+describe('extractJs: exports', () => {
+  it.each([
+    ['export function f() {}', 'f', 'function'],
+    ['export async function f() {}', 'f', 'function'],
+    ['export function* f() {}', 'f', 'function'],
+    ['export declare function f(): void;', 'f', 'function'],
+    ['export class C {}', 'C', 'class'],
+    ['export abstract class C {}', 'C', 'class'],
+    ['export const a = 1;', 'a', 'const'],
+    ['export declare const a: number;', 'a', 'const'],
+    ['export let b = 2;', 'b', 'let'],
+    ['export var c = 3;', 'c', 'var'],
+    ['export type T = string;', 'T', 'type'],
+    ['export interface I {}', 'I', 'interface'],
+    ['export enum E {}', 'E', 'enum'],
+    ['export const enum E {}', 'E', 'enum'],
+    ['export namespace N {}', 'N', 'namespace'],
+    ['export declare namespace N {}', 'N', 'namespace'],
+    ['export namespace A.B {}', 'A', 'namespace'],
+  ])('records %s', (source, name, kind) => {
+    expect(exportsOf(source)).toEqual([{ name, kind }]);
+  });
+
+  it('records every binding of a destructured declaration and skips default values', () => {
+    expect(exportsOf('export const { a, b: c, d = other, ...rest } = obj;')).toEqual([
+      { name: 'a', kind: 'const' },
+      { name: 'c', kind: 'const' },
+      { name: 'd', kind: 'const' },
+      { name: 'rest', kind: 'const' },
+    ]);
+    expect(exportsOf('export const [x, , y] = arr;')).toEqual([
+      { name: 'x', kind: 'const' },
+      { name: 'y', kind: 'const' },
+    ]);
+    expect(exportsOf('export let { n: { deep } } = o;')).toEqual([{ name: 'deep', kind: 'let' }]);
+  });
+
+  it.each([
+    ['export default function () {}', 'function'],
+    ['export default function named() {}', 'function'],
+    ['export default async function named() {}', 'function'],
+    ['export default class {}', 'class'],
+    ['export default abstract class Base {}', 'class'],
+    ['export default 42;', 'expression'],
+    ['export default (a) => a;', 'expression'],
+    ['export default async () => 1;', 'expression'],
+  ])('records %s as the default export', (source, kind) => {
+    expect(exportsOf(source)).toEqual([{ name: 'default', kind }]);
+  });
+
+  it('records export lists under their exported names with the local declaration kind', () => {
+    const source = [
+      'const a = 1;',
+      'function b() {}',
+      'export { a, b as c, missing, a as default };',
+      'type T = number;',
+      'export type { T };',
+      'export { type T as U };',
+    ].join('\n');
+    expect(exportsOf(source)).toEqual([
+      { name: 'T', kind: 'type' },
+      { name: 'U', kind: 'type' },
+      { name: 'a', kind: 'const' },
+      { name: 'c', kind: 'function' },
+      { name: 'default', kind: 'const' },
+      { name: 'missing', kind: 'named' },
+    ]);
+  });
+
+  it('records re-exports with their names, and export * as reexport-all', () => {
+    const source = [
+      "export * from 'a';",
+      "export * as ns from 'b';",
+      "export { x, y as z } from 'c';",
+      "export { default } from 'd';",
+    ].join('\n');
+    expect(exportsOf(source)).toEqual([
+      { name: '*', kind: 'reexport-all' },
+      { name: 'default', kind: 'reexport' },
+      { name: 'ns', kind: 'reexport' },
+      { name: 'x', kind: 'reexport' },
+      { name: 'z', kind: 'reexport' },
+    ]);
+  });
+
+  it('records CommonJS exports', () => {
+    const source = ['module.exports = {};', 'exports.x = 1;', 'module.exports.y = 2;'].join('\n');
+    expect(exportsOf(source)).toEqual([
+      { name: 'default', kind: 'commonjs' },
+      { name: 'x', kind: 'commonjs' },
+      { name: 'y', kind: 'commonjs' },
+    ]);
+  });
+
+  it('does not mistake CommonJS-like member access or comparisons for exports', () => {
+    const source = [
+      'foo.exports.z = 1;',
+      'exports.w == 1;',
+      'exports.q.r = 1;',
+      'exports[k] = 2;',
+      'exports.ok = 3;',
+    ].join('\n');
+    expect(exportsOf(source)).toEqual([{ name: 'ok', kind: 'commonjs' }]);
+  });
+
+  it('ignores exports nested in function bodies, blocks and namespace or module blocks', () => {
+    const source = [
+      'export namespace N {',
+      '  export const inner = 1;',
+      '}',
+      "declare module 'm' {",
+      '  export function ambient(): void;',
+      '}',
+      'function f() {',
+      '  exports.nested = 1;',
+      '  module.exports = 2;',
+      '}',
+      'if (x) { exports.late = 1; }',
+    ].join('\n');
+    expect(exportsOf(source)).toEqual([{ name: 'N', kind: 'namespace' }]);
+  });
+
+  it('dedupes overloads and sorts by name, then kind', () => {
+    const source = [
+      'export function f(a: string): void;',
+      'export function f(a: number): void;',
+      'export function f(a: unknown) {}',
+      'export type x = string;',
+      'export const x = 1;',
+      'export const b = 2;',
+    ].join('\n');
+    expect(exportsOf(source)).toEqual([
+      { name: 'b', kind: 'const' },
+      { name: 'f', kind: 'function' },
+      { name: 'x', kind: 'const' },
+      { name: 'x', kind: 'type' },
+    ]);
+  });
+
+  it('does not treat a variable named type or an export of a plain object key as a declaration', () => {
+    const source = ['const o = { type: 1, export: 2 };', 'type = 5;', 'export const real = 1;'].join('\n');
+    expect(exportsOf(source)).toEqual([{ name: 'real', kind: 'const' }]);
+  });
+});

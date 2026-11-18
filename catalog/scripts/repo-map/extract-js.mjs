@@ -9,6 +9,31 @@ import { tokenize } from './tokenize-js.mjs';
 /** @typedef {'static' | 'type' | 'reexport' | 'require' | 'dynamic'} ImportKind */
 /** @typedef {{ specifier: string, kind: ImportKind }} RawImport */
 
+/** @typedef {{ name: string, kind: string, signature: string | null }} RawExport */
+/**
+ * @typedef {{
+ *   addImport: (specifier: string, kind: ImportKind) => void,
+ *   addExport: (name: string, kind: string, header: number | null) => void,
+ *   addListed: (local: string, name: string) => void,
+ * }} Sink
+ */
+
+/** Words that start a declaration. */
+const DECLARATION_KEYWORDS = new Set([
+  'function',
+  'class',
+  'const',
+  'let',
+  'var',
+  'interface',
+  'type',
+  'enum',
+  'namespace',
+]);
+
+/** Words that may precede a declaration keyword and belong to its header. */
+const DECLARATION_MODIFIERS = new Set(['declare', 'abstract', 'async']);
+
 /** Statement keywords that cannot appear inside an import clause: a broken clause stops there. */
 const CLAUSE_STOP_KEYWORDS = new Set(['const', 'let', 'var', 'function', 'class']);
 
@@ -132,44 +157,260 @@ function skipBraces(tokens, open) {
 }
 
 /**
- * `export ...` at depth 0. Returns the index of the last token consumed.
+ * An identifier name or a quoted string name (`export { x as "str" }`).
+ * @param {Token | undefined} token
+ */
+function nameOf(token) {
+  return isIdent(token) ? (token?.value ?? null) : literalValue(token);
+}
+
+/**
+ * Skip `declare`, `abstract` and `async` when another word follows them.
+ * @param {Token[]} tokens
+ * @param {number} index
+ */
+function skipModifiers(tokens, index) {
+  let current = index;
+  while (isModifier(tokens[current]) && isIdent(tokens[current + 1])) current++;
+  return current;
+}
+
+/** @param {Token | undefined} token */
+function isModifier(token) {
+  return isIdent(token) && DECLARATION_MODIFIERS.has(token?.value ?? '');
+}
+
+/**
+ * Index of the first modifier before the declaration keyword at `keyword`.
+ * @param {Token[]} tokens
+ * @param {number} keyword
+ */
+function headerStart(tokens, keyword) {
+  let start = keyword;
+  while (start > 0 && isModifier(tokens[start - 1])) start--;
+  return start;
+}
+
+/**
+ * Names bound by a destructuring pattern that opens at `open`. Default values are skipped
+ * and a `key:` before a binding is not a name.
+ * @param {Token[]} tokens
+ * @param {number} open
+ */
+function patternNames(tokens, open) {
+  /** @type {string[]} */
+  const names = [];
+  let depth = 0;
+  for (let index = open; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (token === undefined) break;
+    if (isPunct(token, '{') || isPunct(token, '[')) {
+      depth++;
+    } else if (isPunct(token, '}') || isPunct(token, ']')) {
+      if (--depth === 0) break;
+    } else if (isPunct(token, '=')) {
+      // Skip the default value up to the next comma or closer of this pattern level.
+      let nested = 0;
+      for (index++; index < tokens.length; index++) {
+        const inner = tokens[index];
+        if (isPunct(inner, '(') || isPunct(inner, '[') || isPunct(inner, '{')) nested++;
+        else if (isPunct(inner, ')') || isPunct(inner, ']') || isPunct(inner, '}')) {
+          if (nested === 0) break;
+          nested--;
+        } else if (isPunct(inner, ',') && nested === 0) break;
+      }
+      index--;
+    } else if (token.type === 'ident' && !isPunct(tokens[index + 1], ':') && !isPunct(tokens[index - 1], '.')) {
+      names.push(token.value);
+    }
+  }
+  return names;
+}
+
+/**
+ * Names declared after `const`, `let` or `var` (first declarator only).
+ * @param {Token[]} tokens
+ * @param {number} index
+ */
+function bindingNames(tokens, index) {
+  const token = tokens[index];
+  if (isIdent(token)) return [token?.value ?? ''];
+  return isPunct(token, '{') || isPunct(token, '[') ? patternNames(tokens, index) : [];
+}
+
+/**
+ * A declaration whose keyword sits at `index`.
+ * @param {Token[]} tokens
+ * @param {number} index
+ * @returns {{ kind: string, names: string[] } | null}
+ */
+function readDeclaration(tokens, index) {
+  const keyword = tokens[index];
+  if (!isIdent(keyword)) return null;
+  const named = (/** @type {string} */ kind, /** @type {number} */ at) => {
+    const name = tokens[at];
+    return isIdent(name) ? { kind, names: [name?.value ?? ''] } : null;
+  };
+  switch (keyword?.value) {
+    case 'function':
+      return named('function', isPunct(tokens[index + 1], '*') ? index + 2 : index + 1);
+    case 'class':
+      return isIdent(tokens[index + 1], 'extends') || isIdent(tokens[index + 1], 'implements')
+        ? null
+        : named('class', index + 1);
+    case 'interface':
+    case 'enum':
+    case 'namespace':
+      return named(keyword.value, index + 1);
+    case 'type':
+      // `type Name =` or `type Name<`; a bare `type` is an ordinary identifier.
+      return isPunct(tokens[index + 2], '=') || isPunct(tokens[index + 2], '<') ? named('type', index + 1) : null;
+    case 'const':
+      return isIdent(tokens[index + 1], 'enum')
+        ? named('enum', index + 2)
+        : { kind: 'const', names: bindingNames(tokens, index + 1) };
+    case 'let':
+    case 'var':
+      return { kind: keyword.value, names: bindingNames(tokens, index + 1) };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Kind of `export default <what follows>`.
+ * @param {Token[]} tokens
+ * @param {number} index first token after `default`
+ */
+function defaultKind(tokens, index) {
+  const keyword = tokens[skipModifiers(tokens, index)];
+  if (isIdent(keyword, 'function') || isIdent(keyword, 'class') || isIdent(keyword, 'interface')) {
+    return keyword?.value ?? 'expression';
+  }
+  return 'expression';
+}
+
+/**
+ * The `{ a, b as c }` items between `open` and `close` (exclusive) as local and exported names.
+ * @param {Token[]} tokens
+ * @param {number} open
+ * @param {number} close
+ */
+function exportListItems(tokens, open, close) {
+  /** @type {{ local: string, name: string }[]} */
+  const items = [];
+  /** @type {Token[]} */
+  let item = [];
+  const flush = () => {
+    let parts = item;
+    item = [];
+    // `type` modifier: `{ type A }`, but `{ type as x }` exports a binding named type.
+    if (isIdent(parts[0], 'type') && parts.length > 1 && !isIdent(parts[1], 'as')) parts = parts.slice(1);
+    const local = nameOf(parts[0]);
+    const name = isIdent(parts[1], 'as') ? nameOf(parts[2]) : local;
+    if (local !== null && name !== null) items.push({ local, name });
+  };
+  for (let index = open + 1; index < close; index++) {
+    const token = tokens[index];
+    if (token === undefined) continue;
+    if (isPunct(token, ',')) flush();
+    else item.push(token);
+  }
+  flush();
+  return items;
+}
+
+/**
+ * `export ...` at depth 0. Declarations are recorded where their keyword is read; this handles
+ * `default`, `*` and `{ ... }` forms. Returns the index of the last token consumed.
  * @param {Token[]} tokens
  * @param {number} start index of `export`
- * @param {(specifier: string, kind: ImportKind) => void} addImport
+ * @param {Sink} sink
  */
-function readExport(tokens, start, addImport) {
+function readExport(tokens, start, sink) {
   let index = start + 1;
+  if (isIdent(tokens[index], 'default')) {
+    sink.addExport('default', defaultKind(tokens, index + 1), null);
+    return index;
+  }
   if (isIdent(tokens[index], 'type') && (isPunct(tokens[index + 1], '{') || isPunct(tokens[index + 1], '*'))) index++;
+  let star = false;
+  /** @type {string | null} */
+  let namespace = null;
+  /** @type {{ local: string, name: string }[]} */
+  let items = [];
   if (isPunct(tokens[index], '*')) {
+    star = true;
     index++;
-    if (isIdent(tokens[index], 'as')) index += 2;
+    if (isIdent(tokens[index], 'as')) {
+      namespace = nameOf(tokens[index + 1]);
+      index += 2;
+    }
   } else if (isPunct(tokens[index], '{')) {
-    index = skipBraces(tokens, index);
-    if (index === -1) return start;
+    const after = skipBraces(tokens, index);
+    if (after === -1) return start;
+    items = exportListItems(tokens, index, after - 1);
+    index = after;
   } else {
     return start;
   }
   const specifier = isIdent(tokens[index], 'from') ? literalValue(tokens[index + 1]) : null;
-  if (specifier === null) return index - 1;
-  addImport(specifier, 'reexport');
+  if (specifier === null) {
+    for (const item of items) sink.addListed(item.local, item.name);
+    return index - 1;
+  }
+  sink.addImport(specifier, 'reexport');
+  if (star) sink.addExport(namespace ?? '*', namespace === null ? 'reexport-all' : 'reexport', null);
+  for (const item of items) sink.addExport(item.name, 'reexport', null);
   return index + 1;
 }
 
 /**
+ * The exported name of a CommonJS assignment starting at `module` or `exports`, or null.
+ * @param {Token[]} tokens
+ * @param {number} index
+ */
+function commonJsExportName(tokens, index) {
+  let at = index;
+  if (tokens[at]?.value === 'module') {
+    if (!isPunct(tokens[at + 1], '.') || !isIdent(tokens[at + 2], 'exports')) return null;
+    at += 2;
+    if (isPunct(tokens[at + 1], '=')) return 'default';
+  }
+  const name = tokens[at + 2];
+  return isPunct(tokens[at + 1], '.') && isIdent(name) && isPunct(tokens[at + 3], '=') ? (name?.value ?? null) : null;
+}
+
+/**
  * @param {string} source
- * @returns {{ imports: RawImport[] }}
+ * @returns {{ imports: RawImport[], exports: RawExport[] }}
  */
 export function extractJs(source) {
   const tokens = tokenize(source);
   /** @type {Map<string, RawImport>} */
   const found = new Map();
-  /**
-   * @param {string} specifier
-   * @param {ImportKind} kind
-   */
-  const addImport = (specifier, kind) => {
-    found.set(`${kind}\0${specifier}`, { specifier, kind });
+  /** @type {Map<string, { name: string, kind: string, header: number | null }>} */
+  const exported = new Map();
+  // Top-level declarations by name, so `export { a }` can take the kind of `a`.
+  /** @type {Map<string, { kind: string, header: number }>} */
+  const locals = new Map();
+  /** @type {{ local: string, name: string }[]} */
+  const listed = [];
+
+  /** @type {Sink} */
+  const sink = {
+    addImport(specifier, kind) {
+      found.set(`${kind}\0${specifier}`, { specifier, kind });
+    },
+    addExport(name, kind, header) {
+      const key = `${name}\0${kind}`;
+      if (!exported.has(key)) exported.set(key, { name, kind, header });
+    },
+    addListed(local, name) {
+      listed.push({ local, name });
+    },
   };
+  const addImport = sink.addImport;
 
   let depth = 0;
   for (let index = 0; index < tokens.length; index++) {
@@ -194,11 +435,33 @@ export function extractJs(source) {
       } else if (!isPunct(tokens[index + 1], '.') && depth === 0) {
         index = readImport(tokens, index, addImport);
       }
-    } else if (token.value === 'export' && depth === 0) {
-      index = readExport(tokens, index, addImport);
+    } else if (depth === 0) {
+      if (token.value === 'export') {
+        index = readExport(tokens, index, sink);
+      } else if (DECLARATION_KEYWORDS.has(token.value)) {
+        const declaration = readDeclaration(tokens, index);
+        if (declaration === null) continue;
+        const header = headerStart(tokens, index);
+        const isExported = isIdent(tokens[header - 1], 'export');
+        for (const name of declaration.names) {
+          if (!locals.has(name)) locals.set(name, { kind: declaration.kind, header });
+          if (isExported) sink.addExport(name, declaration.kind, header);
+        }
+      } else if (token.value === 'module' || token.value === 'exports') {
+        const name = commonJsExportName(tokens, index);
+        if (name !== null) sink.addExport(name, 'commonjs', null);
+      }
     }
   }
 
+  for (const { local, name } of listed) {
+    const declaration = locals.get(local);
+    sink.addExport(name, declaration?.kind ?? 'named', declaration?.header ?? null);
+  }
+
   const imports = [...found.values()].sort((a, b) => compare(a.specifier, b.specifier) || compare(a.kind, b.kind));
-  return { imports };
+  const exports = [...exported.values()]
+    .sort((a, b) => compare(a.name, b.name) || compare(a.kind, b.kind))
+    .map(({ name, kind }) => ({ name, kind, signature: null }));
+  return { imports, exports };
 }
