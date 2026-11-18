@@ -245,3 +245,122 @@ describe('createResolver: tsconfig paths', () => {
     });
   });
 });
+
+const external: Resolution = { resolved: null, status: 'external' };
+const CORE = { name: '@acme/core', path: 'packages/core' };
+
+/** A resolver with one workspace package whose manifest is `manifest`. */
+const withWorkspace = (files: string[], manifest: unknown): ReturnType<ResolveModule['createResolver']> =>
+  createResolver({
+    files: ['apps/web/a.ts', ...files],
+    workspaces: [CORE, { name: 'web', path: 'apps/web' }, { name: null, path: 'apps/anonymous' }],
+    manifests: new Map([['packages/core', manifest]]),
+  });
+
+describe('createResolver: workspace packages', () => {
+  it('probes a subpath under the workspace directory', () => {
+    const resolve = withWorkspace(['packages/core/utils.ts', 'packages/core/lib/index.ts'], {});
+    expect(resolve('apps/web/a.ts', '@acme/core/utils')).toEqual(internal('packages/core/utils.ts'));
+    expect(resolve('apps/web/a.ts', '@acme/core/lib')).toEqual(internal('packages/core/lib/index.ts'));
+    expect(resolve('apps/web/a.ts', '@acme/core/missing')).toEqual(unresolved);
+  });
+
+  it('resolves an unscoped workspace name and the package importing itself', () => {
+    const resolve = createResolver({
+      files: ['apps/web/index.ts', 'apps/web/util.ts'],
+      workspaces: [{ name: 'web', path: 'apps/web' }],
+    });
+    expect(resolve('apps/web/util.ts', 'web')).toEqual(internal('apps/web/index.ts'));
+    expect(resolve('apps/web/util.ts', 'web/util')).toEqual(internal('apps/web/util.ts'));
+  });
+
+  it.each([
+    ['an exports string', { exports: './lib/entry.js' }, ['lib/entry.ts'], 'lib/entry.ts'],
+    ['the exports dot entry', { exports: { '.': './src/main.ts' } }, ['src/main.ts'], 'src/main.ts'],
+    [
+      'the import condition',
+      { exports: { '.': { import: './esm.js', default: './cjs.js' } } },
+      ['esm.js', 'cjs.js'],
+      'esm.js',
+    ],
+    ['the default condition', { exports: { '.': { import: './esm.js', default: './cjs.js' } } }, ['cjs.js'], 'cjs.js'],
+    ['bare conditions', { exports: { import: './i.js', default: './d.js' } }, ['i.js', 'd.js'], 'i.js'],
+    ['module over main', { module: './m.js', main: './c.js' }, ['m.js', 'c.js'], 'm.js'],
+    ['exports over module', { exports: './e.js', module: './m.js', main: './c.js' }, ['e.js', 'm.js', 'c.js'], 'e.js'],
+    ['main', { main: './c.js' }, ['c.js'], 'c.js'],
+    ['main without an extension', { main: 'lib/index' }, ['lib/index.ts'], 'lib/index.ts'],
+    ['src/index when main points into an ignored dist', { main: 'dist/index.js' }, ['src/index.ts'], 'src/index.ts'],
+    ['src/index over index', {}, ['src/index.ts', 'index.ts'], 'src/index.ts'],
+    ['index at the package root', {}, ['index.js'], 'index.js'],
+  ])('resolves the bare name through %s', (_label, manifest, inside, expected) => {
+    const resolve = withWorkspace(
+      inside.map((file) => `packages/core/${file}`),
+      manifest,
+    );
+    expect(resolve('apps/web/a.ts', '@acme/core')).toEqual(internal(`packages/core/${expected}`));
+  });
+
+  it('gives unresolved when a workspace package has no entry in the listing', () => {
+    const resolve = withWorkspace(['packages/core/README.md'], {
+      main: 'dist/index.js',
+      exports: { './sub': './x.js' },
+    });
+    expect(resolve('apps/web/a.ts', '@acme/core')).toEqual(unresolved);
+  });
+
+  it('matches whole package names only', () => {
+    const resolve = withWorkspace(['packages/core/index.ts'], {});
+    expect(resolve('apps/web/a.ts', '@acme/core-utils')).toEqual(external);
+    expect(resolve('apps/web/a.ts', '@acme')).toEqual(external);
+    expect(resolve('apps/web/a.ts', 'core')).toEqual(external);
+  });
+
+  it('lets a tsconfig alias win over a workspace name', () => {
+    const resolve = createResolver({
+      files: ['a.ts', 'overrides/core.ts', 'packages/core/index.ts'],
+      tsconfigs: new Map([['.', aliasConfig({ '@acme/core': ['./overrides/core.ts'] })]]),
+      workspaces: [CORE],
+    });
+    expect(resolve('a.ts', '@acme/core')).toEqual(internal('overrides/core.ts'));
+  });
+
+  it('falls back from a baseUrl miss to workspaces and externals', () => {
+    const resolve = createResolver({
+      files: ['a.ts', 'src/own.ts', 'packages/core/index.ts'],
+      tsconfigs: new Map([['.', aliasConfig({}, 'src')]]),
+      workspaces: [CORE],
+    });
+    expect(resolve('a.ts', 'own')).toEqual(internal('src/own.ts'));
+    expect(resolve('a.ts', '@acme/core')).toEqual(internal('packages/core/index.ts'));
+    expect(resolve('a.ts', 'lodash')).toEqual(external);
+  });
+});
+
+describe('createResolver: externals and unresolved', () => {
+  let resolve: ReturnType<ResolveModule['createResolver']>;
+
+  beforeAll(() => {
+    resolve = createResolver({ files: ['a.ts'] });
+  });
+
+  it.each(['lodash', 'lodash/fp', '@scope/pkg', '@scope/pkg/deep/path', 'fs', 'node:fs', 'node:fs/promises'])(
+    'marks %s as external with no resolved path',
+    (specifier) => {
+      expect(resolve('a.ts', specifier)).toEqual(external);
+    },
+  );
+
+  it.each([
+    ['a subpath import', '#internal/thing'],
+    ['an absolute path', '/etc/passwd'],
+    ['a protocol-relative URL', '//cdn.example.com/x.js'],
+    ['an https URL', 'https://example.com/a.js'],
+    ['a file URL', 'file:///tmp/a.js'],
+    ['a data URL', 'data:text/javascript,export{}'],
+    ['a Windows drive path', 'C:\\temp\\a.js'],
+    ['a dot-prefixed name that is not relative', '.hidden/x'],
+    ['an empty specifier', ''],
+  ])('marks %s as unresolved', (_label, specifier) => {
+    expect(resolve('a.ts', specifier)).toEqual(unresolved);
+  });
+});

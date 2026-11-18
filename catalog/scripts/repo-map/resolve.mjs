@@ -15,6 +15,12 @@ const TYPESCRIPT_COUNTERPART = Object.freeze({ '.js': '.ts', '.jsx': '.tsx', '.m
 /** @type {Resolution} */
 const UNRESOLVED = Object.freeze({ resolved: null, status: 'unresolved' });
 
+/** @type {Resolution} */
+const EXTERNAL = Object.freeze({ resolved: null, status: 'external' });
+
+/** `https:`, `file:`, `data:` and Windows drive prefixes; `node:` is handled before this. */
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+
 /**
  * Join and normalize POSIX segments. Returns null when the result climbs above the root,
  * and '' for the root itself.
@@ -39,6 +45,41 @@ function normalize(path) {
 function dirOf(path) {
   const slash = path.lastIndexOf('/');
   return slash === -1 ? '' : path.slice(0, slash);
+}
+
+/**
+ * Split `pkg/sub` and `@scope/pkg/sub` into the package name and the subpath ('' when none).
+ * @param {string} specifier
+ */
+function splitPackage(specifier) {
+  const segments = specifier.split('/');
+  const nameLength = specifier.startsWith('@') ? 2 : 1;
+  return { name: segments.slice(0, nameLength).join('/'), subpath: segments.slice(nameLength).join('/') };
+}
+
+/**
+ * The `exports` value for the package root: a string, the `.` entry, or bare conditions.
+ * @param {unknown} exportsField
+ */
+function rootExport(exportsField) {
+  const map = asRecord(exportsField);
+  if (map === null) return exportsField;
+  if ('.' in map) return map['.'];
+  return Object.keys(map).some((key) => key.startsWith('.')) ? undefined : map;
+}
+
+/**
+ * Every string leaf of an `exports` value in priority order: the `import` condition first,
+ * then `default`. A target that is not in the listing (for example under `dist`) falls through
+ * to the next one.
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+function exportsLeaves(value) {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(exportsLeaves);
+  const conditions = asRecord(value);
+  return conditions === null ? [] : [...exportsLeaves(conditions['import']), ...exportsLeaves(conditions['default'])];
 }
 
 /**
@@ -254,12 +295,50 @@ export function createResolver(context) {
     return viaBase.status === 'internal' ? viaBase : null;
   };
 
+  const workspacePaths = new Map();
+  for (const workspace of workspaces) {
+    if (workspace.name !== null && !workspacePaths.has(workspace.name))
+      workspacePaths.set(workspace.name, workspace.path);
+  }
+  const manifests = context.manifests ?? new Map();
+
+  /**
+   * Entry of a workspace package imported by name: the `exports` entry for `.`, then `module`,
+   * `main`, `src/index.*` and `index.*`.
+   * @param {string} path workspace directory
+   */
+  const workspaceEntry = (path) => {
+    const manifest = asRecord(manifests.get(path));
+    const declared =
+      manifest === null
+        ? []
+        : [...exportsLeaves(rootExport(manifest['exports'])), manifest['module'], manifest['main']];
+    for (const entry of declared) {
+      const found = typeof entry === 'string' ? internal(joinDir(path, entry)) : UNRESOLVED;
+      if (found.status === 'internal') return found;
+    }
+    const conventional = internal(joinDir(path, 'src/index'));
+    return conventional.status === 'internal' ? conventional : internal(joinDir(path, 'index'));
+  };
+
+  /** @param {string} specifier */
+  const resolveWorkspace = (specifier) => {
+    const { name, subpath } = splitPackage(specifier);
+    const path = workspacePaths.get(name);
+    if (path === undefined) return null;
+    return subpath === '' ? workspaceEntry(path) : internal(joinDir(path, subpath));
+  };
+
   return (importer, specifier) => {
     if (isRelative(specifier)) {
       return internal(normalize(`${dirOf(importer)}/${specifier}`));
     }
+    if (specifier.startsWith('node:')) return EXTERNAL;
     const aliases = aliasesFor(importer);
     const aliased = aliases === null ? null : resolveAlias(aliases, specifier);
-    return aliased ?? UNRESOLVED;
+    if (aliased !== null) return aliased;
+    // Not an alias: subpath imports, absolute paths and URLs cannot be resolved here.
+    if (/^[./#]/.test(specifier) || specifier === '' || URL_SCHEME.test(specifier)) return UNRESOLVED;
+    return resolveWorkspace(specifier) ?? EXTERNAL;
   };
 }
