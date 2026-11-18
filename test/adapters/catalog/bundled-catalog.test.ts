@@ -43,6 +43,7 @@ const REPO_MAP_FILES = [
   'jsonc.mjs',
   'project.mjs',
   'render-json.mjs',
+  'render-markdown.mjs',
   'resolve.mjs',
   'scan.mjs',
   'script.json',

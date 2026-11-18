@@ -260,6 +260,12 @@ export type ResolverContext = {
   manifests?: Map<string, unknown>;
 };
 
+export type RenderMarkdownModule = {
+  renderMarkdown: (doc: RepoMapDocument, opts: { maxDepth: number }) => string;
+  MAX_TOKENS: number;
+  CHARS_PER_TOKEN: number;
+};
+
 export type ResolveModule = {
   createResolver: (ctx: ResolverContext) => (importer: string, specifier: string) => Resolution;
 };
