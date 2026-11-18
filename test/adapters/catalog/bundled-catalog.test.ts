@@ -304,21 +304,23 @@ describe('bundled catalog', () => {
     });
   });
 
-  it('ships pr-creator as a registered loadable bundled agent', async () => {
+  it('ships the bundled agents as registered loadable agents', async () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { agents?: unknown };
     };
-    expect(index.items.agents).toEqual(['pr-creator']);
+    expect(index.items.agents).toEqual(['pr-creator', 'socratic-challenger']);
 
     const entries = readdirSync(join(catalogRoot, 'agents'))
       .filter((name) => !name.startsWith('.'))
       .sort();
-    expect(entries).toEqual(['pr-creator.md']);
+    expect(entries).toEqual(['pr-creator.md', 'socratic-challenger.md']);
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.agents.map((a) => a.name)).toEqual(['pr-creator']);
-    expect(catalog.agents[0]?.description.length).toBeGreaterThan(0);
+    expect(catalog.agents.map((a) => a.name)).toEqual(['pr-creator', 'socratic-challenger']);
+    for (const agent of catalog.agents) {
+      expect(agent.description.length).toBeGreaterThan(0);
+    }
   });
 
   it('keeps the pr-creator agent content contract', () => {
@@ -389,6 +391,57 @@ describe('bundled catalog', () => {
       expect(body).toContain(required);
     }
     expect(body).not.toMatch(/\b(?:git|gh) (?:log|diff|push|pr|status|commit|symbolic-ref|repo)\b/);
+    expect(raw).not.toMatch(/shitaku/i);
+    expect(raw).not.toContain('Co-Authored-By');
+  });
+
+  it('keeps the socratic-challenger agent content contract', () => {
+    const raw = readFileSync(join(catalogRoot, 'agents', 'socratic-challenger.md'), 'utf8');
+    const [, frontmatter = '', body = ''] = raw.split(/^---\r?\n|\r?\n---\r?\n/);
+    const lines = frontmatter.split(/\r?\n/).filter((line) => line.length > 0);
+    expect(lines).toHaveLength(5);
+    expect(lines[0]).toBe('name: socratic-challenger');
+    const descriptionLine = lines.find((line) => line.startsWith('description:')) ?? '';
+    const description = descriptionLine.slice('description:'.length).trim();
+    expect(description.length).toBeGreaterThan(0);
+    expect(description).not.toMatch(/: |['"|]/);
+    expect(description).toContain('socratic-method');
+    expect(description).toContain('Q&A log');
+    expect(lines.filter((line) => line.startsWith('skills:'))).toEqual(['skills:']);
+    expect(lines.filter((line) => /^\s+- /.test(line))).toEqual(['  - socratic-method']);
+    expect(lines.filter((line) => line.startsWith('tools:'))).toHaveLength(1);
+    expect(frontmatter).not.toMatch(/[>|]\s*$/m);
+
+    const toolsLine = lines.find((line) => line.startsWith('tools:')) ?? '';
+    const tools = toolsLine
+      .slice('tools:'.length)
+      .split(',')
+      .map((tool) => tool.trim());
+    expect([...tools].sort()).toEqual(['Edit', 'Glob', 'Grep', 'Read', 'Write']);
+    for (const forbidden of ['Bash', '*', 'mcp__']) {
+      expect(toolsLine).not.toContain(forbidden);
+    }
+
+    for (const required of [
+      'socratic-method',
+      'Follow its rules and tone',
+      'stop and report that it must be installed',
+      'Do not improvise',
+      'There is no default path',
+      'ask for one and write nothing',
+      'no log is wanted',
+      'do not ask for a path again',
+      'Every invocation is independent',
+      'Use Edit and Write only for the Q&A log',
+      '# Q&A log',
+      'Never change or delete earlier content',
+      'Never overwrite an existing file with Write',
+      'decision summary',
+      'Never implement features',
+      'Never invent answers or decisions',
+    ]) {
+      expect(body).toContain(required);
+    }
     expect(raw).not.toMatch(/shitaku/i);
     expect(raw).not.toContain('Co-Authored-By');
   });
