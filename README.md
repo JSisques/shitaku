@@ -111,7 +111,9 @@ The tables below are generated from `catalog/` by `pnpm run docs:catalog`. Do no
 
 ### Scripts
 
-Installable Node scripts live under `catalog/scripts/<name>/` (`index.mjs` + `script.json`). The bundled catalog ships `complexity` (cyclomatic/cognitive metrics for JS/TS) and `dead-code` (unused files/exports/types/deps via knip); add more names under `items.scripts` to extend the table below.
+Installable Node scripts live under `catalog/scripts/<name>/` (`index.mjs` + `script.json`). The bundled catalog ships `complexity` (cyclomatic/cognitive metrics for JS/TS), `dead-code` (unused files/exports/types/deps via knip), `duplication` (copy-paste clones via jscpd) and `repo-map` (a structural map of the repository); add more names under `items.scripts` to extend the table below.
+
+`repo-map` writes `.shitaku/repo-map.json` (the complete map) and `.shitaku/repo-map.md` (a digest capped at about 8k tokens that states what it omitted). The output is deterministic, with no timestamps and no absolute paths, and git is optional. It never edits `.gitignore`; add `.shitaku/` yourself if you do not want to commit the output. Options: `--format json|markdown|both` (default `both`), `--out <dir>`, `--max-depth <n>` (Markdown tree only) and `--ignore <glob>`.
 
 <!-- catalog:scripts:start -->
 
@@ -273,7 +275,7 @@ Install roots (never agent skill dirs):
 
 Install behavior mirrors skills: the tree is copied under the scope root, recorded in the manifest with MCPs/skills from the same run, and `shitaku undo` reverts it. Conflicts, `--force`, mid-write rollback, and symlink/size guards work the same way.
 
-The bundled catalog ships **`complexity`** and **`dead-code`** today. Add more under `catalog/scripts/` and list them in `items.scripts`, or point `--source` at a trusted folder with your own scripts.
+The bundled catalog ships **`complexity`**, **`dead-code`**, **`duplication`** and **`repo-map`** today. Add more under `catalog/scripts/` and list them in `items.scripts`, or point `--source` at a trusted folder with your own scripts.
 
 ### Slash commands (install)
 

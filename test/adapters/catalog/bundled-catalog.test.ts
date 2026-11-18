@@ -669,4 +669,33 @@ describe('bundled catalog', () => {
     expect(readme).toContain('`./.shitaku/scripts/`');
     expect(readme).toContain('script.json');
   });
+
+  it('lists every bundled script in each hand-written enumeration of the scripts', () => {
+    const root = join(catalogRoot, '..');
+    const files = [
+      'README.md',
+      'CONTRIBUTING.md',
+      join('website', 'src', 'content', 'docs', 'en', 'catalog', 'overview.md'),
+      join('website', 'src', 'content', 'docs', 'es', 'catalog', 'overview.md'),
+    ];
+    for (const file of files) {
+      const text = readFileSync(join(root, file), 'utf8');
+      // Prose enumerations name several bundled scripts on one line; generated table rows are skipped.
+      const prose = text.split('\n').filter((line) => !line.startsWith('|') && /`?complexity`?/.test(line));
+      expect(prose.length, `${file} enumerates the bundled scripts`).toBeGreaterThan(0);
+      for (const line of prose) {
+        for (const name of ['complexity', 'dead-code', 'duplication', 'repo-map']) {
+          expect(line, `${file} must list ${name}`).toContain(name);
+        }
+      }
+    }
+  });
+
+  it('documents the repo-map outputs and its guarantees in the README', () => {
+    const readme = readFileSync(join(catalogRoot, '..', 'README.md'), 'utf8');
+    expect(readme).toContain('.shitaku/repo-map.json');
+    expect(readme).toContain('.shitaku/repo-map.md');
+    expect(readme).toMatch(/no timestamps/i);
+    expect(readme).toMatch(/never edits `\.gitignore`/);
+  });
 });
