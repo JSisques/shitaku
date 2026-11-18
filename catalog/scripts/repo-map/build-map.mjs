@@ -4,6 +4,7 @@
  */
 import { extractorFor } from './extractors.mjs';
 import { detectCommands, detectConventions, detectEntryPoints, detectStack, detectWorkspaces } from './project.mjs';
+import { createResolver } from './resolve.mjs';
 
 export const SCHEMA = 'shitaku.catalog.repo-map/v1';
 
@@ -49,15 +50,60 @@ function buildTree(files) {
   return [...dirs.keys()].sort(compare).map((path) => ({ path, ...entry(path) }));
 }
 
+/**
+ * Extract one source. A file that makes the extractor throw is recorded with empty arrays so the
+ * run never fails because of a single file.
+ * @param {NonNullable<ReturnType<typeof extractorFor>>} extractor
+ * @param {string} text
+ */
+function extractSource(extractor, text) {
+  try {
+    return extractor.extract(text);
+  } catch {
+    return { imports: [], exports: [] };
+  }
+}
+
 /** @param {import('./scan.mjs').Snapshot} snapshot */
 function buildModules(snapshot) {
+  const resolve = createResolver({
+    files: snapshot.files,
+    tsconfigs: snapshot.tsconfigs,
+    workspaces: detectWorkspaces(snapshot),
+    manifests: snapshot.manifests,
+  });
   const modules = [];
-  for (const path of snapshot.sources.keys()) {
+  for (const [path, text] of snapshot.sources) {
     const extractor = extractorFor(path);
     if (extractor === null) continue;
-    modules.push({ path, language: extractor.language, imports: [], exports: [] });
+    const { imports, exports } = extractSource(extractor, text);
+    modules.push({
+      path,
+      language: extractor.language,
+      imports: imports.map(({ specifier, kind }) => ({ specifier, kind, ...resolve(path, specifier) })),
+      exports,
+    });
   }
   return modules.sort((a, b) => compare(a.path, b.path));
+}
+
+/**
+ * Internal edges between modules, deduplicated and sorted, and the inbound count of every module.
+ * @param {ReturnType<typeof buildModules>} modules
+ */
+function buildGraph(modules) {
+  const importedByCount = Object.fromEntries(modules.map((module) => [module.path, 0]));
+  /** @type {Map<string, { from: string, to: string }>} */
+  const edges = new Map();
+  for (const module of modules) {
+    for (const { status, resolved } of module.imports) {
+      if (status !== 'internal' || resolved === null || !Object.hasOwn(importedByCount, resolved)) continue;
+      edges.set(`${module.path}\0${resolved}`, { from: module.path, to: resolved });
+    }
+  }
+  const sorted = [...edges.values()].sort((a, b) => compare(a.from, b.from) || compare(a.to, b.to));
+  for (const { to } of sorted) importedByCount[to] = (importedByCount[to] ?? 0) + 1;
+  return { edges: sorted, importedByCount };
 }
 
 /** @param {import('./scan.mjs').Snapshot} snapshot */
@@ -82,11 +128,8 @@ export function buildRepoMap(snapshot) {
     entryPoints: detectEntryPoints(snapshot),
     tree: buildTree(snapshot.files),
     modules,
-    graph: {
-      edges: [],
-      importedByCount: Object.fromEntries(modules.map((module) => [module.path, 0])),
-    },
-    conventions: detectConventions(snapshot),
+    graph: buildGraph(modules),
+    conventions: detectConventions(snapshot, modules),
     skipped: [...snapshot.skipped].sort((a, b) => compare(a.path, b.path) || compare(a.reason, b.reason)),
   };
 }

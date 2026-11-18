@@ -77,7 +77,53 @@ export const nonGit: Tree = {
   '.shitaku/repo-map.json': '{}\n',
 };
 
-/** A pnpm monorepo with two packages. Manifests only; sources arrive with the slice 2 tasks. */
+/**
+ * Import-like text in comments, strings, templates and regex literals next to real imports,
+ * plus JSX with an apostrophe, a broken file with an unresolvable import and non-literal calls.
+ */
+export const trickySyntax: Tree = {
+  'package.json': json({ name: 'tricky', type: 'module' }),
+  'src/index.ts': [
+    "import { real } from './real.js';",
+    "import type { Shape } from './types';",
+    "export * from './reexport';",
+    "// import commented from './comment';",
+    "/* require('./block-comment') */",
+    'const quoted = "import fake from \'./string\'";',
+    "const templated = `import fake from './template' ${real}`;",
+    "const pattern = /import fake from '.\\/regex'/;",
+    "export const lazy = (): Promise<unknown> => import('./lazy');",
+    'export function main(shape: Shape): string {',
+    '  return quoted + templated + pattern.source + String(shape);',
+    '}',
+    '',
+  ].join('\n'),
+  'src/real.ts': "export const real = 'real';\n",
+  'src/types.ts': 'export type Shape = { kind: string };\n',
+  'src/reexport.ts': 'export const reexported = 1;\n',
+  'src/lazy.ts': "export default 'lazy';\n",
+  'src/view.tsx':
+    "import { real } from './real';\n\nexport const View = () => <p>Don't panic: {real}</p>;\nexport const Other = 1;\n",
+  'src/broken.ts':
+    "export const ok = 1;\nimport { broken from './real';\nimport './missing';\nexport function after(): void {}\n",
+  'src/nonliteral.ts':
+    'declare const name: string;\nexport const dyn = (): Promise<unknown> => import(name);\nexport const req = (): unknown => require(name);\n',
+};
+
+/** tsconfig `paths` and `baseUrl` inherited through a relative `extends`, plus an unresolvable alias. */
+export const aliases: Tree = {
+  'package.json': json({ name: 'aliases', type: 'module' }),
+  'tsconfig.json': json({ extends: './tsconfig.base.json', compilerOptions: { strict: true } }),
+  'tsconfig.base.json': json({
+    compilerOptions: { baseUrl: '.', paths: { '@/*': ['src/*'], '~lib': ['src/lib/index.ts'] } },
+  }),
+  'src/main.ts':
+    "import { util } from '@/util';\nimport lib from '~lib';\nimport { gone } from '@/gone';\nimport React from 'react';\n\nexport const main = [util, lib, gone, React];\n",
+  'src/util.ts': 'export const util = 1;\n',
+  'src/lib/index.ts': 'export default 2;\n',
+};
+
+/** A pnpm monorepo with two packages, one importing the other by name. */
 export const workspaceMonorepo: Tree = {
   'package.json': json({
     name: 'acme',
@@ -101,6 +147,13 @@ export const workspaceMonorepo: Tree = {
     scripts: { dev: 'node bin/web.js' },
     dependencies: { '@acme/core': 'workspace:*' },
   }),
+  'packages/core/src/index.ts':
+    "export const core = 'core';\n\nexport function greet(name: string): string {\n  return 'hi ' + name;\n}\n",
+  'apps/web/bin/web.js':
+    "import { core } from '@acme/core';\nimport { readFileSync } from 'node:fs';\n\nconsole.log(core, readFileSync);\n",
+  'apps/web/src/page.ts':
+    "import { greet } from '@acme/core';\nimport { helper } from './helper.js';\n\nexport const page = greet('web') + helper();\n",
+  'apps/web/src/helper.ts': "export const helper = (): string => 'help';\n",
 };
 
 const SOURCE_EXTENSION = /\.(?:ts|mts|cts|tsx|js|mjs|cjs|jsx)$/;
@@ -141,6 +194,14 @@ export function snapshotFromTree(tree: Tree, overrides: Partial<Snapshot> = {}):
       snapshot.sources.set(path, text);
     }
   }
+  // Like the scan, also keep the relative config a tsconfig.json extends, keyed by its file path.
+  for (const [dir, config] of [...snapshot.tsconfigs]) {
+    const target = (config as { extends?: unknown } | null)?.extends;
+    if (typeof target !== 'string' || !target.startsWith('./')) continue;
+    const path = `${dir === '.' ? '' : `${dir}/`}${target.slice(2)}`;
+    const file = path.endsWith('.json') ? path : `${path}.json`;
+    if (tree[file] !== undefined) snapshot.tsconfigs.set(file, JSON.parse(tree[file]) as unknown);
+  }
   return { ...snapshot, ...overrides };
 }
 
@@ -153,7 +214,12 @@ export type RepoMapDocument = {
   commands: { packageManager: string | null; scripts: { path: string; name: string; command: string }[] };
   entryPoints: unknown[];
   tree: { path: string; files: number; totalFiles: number }[];
-  modules: { path: string; language: string; imports: unknown[]; exports: unknown[] }[];
+  modules: {
+    path: string;
+    language: string;
+    imports: { specifier: string; kind: RawImport['kind']; status: Resolution['status']; resolved: string | null }[];
+    exports: RawExport[];
+  }[];
   graph: { edges: { from: string; to: string }[]; importedByCount: Record<string, number> };
   conventions: Record<string, unknown>;
   skipped: { path: string; reason: SkipReason }[];

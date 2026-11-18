@@ -28,7 +28,10 @@ type ProjectModule = {
     formatters: string[];
     bundlers: string[];
   };
-  detectConventions: (snapshot: Snapshot) => {
+  detectConventions: (
+    snapshot: Snapshot,
+    modules?: { language: string; imports: { specifier: string }[] }[],
+  ) => {
     moduleSystem: string;
     testFiles: { pattern: string | null; dirs: string[] };
     relativeImportExtensions: string | null;
@@ -544,5 +547,45 @@ describe('detectConventions', () => {
     snapshot.tsconfigs.set('.', null);
     expect(project.detectConventions(snapshot)).toMatchObject({ tsStrict: null, relativeImportExtensions: null });
     expect(conventions({ 'a.ts': '' }).tsStrict).toBeNull();
+  });
+});
+
+describe('detectConventions: relativeImportExtensions', () => {
+  const module = (language: string, ...specifiers: string[]) => ({
+    language,
+    imports: specifiers.map((specifier) => ({ specifier })),
+  });
+  const detect = (...modules: ReturnType<typeof module>[]): string | null =>
+    project.detectConventions(snapshotFromTree({ 'a.ts': '' }), modules).relativeImportExtensions;
+  const repeat = (specifier: string, times: number): string[] => Array.from({ length: times }, () => specifier);
+
+  it('is null when there are no TypeScript modules or no countable relative specifiers', () => {
+    expect(detect()).toBeNull();
+    expect(detect(module('typescript'))).toBeNull();
+    expect(detect(module('typescript', 'lodash', '@scope/pkg', '#internal', 'node:fs'))).toBeNull();
+    expect(detect(module('javascript', './a.js', './b.js'), module('jsx', './c'))).toBeNull();
+  });
+
+  it('is js or none when one style has at least 80% of the countable specifiers', () => {
+    expect(detect(module('typescript', ...repeat('./a.js', 4), './b'))).toBe('js');
+    expect(detect(module('typescript', ...repeat('./a', 4), './b.js'))).toBe('none');
+    expect(detect(module('typescript', './a.js'))).toBe('js');
+    expect(detect(module('typescript', '../up/a'))).toBe('none');
+  });
+
+  it('is mixed when neither style reaches 80%', () => {
+    expect(detect(module('typescript', ...repeat('./a.js', 3), ...repeat('./b', 2)))).toBe('mixed');
+    expect(detect(module('typescript', './a.js', './b'))).toBe('mixed');
+  });
+
+  it('counts .js, .jsx, .mjs and .cjs as js, and tsx modules like TypeScript ones', () => {
+    expect(detect(module('tsx', './a.jsx', './b.mjs'), module('typescript', './c.cjs', './d.js'))).toBe('js');
+    expect(detect(module('tsx', './a'))).toBe('none');
+  });
+
+  it('skips directory specifiers and other dotted names that say nothing about the style', () => {
+    expect(detect(module('typescript', './lib/', '.', '..', './data.json', './app.config', './x.css', './a.js'))).toBe(
+      'js',
+    );
   });
 });

@@ -3,18 +3,25 @@
  * extension is not listed are counted in the tree but are never modules. Pure.
  */
 
-/** @typedef {{ language: 'typescript' | 'tsx' | 'javascript' | 'jsx' }} Extractor */
+import { extractJs } from './extract-js.mjs';
+
+/**
+ * @typedef {{
+ *   language: 'typescript' | 'tsx' | 'javascript' | 'jsx',
+ *   extract: (source: string) => { imports: import('./extract-js.mjs').RawImport[], exports: import('./extract-js.mjs').RawExport[] },
+ * }} Extractor
+ */
 
 /** @type {Readonly<Record<string, Readonly<Extractor>>>} */
 export const EXTRACTORS = Object.freeze({
-  '.ts': Object.freeze({ language: 'typescript' }),
-  '.mts': Object.freeze({ language: 'typescript' }),
-  '.cts': Object.freeze({ language: 'typescript' }),
-  '.tsx': Object.freeze({ language: 'tsx' }),
-  '.js': Object.freeze({ language: 'javascript' }),
-  '.mjs': Object.freeze({ language: 'javascript' }),
-  '.cjs': Object.freeze({ language: 'javascript' }),
-  '.jsx': Object.freeze({ language: 'jsx' }),
+  '.ts': Object.freeze({ language: 'typescript', extract: extractJs }),
+  '.mts': Object.freeze({ language: 'typescript', extract: extractJs }),
+  '.cts': Object.freeze({ language: 'typescript', extract: extractJs }),
+  '.tsx': Object.freeze({ language: 'tsx', extract: extractJs }),
+  '.js': Object.freeze({ language: 'javascript', extract: extractJs }),
+  '.mjs': Object.freeze({ language: 'javascript', extract: extractJs }),
+  '.cjs': Object.freeze({ language: 'javascript', extract: extractJs }),
+  '.jsx': Object.freeze({ language: 'jsx', extract: extractJs }),
 });
 
 /**

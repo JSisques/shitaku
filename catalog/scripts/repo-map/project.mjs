@@ -463,17 +463,45 @@ function pathAliases(snapshot) {
   return [...aliases].sort(compare);
 }
 
+/** Share of the countable relative specifiers one style needs to be reported alone. */
+const EXTENSION_MAJORITY = 0.8;
+
 /**
- * Conventions read from manifests, tsconfig and file names. `relativeImportExtensions` needs
- * the extracted imports and is filled in by a later stage, so it is null here.
- * @param {Snapshot} snapshot
+ * Whether TypeScript modules import their relative files with a JavaScript extension
+ * (`./a.js`), without one (`./a`), or both. A style needs at least 80% of the countable
+ * specifiers; directory specifiers and other dotted names such as `./data.json` are skipped.
+ * @param {{ language: string, imports: { specifier: string }[] }[]} modules
+ * @returns {'js' | 'none' | 'mixed' | null}
  */
-export function detectConventions(snapshot) {
+function relativeImportExtensions(modules) {
+  let js = 0;
+  let none = 0;
+  for (const module of modules) {
+    if (module.language !== 'typescript' && module.language !== 'tsx') continue;
+    for (const { specifier } of module.imports) {
+      if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue;
+      const last = specifier.slice(specifier.lastIndexOf('/') + 1);
+      if (/\.(?:js|jsx|mjs|cjs)$/.test(last)) js++;
+      else if (last !== '' && !last.includes('.')) none++;
+    }
+  }
+  const total = js + none;
+  if (total === 0) return null;
+  if (js / total >= EXTENSION_MAJORITY) return 'js';
+  return none / total >= EXTENSION_MAJORITY ? 'none' : 'mixed';
+}
+
+/**
+ * Conventions read from manifests, tsconfig, file names and, when given, the extracted modules.
+ * @param {Snapshot} snapshot
+ * @param {{ language: string, imports: { specifier: string }[] }[]} [modules]
+ */
+export function detectConventions(snapshot, modules = []) {
   const strict = asRecord(asRecord(snapshot.tsconfigs.get('.'))?.['compilerOptions'])?.['strict'];
   return {
     moduleSystem: moduleSystem(snapshot),
     testFiles: testFiles(snapshot),
-    relativeImportExtensions: null,
+    relativeImportExtensions: relativeImportExtensions(modules),
     pathAliases: pathAliases(snapshot),
     tsStrict: typeof strict === 'boolean' ? strict : null,
   };
