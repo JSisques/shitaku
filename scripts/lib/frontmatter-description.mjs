@@ -23,7 +23,12 @@ export function itemDescription(catalogDir, kind, name) {
   const spec = KINDS[kind];
   if (!spec) throw new Error(`frontmatter-description: unknown kind '${kind}'`);
   const label = spec.rel(name);
-  const text = readFileSync(join(catalogDir, label), 'utf8');
+  let text;
+  try {
+    text = readFileSync(join(catalogDir, label), 'utf8');
+  } catch (err) {
+    throw new Error(`${label}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+  }
   const front = spec.nested ? readFrontmatter(text, label, { allowNested: true }) : readFrontmatter(text, label);
   if ('issue' in front) throw new Error(front.issue.startsWith(label) ? front.issue : `${label}: ${front.issue}`);
   const raw = front.data.description ?? '';
