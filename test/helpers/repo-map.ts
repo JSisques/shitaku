@@ -185,6 +185,19 @@ export type ExtractModule = {
   extractJs: (source: string) => { imports: RawImport[]; exports: RawExport[] };
 };
 
+export type Resolution = { resolved: string | null; status: 'internal' | 'external' | 'unresolved' };
+
+export type ResolverContext = {
+  files: string[];
+  tsconfigs?: Map<string, unknown>;
+  workspaces?: { name: string | null; path: string }[];
+  manifests?: Map<string, unknown>;
+};
+
+export type ResolveModule = {
+  createResolver: (ctx: ResolverContext) => (importer: string, specifier: string) => Resolution;
+};
+
 /** Write a virtual tree under `dir`, creating parent directories. */
 export async function writeTree(dir: string, files: Tree): Promise<void> {
   for (const [path, content] of Object.entries(files)) {
