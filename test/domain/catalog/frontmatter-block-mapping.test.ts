@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readBlockMapping } from '@/domain/catalog/frontmatter-map.js';
+import { readBlockMapping } from '@/domain/catalog/frontmatter.js';
 
 /** Reads the block that follows `check:` in the given lines (the lines after the key). */
 const read = (lines: string[], key = 'check') => readBlockMapping(lines, 0, key);

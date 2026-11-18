@@ -4,7 +4,7 @@
 
 Pure-domain change, no ports, no adapters, no application use case. Three pieces, each a chained PR slice (stacked-to-main):
 
-1. **Frontmatter mapping subset** (`src/domain/catalog/frontmatter-map.ts`, new): a bounded, hand-rolled reader for one nested mapping level under an opted-in key. `readFrontmatter` gains an opt-in `mappings` option; only `parseRule` asks for `['check']`. Every other key (including `paths:`) keeps today's opaque behavior.
+1. **Frontmatter mapping subset** (`src/domain/catalog/frontmatter.ts`, new): a bounded, hand-rolled reader for one nested mapping level under an opted-in key. `readFrontmatter` gains an opt-in `mappings` option; only `parseRule` asks for `['check']`. Every other key (including `paths:`) keeps today's opaque behavior.
 2. **Check contract** (`src/domain/catalog/rule-check.ts`, new): zod schemas for `severity` and a discriminated union of check types, glob syntax validation and regex safety validation. `parseRule` drops `RESERVED_RULE_KEYS`, validates `check` and `severity`, and attaches the parsed check and effective severity to `RuleItem`.
 3. **Evaluators** (`src/domain/checks/`, new): a pure glob matcher, an in-memory `ProjectSnapshot` type and `evaluateRuleCheck`, returning plain-data findings with severity. Nothing calls it in production until the gate runner (#226).
 
@@ -15,7 +15,7 @@ Rule bytes stay verbatim: `check` and `severity` YAML reach `.claude/rules/` unc
 | Layer       | Files                                                                                                                                                           | Impact       |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
 | Domain      | `src/domain/catalog/frontmatter.ts`, `src/domain/catalog/rule.ts`                                                                                               | Modified     |
-| Domain      | `src/domain/catalog/frontmatter-map.ts`, `src/domain/catalog/rule-check.ts`, `src/domain/checks/{glob,safe-regex,evaluate}.ts`                                  | New          |
+| Domain      | `src/domain/catalog/rule-check.ts`, `src/domain/checks/{glob,safe-regex,evaluate}.ts`                                                                           | New          |
 | Ports       | None                                                                                                                                                            | None         |
 | Application | None                                                                                                                                                            | None         |
 | Adapters    | None (`folder-source.ts` passes the parsed `RuleItem` through unchanged; verified, no wiring needed)                                                            | None         |
@@ -27,7 +27,9 @@ The domain stays free of `fs`, `os`, `path`, `child_process` and `process` (enfo
 
 ### Decision 1: Hand-rolled bounded YAML subset for `check`, not a YAML dependency and not a flat-key format
 
-**Choice**: A new pure module `frontmatter-map.ts` that parses exactly one nested mapping level whose values are scalars or block sequences of scalars. It is a strict subset of YAML 1.2: anything it accepts parses to the same value in a real YAML parser; anything outside the subset is rejected with an issue rather than guessed.
+**Choice**: A pure reader, `readBlockMapping`, inlined in `frontmatter.ts` (see Portability constraint), that parses exactly one nested mapping level whose values are scalars or block sequences of scalars. It is a strict subset of YAML 1.2: anything it accepts parses to the same value in a real YAML parser; anything outside the subset is rejected with an issue rather than guessed.
+
+**Portability constraint**: the reader lives inside `frontmatter.ts`, not in its own module, and `frontmatter.ts` must stay import-free. `scripts/lib/frontmatter-description.mjs` (used by the docs generators) loads `frontmatter.ts` under plain Node with type stripping, which cannot resolve `@/` aliases or `.js` -> `.ts` specifiers. `test/domain/catalog/frontmatter-portability.test.ts` guards this; an `import` here breaks the generators with `ERR_MODULE_NOT_FOUND`.
 
 **Alternatives considered**:
 
@@ -124,7 +126,7 @@ catalog/rules/<name>.md (bytes)
         ▼
 parseRule(stem, bytes)                         src/domain/catalog/rule.ts
    │  readFrontmatter(text, file, { allowNested: true, mappings: ['check'] })
-   │        └─ readBlockMapping(lines, i, key)  src/domain/catalog/frontmatter-map.ts
+   │        └─ readBlockMapping(lines, i, key)  src/domain/catalog/frontmatter.ts
    │  RuleCheckSchema.safeParse(maps.check)    src/domain/catalog/rule-check.ts
    │        ├─ parseGlob(...)                   src/domain/checks/glob.ts
    │        └─ validatePattern(...)             src/domain/checks/safe-regex.ts
@@ -142,14 +144,14 @@ CheckEvaluation { status, findings[{ rule, severity, path, line?, message }], sk
 
 | File                                                            | Action | Description                                                                                                                   |
 | --------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `src/domain/catalog/frontmatter-map.ts`                         | Create | `readBlockMapping`: bounded YAML-subset reader for one mapping level (scalars, block sequences).                              |
+| `src/domain/catalog/frontmatter.ts`                             | Modify | `readBlockMapping`: bounded YAML-subset reader for one mapping level (scalars, block sequences).                              |
 | `src/domain/catalog/frontmatter.ts`                             | Modify | `mappings` option and overload; returns `maps` only when requested.                                                           |
 | `src/domain/checks/glob.ts`                                     | Create | `parseGlob` (slice 2: syntax validation and segment compilation) and `matchGlob` (slice 3).                                   |
 | `src/domain/checks/safe-regex.ts`                               | Create | `validatePattern` and `compilePattern` (length, `u` compile, backreference, lookbehind, nested-quantifier guards).            |
 | `src/domain/catalog/rule-check.ts`                              | Create | `SeveritySchema`, `RuleCheckSchema` (discriminated union), types, limits, zod-issue formatting.                               |
 | `src/domain/catalog/rule.ts`                                    | Modify | Remove `RESERVED_RULE_KEYS`; request `mappings: ['check']`; validate `check`/`severity`; attach to `RuleItem`.                |
 | `src/domain/checks/evaluate.ts`                                 | Create | `ProjectSnapshot`, `RuleFinding`, `CheckEvaluation`, `evaluateRuleCheck`.                                                     |
-| `test/domain/catalog/frontmatter-map.test.ts`                   | Create | Table-driven subset tests (accepted, rejected, YAML-equivalence cases).                                                       |
+| `test/domain/catalog/frontmatter-block-mapping.test.ts`         | Create | Table-driven subset tests (accepted, rejected, YAML-equivalence cases).                                                       |
 | `test/domain/catalog/frontmatter.test.ts`                       | Modify | `mappings` option; `paths:` stays opaque; no `maps` key without the option.                                                   |
 | `test/domain/catalog/rule-check.test.ts`                        | Create | Schema per type, limits, normalization, error messages.                                                                       |
 | `test/domain/checks/safe-regex.test.ts`                         | Create | Accepted and rejected patterns.                                                                                               |
@@ -165,7 +167,7 @@ No change to `src/adapters/**`, `src/application/**`, `src/ports/**`, `catalog/*
 ## Interfaces / Contracts
 
 ```ts
-// src/domain/catalog/frontmatter-map.ts
+// src/domain/catalog/frontmatter.ts
 export type MappingValue = string | string[];
 export type BlockMapping = Record<string, MappingValue>;
 /** Parses the indented block that starts at lines[start] (the line after `key:`). `next` = first unconsumed line. */
@@ -318,7 +320,7 @@ Strict TDD (`pnpm test`): every behavior gets a failing test first.
 
 | Layer         | What to test                                                                                                                                                                                         | Approach                                                      |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Unit (domain) | Subset parser: scalars (plain, single, double), block sequences at both legal indents, comments, every rejected construct, duplicate keys, tabs, YAML-equivalence cases (`'it''s'`, trailing ` # c`) | `it.each` tables in `frontmatter-map.test.ts`                 |
+| Unit (domain) | Subset parser: scalars (plain, single, double), block sequences at both legal indents, comments, every rejected construct, duplicate keys, tabs, YAML-equivalence cases (`'it''s'`, trailing ` # c`) | `it.each` tables in `frontmatter-block-mapping.test.ts`       |
 | Unit (domain) | `readFrontmatter` with and without `mappings`; `paths:` still opaque; no `maps` key without the option                                                                                               | `frontmatter.test.ts`                                         |
 | Unit (domain) | Glob validation and matching (`*`, `?`, `**` at start, middle, end, zero segments, dot-files, rejected syntax, length cap)                                                                           | `glob.test.ts` tables                                         |
 | Unit (domain) | Regex guards: accepted patterns; rejected nested quantifiers, backreferences, lookbehind, invalid `u` syntax, length                                                                                 | `safe-regex.test.ts` tables                                   |
@@ -337,7 +339,7 @@ N/A — no routing, shell, subprocess, VCS/PR automation, executable-file classi
 
 | PR  | Files                                                                                                                                                                                                                                                                                                 | Est. authored lines                                     |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| 1   | `frontmatter-map.ts` (~150), `frontmatter.ts` (~30), `frontmatter-map.test.ts` (~170), `frontmatter.test.ts` (~30)                                                                                                                                                                                    | ~380                                                    |
+| 1   | `frontmatter-map.ts` (~150), `frontmatter.ts` (~30), `frontmatter-block-mapping.test.ts` (~170), `frontmatter.test.ts` (~30)                                                                                                                                                                          | ~380                                                    |
 | 2   | `rule-check.ts` (~110), `checks/glob.ts` parse half (~50), `checks/safe-regex.ts` (~70), `rule.ts` (~30), tests: `rule-check.test.ts` (~90), `safe-regex.test.ts` (~40), `glob.test.ts` validation (~30), `rule.test.ts` (~40); docs README, CONTRIBUTING, security en/es, `rules-docs.test.ts` (~30) | ~490 (split docs into a 2b PR if review prefers <= 400) |
 | 3   | `checks/glob.ts` match half (~50), `checks/evaluate.ts` (~150), `glob.test.ts` matching (~60), `evaluate.test.ts` (~160)                                                                                                                                                                              | ~420                                                    |
 
