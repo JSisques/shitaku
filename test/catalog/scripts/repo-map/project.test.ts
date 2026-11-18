@@ -9,6 +9,13 @@ import {
 
 type ProjectModule = {
   detectWorkspaces: (snapshot: Snapshot) => { name: string | null; path: string }[];
+  detectEntryPoints: (snapshot: Snapshot) => {
+    path: string;
+    package: string | null;
+    field: string;
+    key: string | null;
+    file: string;
+  }[];
   detectPackageManager: (snapshot: Snapshot) => string | null;
   detectCommands: (snapshot: Snapshot) => {
     packageManager: string | null;
@@ -210,5 +217,100 @@ describe('detectCommands', () => {
   it('returns an empty list when there are no manifests or an invalid one', () => {
     expect(project.detectCommands(snapshotFromTree({}))).toEqual({ packageManager: null, scripts: [] });
     expect(project.detectCommands(snapshotFromTree({ 'package.json': '{ nope' })).scripts).toEqual([]);
+  });
+});
+
+describe('detectEntryPoints', () => {
+  const entries = (tree: Tree) => project.detectEntryPoints(snapshotFromTree(tree));
+
+  it('reads main, module and types with a null key and a normalized file', () => {
+    expect(
+      entries({
+        'package.json': pkg({ name: 'p', main: './dist/index.js', module: 'dist/index.mjs', types: 'dist/i.d.ts' }),
+      }),
+    ).toEqual([
+      { path: '.', package: 'p', field: 'main', key: null, file: 'dist/index.js' },
+      { path: '.', package: 'p', field: 'module', key: null, file: 'dist/index.mjs' },
+      { path: '.', package: 'p', field: 'types', key: null, file: 'dist/i.d.ts' },
+    ]);
+  });
+
+  it('reads bin as a string (keyed by the unscoped package name) and as a map', () => {
+    expect(entries({ 'package.json': pkg({ name: '@acme/tool', bin: './bin/tool.js' }) })).toEqual([
+      { path: '.', package: '@acme/tool', field: 'bin', key: 'tool', file: 'bin/tool.js' },
+    ]);
+    expect(entries({ 'package.json': pkg({ name: 'p', bin: { zed: 'bin/z.js', alpha: './bin/a.js' } }) })).toEqual([
+      { path: '.', package: 'p', field: 'bin', key: 'alpha', file: 'bin/a.js' },
+      { path: '.', package: 'p', field: 'bin', key: 'zed', file: 'bin/z.js' },
+    ]);
+  });
+
+  it('flattens exports with subpath and condition keys joined by >', () => {
+    const exportsField = {
+      '.': { import: './dist/index.mjs', require: { default: './dist/index.cjs' } },
+      './sub': './dist/sub.js',
+      './feature': ['./dist/f1.js', './dist/f2.js'],
+    };
+    expect(entries({ 'package.json': pkg({ name: 'p', exports: exportsField }) })).toEqual([
+      // Code-unit order: '/' (0x2f) sorts before '>' (0x3e).
+      { path: '.', package: 'p', field: 'exports', key: './feature', file: 'dist/f1.js' },
+      { path: '.', package: 'p', field: 'exports', key: './feature', file: 'dist/f2.js' },
+      { path: '.', package: 'p', field: 'exports', key: './sub', file: 'dist/sub.js' },
+      { path: '.', package: 'p', field: 'exports', key: '.>import', file: 'dist/index.mjs' },
+      { path: '.', package: 'p', field: 'exports', key: '.>require>default', file: 'dist/index.cjs' },
+    ]);
+  });
+
+  it('uses "." as the key of a string exports field and plain condition keys otherwise', () => {
+    expect(entries({ 'package.json': pkg({ name: 'p', exports: './index.js' }) })).toEqual([
+      { path: '.', package: 'p', field: 'exports', key: '.', file: 'index.js' },
+    ]);
+    expect(entries({ 'package.json': pkg({ name: 'p', exports: { import: './a.mjs', require: './a.cjs' } }) })).toEqual(
+      [
+        { path: '.', package: 'p', field: 'exports', key: 'import', file: 'a.mjs' },
+        { path: '.', package: 'p', field: 'exports', key: 'require', file: 'a.cjs' },
+      ],
+    );
+  });
+
+  it('keeps targets inside ignored directories such as dist', () => {
+    const result = entries({ 'package.json': pkg({ main: 'dist/index.js' }) });
+    expect(result.map((entry) => entry.file)).toEqual(['dist/index.js']);
+    expect(result[0]?.package).toBeNull();
+  });
+
+  it('includes workspace manifests with their path, sorted by path, field and key', () => {
+    expect(project.detectEntryPoints(snapshotFromTree(workspaceMonorepo))).toEqual([
+      { path: 'apps/web', package: '@acme/web', field: 'bin', key: 'web', file: 'apps/web/bin/web.js' },
+      { path: 'packages/core', package: '@acme/core', field: 'main', key: null, file: 'packages/core/dist/index.js' },
+      {
+        path: 'packages/core',
+        package: '@acme/core',
+        field: 'types',
+        key: null,
+        file: 'packages/core/dist/index.d.ts',
+      },
+    ]);
+  });
+
+  it('drops targets that escape the repository, absolute targets and non-string values', () => {
+    const tree: Tree = {
+      'package.json': pkg({
+        main: '../outside.js',
+        module: '/abs/path.js',
+        types: 3,
+        bin: { ok: './bin/ok.js', bad: null },
+        exports: { '.': null, './x': './a/../x.js' },
+      }),
+    };
+    expect(entries(tree).map((entry) => [entry.field, entry.key, entry.file])).toEqual([
+      ['bin', 'ok', 'bin/ok.js'],
+      ['exports', './x', 'x.js'],
+    ]);
+  });
+
+  it('returns nothing without manifests or with an invalid one', () => {
+    expect(entries({})).toEqual([]);
+    expect(entries({ 'package.json': '{ nope' })).toEqual([]);
   });
 });

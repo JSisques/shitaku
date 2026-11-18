@@ -159,3 +159,89 @@ export function detectCommands(snapshot) {
   scripts.sort((a, b) => compare(a.path, b.path) || compare(a.name, b.name));
   return { packageManager: detectPackageManager(snapshot), scripts };
 }
+
+/**
+ * Repository-relative path of a manifest target, or null when it leaves the repository.
+ * @param {string} dir package directory, `.` for the root
+ * @param {string} target
+ * @returns {string | null}
+ */
+function repoRelative(dir, target) {
+  if (target.startsWith('/')) return null;
+  /** @type {string[]} */
+  const segments = [];
+  for (const segment of [...(dir === '.' ? [] : dir.split('/')), ...target.split('/')]) {
+    if (segment === '' || segment === '.') continue;
+    if (segment !== '..') segments.push(segment);
+    else if (segments.pop() === undefined) return null;
+  }
+  return segments.length === 0 ? null : segments.join('/');
+}
+
+/**
+ * Flatten an `exports` value into string leaves keyed by the subpath and condition names
+ * joined with `>`.
+ * @param {unknown} value
+ * @param {string[]} keys
+ * @returns {{ key: string, target: string }[]}
+ */
+function exportLeaves(value, keys) {
+  if (typeof value === 'string') return [{ key: keys.length === 0 ? '.' : keys.join('>'), target: value }];
+  if (Array.isArray(value)) return value.flatMap((item) => exportLeaves(item, keys));
+  if (value === null || typeof value !== 'object') return [];
+  return Object.entries(value).flatMap(([name, child]) => exportLeaves(child, [...keys, name]));
+}
+
+/** @param {unknown} name */
+function unscoped(name) {
+  return typeof name === 'string' ? name.slice(name.lastIndexOf('/') + 1) : null;
+}
+
+/**
+ * @param {Record<string, unknown>} manifest
+ * @returns {{ field: string, key: string | null, target: string }[]}
+ */
+function manifestTargets(manifest) {
+  /** @type {{ field: string, key: string | null, target: string }[]} */
+  const targets = [];
+  for (const field of ['main', 'module', 'types']) {
+    const value = manifest[field];
+    if (typeof value === 'string') targets.push({ field, key: null, target: value });
+  }
+  const bin = manifest['bin'];
+  if (typeof bin === 'string') targets.push({ field: 'bin', key: unscoped(manifest['name']), target: bin });
+  else if (bin !== null && typeof bin === 'object') {
+    for (const [key, target] of Object.entries(bin)) {
+      if (typeof target === 'string') targets.push({ field: 'bin', key, target });
+    }
+  }
+  for (const { key, target } of exportLeaves(manifest['exports'], [])) targets.push({ field: 'exports', key, target });
+  return targets;
+}
+
+/**
+ * Files named by main, module, types, bin and exports of the root and workspace manifests.
+ * @param {Snapshot} snapshot
+ * @returns {{ path: string, package: string | null, field: string, key: string | null, file: string }[]}
+ *   sorted by (path, field, key)
+ */
+export function detectEntryPoints(snapshot) {
+  /** @type {Map<string, { path: string, package: string | null, field: string, key: string | null, file: string }>} */
+  const entries = new Map();
+  for (const { path, manifest } of packageManifests(snapshot)) {
+    const name = manifest['name'];
+    for (const { field, key, target } of manifestTargets(manifest)) {
+      const file = repoRelative(path, target);
+      if (file === null) continue;
+      const entry = { path, package: typeof name === 'string' ? name : null, field, key, file };
+      entries.set(JSON.stringify([path, field, key, file]), entry);
+    }
+  }
+  return [...entries.values()].sort(
+    (a, b) =>
+      compare(a.path, b.path) ||
+      compare(a.field, b.field) ||
+      compare(a.key ?? '', b.key ?? '') ||
+      compare(a.file, b.file),
+  );
+}
