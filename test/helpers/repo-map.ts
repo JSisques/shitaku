@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -24,6 +25,58 @@ export type ArgsModule = {
 /** A virtual tree: repository-relative POSIX path to file content. */
 export type Tree = Record<string, string>;
 
+export type SkipReason = 'too-large' | 'unreadable' | 'symlink' | 'invalid-json';
+
+export type Snapshot = {
+  commit: string | null;
+  files: string[];
+  sources: Map<string, string>;
+  manifests: Map<string, Record<string, unknown> | { invalid: true }>;
+  tsconfigs: Map<string, unknown>;
+  skipped: { path: string; reason: SkipReason }[];
+  textFiles: Map<string, string>;
+};
+
+export type ScanModule = {
+  scan: (root: string, opts: { ignore: string[]; outRel: string | null }) => Snapshot;
+  MAX_FILE_BYTES: number;
+};
+
+const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
+
+/** A tiny TypeScript package: one import edge, scripts, a tsconfig and a test file. */
+export const simpleApp: Tree = {
+  'package.json': json({
+    name: 'simple-app',
+    version: '1.0.0',
+    type: 'module',
+    main: 'dist/index.js',
+    scripts: { build: 'tsc', test: 'vitest run' },
+    devDependencies: { typescript: '^5.4.0', vitest: '^1.6.0' },
+  }),
+  'tsconfig.json': json({ compilerOptions: { strict: true, target: 'ES2022', paths: { '@/*': ['./src/*'] } } }),
+  'src/index.ts': "import { add } from './util.js';\n\nexport function main(): number {\n  return add(1, 2);\n}\n",
+  'src/util.ts': 'export const add = (a: number, b: number): number => a + b;\n',
+  'test/util.test.ts': "import { add } from '@/util.js';\n\nadd(1, 2);\n",
+  'README.md': '# simple app\n',
+};
+
+/** A tree with content under every built-in ignored directory, for walk (non-git) listings. */
+export const nonGit: Tree = {
+  'src/b.ts': 'export const b = 1;\n',
+  'src/a.ts': 'export const a = 1;\n',
+  'src/nested/c.ts': 'export const c = 1;\n',
+  'node_modules/dep/index.js': 'module.exports = 1;\n',
+  'packages/p/node_modules/dep/index.js': 'module.exports = 1;\n',
+  'dist/out.js': 'export {};\n',
+  'build/out.js': 'export {};\n',
+  'coverage/lcov.info': 'TN:\n',
+  '.git/notes.txt': 'not a repository\n',
+  '.hg/notes.txt': 'x\n',
+  '.svn/notes.txt': 'x\n',
+  '.shitaku/repo-map.json': '{}\n',
+};
+
 /** Write a virtual tree under `dir`, creating parent directories. */
 export async function writeTree(dir: string, files: Tree): Promise<void> {
   for (const [path, content] of Object.entries(files)) {
@@ -31,6 +84,15 @@ export async function writeTree(dir: string, files: Tree): Promise<void> {
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, content);
   }
+}
+
+export type TempTree = { dir: string; cleanup: () => Promise<void> };
+
+/** Create a temp directory (real path) holding `files`. Call `cleanup` when done. */
+export async function makeTempTree(files: Tree = {}): Promise<TempTree> {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'shitaku-repo-map-')));
+  await writeTree(dir, files);
+  return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
 export type RunResult = { code: number | null; stdout: string; stderr: string };
