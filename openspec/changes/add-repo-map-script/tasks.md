@@ -55,14 +55,14 @@ Per-task work-unit commits stay small (target near 400 authored lines each, plan
 
 ## Phase 1.A: Spec alignment and registration
 
-- [ ] 1.1 **Patch delta specs to match design.md** (docs-only commit `docs(openspec): align repo-map specs with design`).
+- [x] 1.1 **Patch delta specs to match design.md** [d705ed8] (docs-only commit `docs(openspec): align repo-map specs with design`).
   - Files: `openspec/changes/add-repo-map-script/specs/catalog-scripts-repo-map/spec.md`, `openspec/changes/add-repo-map-script/specs/scripts-install/spec.md`.
   - Edits in the repo-map spec: per-import `status` (`internal|external|unresolved`) added to the module `imports[]` shape and to the resolution scenarios; `root` is `{ packageName: string | null }`, never an absolute path; `entryPoints` entries carry `path`, `package`, `field`, `key`, `file`; `skipped[].reason` fixed to `too-large|unreadable|symlink|invalid-json`; `bun.lock` added to lockfile detection; the Scenario "Per-file problems" asserts `status: 'unresolved'` with `resolved: null`; fixtures are in-memory trees in `test/helpers/repo-map.ts`; the staged rollout (default `--format` is `json` in slices 1-2, `both` after slice 3) noted under the CLI requirement; the "Catalog registration" requirement states that registration lands in slice 1 and prose lands in slice 3. Add scenarios for the threat matrix: subdirectory run, git missing from `PATH`, `--ignore` shell metacharacters, git state read-only, deleted tracked file excluded.
   - In the `scripts-install` spec: the `repo-map` file list is `index.mjs` plus the flat helper `.mjs` modules (no `lib/`).
   - RED: `rg -n "status|packageName|bun.lock|bun.lockb" openspec/changes/add-repo-map-script/specs` shows the gaps (record the missing matches). GREEN: the patched specs contain all items.
   - Checks: `pnpm run format:check` (Prettier covers Markdown if configured) and `pnpm run lint`.
 
-- [ ] 1.2 **Register `repo-map` with a minimal skeleton** (commit `feat(catalog): register repo-map script`).
+- [x] 1.2 **Register `repo-map` with a minimal skeleton** [a56ab03] (commit `feat(catalog): register repo-map script`).
   - Files: `test/adapters/catalog/bundled-catalog.test.ts`, `catalog/catalog.json`, `catalog/scripts/repo-map/script.json`, `catalog/scripts/repo-map/index.mjs` (skeleton), README generated block, website generated pages.
   - RED first, in `bundled-catalog.test.ts`: `items.scripts` equals `['complexity','dead-code','duplication','repo-map']`; script directory entries equal the same four; `catalog.scripts` `toHaveLength(4)`; `repo-map` has `tools: []`, file list exactly `['index.mjs','script.json']` (adjust to the loader's actual file-list shape; check how `complexity` is asserted), no `package.json`, no `node_modules`. Move `repo-map` out of the "exactly two files" loop (about line 217) into its own no-bootstrap assertion, so the loop covers `dead-code` and `duplication` only. Add a `scripts-install` delta test or assertion for the project install tree of `repo-map` if the existing install tests have a per-script loop (extend it; do not duplicate).
   - GREEN: `script.json` with name `repo-map`, description, `tools: []`, args (`--out`, `--ignore`, `--format` json only), output description (`.shitaku/repo-map.json`), `exitCodes` `{0, 2}`; `catalog.json` entry; `index.mjs` skeleton that prints a `repo-map: not implemented` message and exits 2 (replaced in 1.16).
@@ -71,19 +71,19 @@ Per-task work-unit commits stay small (target near 400 authored lines each, plan
 
 ## Phase 1.B: Test helpers, CLI arguments, glob, JSONC
 
-- [ ] 1.3 **`args.mjs` plus the shared test helper** (commit `feat(repo-map): parse CLI arguments`).
+- [x] 1.3 **`args.mjs` plus the shared test helper** [197c7ed] (commit `feat(repo-map): parse CLI arguments`).
   - Files: `test/helpers/repo-map.ts` (create: `SCRIPT_DIR`, `loadRepoMapModule<T>()`, `runRepoMap()`, `writeTree()`, `initGitRepo()`, `hasGit`; typed module API stubs for `args`), `test/catalog/scripts/repo-map/args.test.ts`, `catalog/scripts/repo-map/args.mjs`, `test/adapters/catalog/bundled-catalog.test.ts` (file list).
   - RED: defaults (`format: 'json'`, `out: '.shitaku'`, `ignore: []`); `--out <dir>`; repeated `--ignore`; `--format json`; missing value, unknown option, positional argument and unsupported `--format` (including `markdown`/`both` in this slice) each throw an error with `exitCode: 2` and a `repo-map: ...` message. (`--max-depth` and `markdown|both` arrive in slice 3.)
   - GREEN: `parseArgs(argv)`; refactor error construction.
   - Checks: C. Spec: Repo-map CLI (Unknown flag, Format json only, Custom out dir).
 
-- [ ] 1.4 **`glob.mjs`** (commit `feat(repo-map): add glob matcher`).
+- [x] 1.4 **`glob.mjs`** [9703607] (commit `feat(repo-map): add glob matcher`).
   - Files: `test/catalog/scripts/repo-map/glob.test.ts`, `catalog/scripts/repo-map/glob.mjs`, bundled-catalog file list.
   - RED: `**` spans segments; `*` stays in a segment; `?` matches one char; a pattern without `/` matches any single segment; a pattern with `/` is anchored at the root; a path is ignored when it or any ancestor matches; leading `!` negation for workspace globs; regex metacharacters are literal (`a.b`, `(x)`, `;rm -rf`).
   - GREEN: `globToRegExp`, `isIgnored`, `matchAny`.
   - Checks: C. Spec: Built-in and custom ignores.
 
-- [ ] 1.5 **`jsonc.mjs`** (commit `feat(repo-map): add JSONC parser`).
+- [x] 1.5 **`jsonc.mjs`** [2ad0322] (commit `feat(repo-map): add JSONC parser`).
   - Files: `test/catalog/scripts/repo-map/jsonc.test.ts`, `catalog/scripts/repo-map/jsonc.mjs`, bundled-catalog file list.
   - RED: line and block comments, trailing commas, `//` and `/*` inside strings preserved, BOM, invalid input throws a plain `Error` the caller can catch.
   - GREEN: `parseJsonc`.
@@ -91,13 +91,13 @@ Per-task work-unit commits stay small (target near 400 authored lines each, plan
 
 ## Phase 1.C: Scanner
 
-- [ ] 1.6 **`scan.mjs` walk path, guards, ignores** (commit `feat(repo-map): scan files with a deterministic walk`).
+- [x] 1.6 **`scan.mjs` walk path, guards, ignores** [f9410db] (commit `feat(repo-map): scan files with a deterministic walk`).
   - Files: `test/catalog/scripts/repo-map/scan-walk.test.ts`, `catalog/scripts/repo-map/scan.mjs`, `test/helpers/repo-map.ts` (add `nonGit`, `simpleApp` fixtures), bundled-catalog file list.
   - RED (temp dirs via `writeTree`, `GIT_CEILING_DIRECTORIES` set to force non-git): sorted code-unit order independent of creation order; built-in ignores (`node_modules`, `dist`, `build`, `coverage`, `.git`, `.hg`, `.svn`, `.shitaku`) as any path segment; `--ignore "**/generated/**"`; `--out` directory inside the root excluded; file over 1 MiB in `skipped` as `too-large` and absent from `sources`; symlink (file and directory) in `skipped` as `symlink`, directory symlinks not followed; unreadable source in `skipped` as `unreadable` (`skipIf` win32 or root); invalid `package.json` in `skipped` as `invalid-json`; snapshot shape `{ commit, files, sources, manifests, tsconfigs, skipped, textFiles }` with `commit: null`; `pnpm-workspace.yaml` captured in `textFiles`; `tsconfig.json` parsed through `jsonc` (null when invalid); the installed script's own directory under `.shitaku/` is never scanned.
   - GREEN: `scan(root, { ignore, outRel })` walk, `lstat`, size guard, reads of sources (extractor-table extensions) and manifests.
   - Checks: C. Spec: Non-git fallback, Built-in and custom ignores, Own output excluded, Oversized file.
 
-- [ ] 1.7 **`scan.mjs` git listing, commit, threat matrix** (commit `feat(repo-map): list files via git with walk fallback`).
+- [x] 1.7 **`scan.mjs` git listing, commit, threat matrix** [5a728be] (commit `feat(repo-map): list files via git with walk fallback`).
   - Files: `test/catalog/scripts/repo-map/scan-git.test.ts`, `catalog/scripts/repo-map/scan.mjs`, `test/helpers/repo-map.ts` (`initGitRepo` with fixed identity and dates), bundled-catalog (no list change).
   - Threat-matrix RED tests, carried unchanged from design.md (all `skipIf(!hasGit)` except the no-git ones):
     - Git repository selection:
@@ -113,13 +113,13 @@ Per-task work-unit commits stay small (target near 400 authored lines each, plan
 
 ## Phase 1.D: Document core and canonical JSON
 
-- [ ] 1.8 **`render-json.mjs`** (commit `feat(repo-map): render canonical JSON`).
+- [x] 1.8 **`render-json.mjs`** [3425d1c] (commit `feat(repo-map): render canonical JSON`).
   - Files: `test/catalog/scripts/repo-map/render-json.test.ts`, `catalog/scripts/repo-map/render-json.mjs`, bundled-catalog file list.
   - RED: keys sorted recursively by code-unit order; 2-space indent; trailing newline; same object with different insertion order gives identical bytes; no `generatedAt` or other time field; numbers are integers; non-ASCII keys sort by code unit.
   - GREEN: `renderJson`.
   - Checks: C. Spec: Determinism (No timestamp), JSON envelope.
 
-- [ ] 1.9 **`extractors.mjs` and base `build-map.mjs`** (commit `feat(repo-map): build the base document`).
+- [x] 1.9 **`extractors.mjs` and base `build-map.mjs`** [7663f8b] (commit `feat(repo-map): build the base document`).
   - Files: `test/catalog/scripts/repo-map/build-map.test.ts`, `catalog/scripts/repo-map/extractors.mjs` (frozen table: `.ts .mts .cts` typescript, `.tsx` tsx, `.js .mjs .cjs` javascript, `.jsx` jsx; language only, no `extract` yet), `catalog/scripts/repo-map/build-map.mjs`, bundled-catalog file list.
   - RED: `buildRepoMap(snapshot)` returns `schema: 'shitaku.catalog.repo-map/v1'`, `commit`, `root: { packageName }` (null when the root manifest is absent), `tree` with every directory (`.` root, `files` direct count, `totalFiles` recursive), `modules` as `[{ path, language, imports: [], exports: [] }]` only for extension-table files and sorted by `path`, `graph: { edges: [], importedByCount }` with a zero entry per module, `skipped` sorted by `path`; non-table files (`.py`, `.go`, `.md`) count in `tree` but are not modules; no absolute path appears anywhere in the output (`JSON.stringify(doc)` does not contain the temp dir).
   - GREEN: implement with placeholders for `stack`, `workspaces`, `commands`, `entryPoints`, `conventions` (empty shapes; filled in 1.15).
@@ -127,45 +127,45 @@ Per-task work-unit commits stay small (target near 400 authored lines each, plan
 
 ## Phase 1.E: Project detection (`project.mjs`)
 
-- [ ] 1.10 **`detectWorkspaces`** (commit `feat(repo-map): detect workspaces`).
+- [x] 1.10 **`detectWorkspaces`** [48bbc08] (commit `feat(repo-map): detect workspaces`).
   - Files: `test/catalog/scripts/repo-map/project.test.ts`, `catalog/scripts/repo-map/project.mjs` (create), bundled-catalog file list, `test/helpers/repo-map.ts` (add `workspaceMonorepo` manifests only; extended in slice 2).
   - RED: `pnpm-workspace.yaml` `packages:` list (quoted, unquoted, `!` negation, comments, CRLF); `package.json` `workspaces` as array and as `{ packages }`; globs matched against directories that hold a listed `package.json`; result `[{ name, path }]` sorted by `path`; manifest without `name` gives `name: null`; invalid manifest ignored.
   - GREEN. Checks: C. Spec: Workspace monorepo.
 
-- [ ] 1.11 **`detectCommands` and package manager** (commit `feat(repo-map): detect commands and package manager`).
+- [x] 1.11 **`detectCommands` and package manager** [eb128a5] (commit `feat(repo-map): detect commands and package manager`).
   - Files: `test/catalog/scripts/repo-map/project.test.ts`, `catalog/scripts/repo-map/project.mjs`.
   - RED: `packageManager` field wins (`pnpm@9` gives `pnpm`); lockfile order `pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`, `bun.lockb`, `bun.lock`; no signal gives `null`; scripts from root and workspace manifests as `{ path, name, command }` sorted by `(path, name)`.
   - GREEN. Checks: C. Spec: Package manager from field, Package manager from lockfile, Commands.
 
-- [ ] 1.12 **`detectEntryPoints`** (commit `feat(repo-map): detect entry points`).
+- [x] 1.12 **`detectEntryPoints`** [1876a84] (commit `feat(repo-map): detect entry points`).
   - Files: `test/catalog/scripts/repo-map/project.test.ts`, `catalog/scripts/repo-map/project.mjs`.
   - RED: `main`, `module`, `types`, `bin` (string and map; `key` is the bin name), `exports` (string leaves flattened with condition and subpath keys joined by `>`, stored in `key`); target normalized to a repository-relative `file`; targets into ignored dirs such as `dist` are kept; entries `{ path, package, field, key, file }` sorted by `(path, field, key)`; workspace manifests included with their path.
   - GREEN. Checks: C. Spec: Entry points.
 
-- [ ] 1.13 **`detectStack`** (commit `feat(repo-map): detect the project stack`).
+- [x] 1.13 **`detectStack`** [7962b31] (commit `feat(repo-map): detect the project stack`).
   - Files: `test/catalog/scripts/repo-map/project.test.ts`, `catalog/scripts/repo-map/project.mjs`.
   - RED: `languages` with file counts per extractor language (sorted by `name`); `packageManager`; `node` from `engines.node`; `typescript: { config, version }` (config present via `tsconfig.json`; version from dependencies); frameworks, test runners, linters, formatters and bundlers from fixed dependency-name tables and config presence (`vitest.config.*`, `jest.config.*`, `eslint.config.*`, `.eslintrc*`, `.prettierrc*`, `biome.json*`); dependency names from root and workspace `dependencies`, `devDependencies`, `peerDependencies`; lists sorted and deduplicated.
   - GREEN. Checks: C. Spec: Conventions by presence.
 
-- [ ] 1.14 **`detectConventions` (without `relativeImportExtensions`)** (commit `feat(repo-map): detect conventions`).
+- [x] 1.14 **`detectConventions` (without `relativeImportExtensions`)** [3861f37] (commit `feat(repo-map): detect conventions`).
   - Files: `test/catalog/scripts/repo-map/project.test.ts`, `catalog/scripts/repo-map/project.mjs`.
   - RED: `moduleSystem` `esm|commonjs|mixed` from root `type` and extension counts; `testFiles` `{ pattern: 'test'|'spec'|'mixed'|null, dirs }`; `pathAliases` as the sorted tsconfig `paths` keys (JSONC supported; `extends` is not followed for this field in slice 1); `tsStrict` `boolean|null`; `relativeImportExtensions` is `null` in this slice (populated in 2.9).
   - GREEN. Checks: C.
 
-- [ ] 1.15 **Wire project detection into `build-map.mjs`** (commit `feat(repo-map): include project detection in the document`).
+- [x] 1.15 **Wire project detection into `build-map.mjs`** [6c0525d] (commit `feat(repo-map): include project detection in the document`).
   - Files: `test/catalog/scripts/repo-map/build-map.test.ts`, `catalog/scripts/repo-map/build-map.mjs`.
   - RED: end-to-end `buildRepoMap` on `simpleApp` and `workspaceMonorepo` (manifests only) includes `stack`, `workspaces`, `commands`, `entryPoints`, `conventions`; invalid manifest yields an `invalid-json` skipped entry and no crash; every collection obeys the design's sort table.
   - GREEN. Checks: C. Spec: Shape.
 
 ## Phase 1.F: CLI shell
 
-- [ ] 1.16 **`index.mjs` real CLI, `script.json` update, spawn tests** (commit `feat(repo-map): write repo-map.json from the CLI`).
+- [x] 1.16 **`index.mjs` real CLI, `script.json` update, spawn tests** [e6555ad] (commit `feat(repo-map): write repo-map.json from the CLI`).
   - Files: `test/catalog/scripts/repo-map.test.ts`, `catalog/scripts/repo-map/index.mjs`, `catalog/scripts/repo-map/script.json` (only if args/output wording changes), regenerated README and website pages.
   - RED (spawn with the script copied to a temp dir, as in `duplication.test.ts`): default run writes `.shitaku/repo-map.json` and prints `wrote <relative path>`, exit 0; `--out maps` writes `maps/repo-map.json` and not `.shitaku/`; bad flag and missing value exit 2 with no files written; unwritable `--out` exits 2; atomic write leaves no `.tmp` file; `.gitignore` byte-identical after a run; two runs in the same dir are byte-identical, including the second run seeing the first run's output; the same tree in two temp dirs (non-git) is byte-identical; creation-order independence; a git fixture with fixed dates gives an identical commit and bytes; `--ignore ';touch pwned'` creates no file; unparsable-looking or unresolved content gives exit 0; JSON contains none of the temp dir path.
   - GREEN: `realpath` cwd, scan, build, render all, `mkdirSync`, write `<name>.tmp` then `renameSync`, errors print `repo-map: <message>` and exit 2.
   - Checks: C plus docs regeneration and `docs:catalog:check` if `script.json` changed. Spec: Defaults write (JSON part), Exit codes, Determinism.
 
-- [ ] 1.17 **Slice 1 closure** (no new code unless fixes are needed).
+- [x] 1.17 **Slice 1 closure** [docs(openspec) closure commit] (no new code unless fixes are needed).
   - Run the full C set, `pnpm run docs:catalog:check`, and a manual runtime check: run the script against this repository and inspect `.shitaku/repo-map.json` (do not commit `.shitaku/`). Confirm `git status` shows no stray files, then record per-commit evidence and the `review assess` outcome per the ODD protocol. Prepare PR 1 (base = main) with the title and body per the chained-pr skill. Tell the user about the size-exception decision before opening the PR (see Decision needed).
 
 ---
