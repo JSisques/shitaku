@@ -1,4 +1,6 @@
 import type { RuleCheck, Severity } from '@/domain/catalog/rule-check.js';
+import { matchGlob, matchesAny, parseGlob, type Glob } from '@/domain/checks/glob.js';
+import { compilePattern } from '@/domain/checks/safe-regex.js';
 
 /** One project file. `path` is POSIX and relative; `text` is undefined when the caller did not or could not load it. */
 export interface SnapshotFile {
@@ -64,11 +66,144 @@ export function finalizeEvaluation(
   };
 }
 
-export function evaluateRuleCheck(
-  rule: { name: string; check: RuleCheck; severity: Severity },
+type Rule = { name: string; check: RuleCheck; severity: Severity };
+type Check<T extends RuleCheck['type']> = Extract<RuleCheck, { type: T }>;
+type Outcome = { drafts: FindingDraft[]; skipped: string[] };
+
+function compileGlobs(sources: readonly string[]): Glob[] {
+  return sources.flatMap((source) => {
+    const parsed = parseGlob(source);
+    return 'issue' in parsed ? [] : [parsed];
+  });
+}
+
+/** Files matching `files` and not `exclude`, in snapshot order. Shared by every content-based check. */
+function filesInScope(
   snapshot: ProjectSnapshot,
-): CheckEvaluation {
-  void snapshot; // consumed by the per-type evaluators
+  check: { files: readonly string[]; exclude?: readonly string[] | undefined },
+): SnapshotFile[] {
+  const include = compileGlobs(check.files);
+  const exclude = compileGlobs(check.exclude ?? []);
+  return snapshot.files.filter((file) => matchesAny(include, file.path) && !matchesAny(exclude, file.path));
+}
+
+/** Runs `inspect` on every in-scope file that has text; files without text go to `skipped`. */
+function inspectFiles(
+  snapshot: ProjectSnapshot,
+  check: { files: readonly string[]; exclude?: readonly string[] | undefined },
+  inspect: (file: SnapshotFile, text: string, outcome: Outcome) => void,
+): Outcome {
+  const outcome: Outcome = { drafts: [], skipped: [] };
+  for (const file of filesInScope(snapshot, check)) {
+    if (file.text === undefined) outcome.skipped.push(file.path);
+    else inspect(file, file.text, outcome);
+  }
+  return outcome;
+}
+
+function parseOrThrow(source: string): Glob {
+  const parsed = parseGlob(source);
+  if ('issue' in parsed) throw new Error(`invalid glob '${source}': ${parsed.issue}`);
+  return parsed;
+}
+
+/** Every proper directory prefix of every file path, deduplicated. */
+function directoriesOf(snapshot: ProjectSnapshot): string[] {
+  const dirs = new Set<string>();
+  for (const { path } of snapshot.files) {
+    const parts = path.split('/');
+    for (let end = 1; end < parts.length; end++) dirs.add(parts.slice(0, end).join('/'));
+  }
+  return [...dirs];
+}
+
+function evaluateFileExists(check: Check<'file-exists'>, snapshot: ProjectSnapshot): Outcome {
+  const target = parseOrThrow(check.path);
+  const missing = (expected: string, where: string): FindingDraft => ({
+    path: expected,
+    message: `no file matches '${check.path}'${where}`,
+  });
+  if (check.each === undefined) {
+    const found = snapshot.files.some((file) => matchGlob(target, file.path));
+    return { drafts: found ? [] : [missing(check.path, '')], skipped: [] };
+  }
+  const each = parseOrThrow(check.each);
+  const drafts = directoriesOf(snapshot)
+    .filter((dir) => matchGlob(each, dir))
+    .filter((dir) => {
+      const prefix = `${dir}/`;
+      return !snapshot.files.some(
+        (file) => file.path.startsWith(prefix) && matchGlob(target, file.path.slice(prefix.length)),
+      );
+    })
+    .map((dir) => missing(`${dir}/${check.path}`, ` in ${dir}`));
+  return { drafts, skipped: [] };
+}
+
+const HEADING = /^ {0,3}#{1,6}[ \t]+(.*)$/;
+
+function headingTexts(text: string): Set<string> {
+  const texts = new Set<string>();
+  for (const line of text.split(/\r?\n/)) {
+    const match = HEADING.exec(line);
+    if (match?.[1] !== undefined) texts.add(match[1].trim());
+  }
+  return texts;
+}
+
+function evaluateSections(check: Check<'contains-sections'>, snapshot: ProjectSnapshot): Outcome {
+  return inspectFiles(snapshot, check, (file, text, outcome) => {
+    const present = headingTexts(text);
+    for (const section of check.sections) {
+      if (!present.has(section)) outcome.drafts.push({ path: file.path, message: `missing section '${section}'` });
+    }
+  });
+}
+
+function evaluatePatternAbsent(check: Check<'pattern-absent'>, snapshot: ProjectSnapshot): Outcome {
+  const regex = compilePattern(check.pattern, check['ignore-case'] === true);
+  const message = check.message ?? `line matches forbidden pattern '${check.pattern}'`;
+  return inspectFiles(snapshot, check, (file, text, outcome) => {
+    text.split(/\r?\n/).forEach((line, index) => {
+      if (line.length > MAX_LINE_LENGTH) outcome.skipped.push(`${file.path}:${index + 1}`);
+      else if (regex.test(line)) outcome.drafts.push({ path: file.path, line: index + 1, message });
+    });
+  });
+}
+
+/** `\n`-separated lines ignoring one trailing newline: `'a\n'` is 1, `''` is 0. */
+function countLines(text: string): number {
+  if (text === '') return 0;
+  const breaks = text.split('\n').length - 1;
+  return text.endsWith('\n') ? breaks : breaks + 1;
+}
+
+function evaluateMaxLines(check: Check<'max-lines'>, snapshot: ProjectSnapshot): Outcome {
+  return inspectFiles(snapshot, check, (file, text, outcome) => {
+    const count = countLines(text);
+    if (count > check.max)
+      outcome.drafts.push({ path: file.path, message: `file has ${count} lines (max ${check.max})` });
+  });
+}
+
+function evaluateCheck(check: RuleCheck, snapshot: ProjectSnapshot): Outcome {
+  switch (check.type) {
+    case 'file-exists':
+      return evaluateFileExists(check, snapshot);
+    case 'contains-sections':
+      return evaluateSections(check, snapshot);
+    case 'pattern-absent':
+      return evaluatePatternAbsent(check, snapshot);
+    case 'max-lines':
+      return evaluateMaxLines(check, snapshot);
+    case 'tool':
+      return { drafts: [], skipped: [] };
+  }
+}
+
+/** Pure: no I/O, environment or clock. `tool` checks are data only and evaluate to `deferred`. */
+export function evaluateRuleCheck(rule: Rule, snapshot: ProjectSnapshot): CheckEvaluation {
   if (rule.check.type === 'tool') return { status: 'deferred', findings: [], skipped: [], truncated: false };
-  throw new Error(`check type '${rule.check.type}' is not implemented yet`);
+  const { drafts, skipped } = evaluateCheck(rule.check, snapshot);
+  return finalizeEvaluation(rule, drafts, skipped);
 }
