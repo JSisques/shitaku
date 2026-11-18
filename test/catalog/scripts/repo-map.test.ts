@@ -100,6 +100,18 @@ describe('repo-map CLI', () => {
     expect(doc.tree[0]).toEqual({ path: '.', files: 3, totalFiles: 6 });
   });
 
+  it('anchors --ignore /name at the root', async () => {
+    const dir = await project({
+      ...simpleApp,
+      'gen/a.ts': 'export const a = 1;\n',
+      'src/gen/b.ts': 'export const b = 1;\n',
+    });
+    expect((await run(dir, ['--ignore', '/gen'])).code).toBe(0);
+    const paths = (await readMap(dir)).modules.map((m) => m.path);
+    expect(paths).not.toContain('gen/a.ts');
+    expect(paths).toContain('src/gen/b.ts');
+  });
+
   it('is stable when --out is the repository root itself', async () => {
     const dir = await project(simpleApp);
     await run(dir, ['--out', '.']);

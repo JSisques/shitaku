@@ -46,13 +46,24 @@ export function globToRegExp(pattern) {
 function normalize(pattern) {
   let value = pattern;
   while (value.startsWith('./')) value = value.slice(2);
+  while (value.startsWith('/')) value = value.slice(1);
   while (value.endsWith('/') && value.length > 1) value = value.slice(0, -1);
   return value;
 }
 
 /**
+ * A leading slash anchors a pattern at the root (gitignore style), like any slash inside it.
+ * @param {string} raw
+ * @param {string} pattern the normalized pattern
+ */
+function isAnchored(raw, pattern) {
+  return raw.startsWith('/') || pattern.includes('/');
+}
+
+/**
  * True when the path, or any ancestor directory of it, matches one of the patterns.
- * A pattern without `/` matches a single path segment; one with `/` is anchored at the root.
+ * A pattern without `/` matches a single path segment; one with `/` (a leading one included) is
+ * anchored at the root.
  * @param {string} path POSIX, repository relative
  * @param {string[]} patterns
  */
@@ -63,7 +74,7 @@ export function isIgnored(path, patterns) {
     const pattern = normalize(raw);
     if (pattern === '') continue;
     const re = globToRegExp(pattern);
-    const candidates = pattern.includes('/') ? prefixes : segments;
+    const candidates = isAnchored(raw, pattern) ? prefixes : segments;
     if (candidates.some((candidate) => re.test(candidate))) return true;
   }
   return false;

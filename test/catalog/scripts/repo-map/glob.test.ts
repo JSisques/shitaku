@@ -60,6 +60,15 @@ describe('isIgnored', () => {
     expect(mod.isIgnored('lib/src/gen/x.ts', ['src/gen'])).toBe(false);
   });
 
+  it('anchors a pattern with a leading slash at the root, gitignore style', () => {
+    expect(mod.isIgnored('gen/x.ts', ['/gen'])).toBe(true);
+    expect(mod.isIgnored('gen', ['/gen'])).toBe(true);
+    expect(mod.isIgnored('lib/gen/x.ts', ['/gen'])).toBe(false);
+    expect(mod.isIgnored('a.snap', ['/*.snap'])).toBe(true);
+    expect(mod.isIgnored('lib/a.snap', ['/*.snap'])).toBe(false);
+    expect(mod.isIgnored('src/gen/x.ts', ['/src/gen/'])).toBe(true);
+  });
+
   it('ignores a path when any ancestor matches', () => {
     expect(mod.isIgnored('packages/a/dist/deep/x.js', ['packages/a/dist'])).toBe(true);
     expect(mod.isIgnored('packages/a/src/x.js', ['packages/a/dist'])).toBe(false);
