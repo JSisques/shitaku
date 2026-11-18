@@ -341,6 +341,9 @@ describe('bundled catalog', () => {
       'Never set `state`',
       '`maintainer_can_modify`',
       'unverified',
+      'Change `draft` only if',
+      'not supported',
+      'Before calling it, confirm the head exists on the remote',
     ]) {
       expect(body).toContain(required);
     }
