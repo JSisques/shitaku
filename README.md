@@ -155,6 +155,27 @@ Installable Claude Code subagents live as single files under `catalog/agents/<na
 
 <!-- catalog:agents:end -->
 
+### Rules
+
+Rules are single Markdown files under `catalog/rules/<name>.md` that Claude Code loads as instructions. Each is short, instruction text only, and applies to every session. A rule instructs the agent, so read it before installing it. Installing rules from the CLI is not available yet.
+
+<!-- catalog:rules:start -->
+
+| Name                   | Description                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| `ask-when-unsure`      | Ask a question instead of guessing when requirements are unclear.                |
+| `conventional-commits` | Write commit messages in the Conventional Commits format.                        |
+| `error-handling`       | Handle errors explicitly and never swallow them silently.                        |
+| `explain-why`          | Explain why a change was made, not only what changed.                            |
+| `module-readme`        | Keep a short README in each module that explains its purpose and how to use it.  |
+| `naming`               | Use clear, consistent names that follow the conventions already in the codebase. |
+| `no-new-deps`          | Do not add new dependencies without approval.                                    |
+| `no-secrets`           | Never write secrets or credentials into code, config or logs.                    |
+| `small-changes`        | Keep each change small, focused and easy to review.                              |
+| `tests-for-changes`    | Add or update tests whenever behavior changes.                                   |
+
+<!-- catalog:rules:end -->
+
 ## Usage
 
 Examples below use the global `shitaku` command. After a one-off run, substitute `npx @jsisques/shitaku` for `shitaku`.

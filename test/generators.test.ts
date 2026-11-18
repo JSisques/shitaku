@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const ROOT = join(import.meta.dirname, '..');
 const SCRIPTS = { catalog: 'generate-catalog-table.mjs', website: 'generate-website-catalog.mjs' } as const;
-const SECTIONS = ['mcps', 'skills', 'scripts', 'commands', 'hooks', 'agents'];
+const SECTIONS = ['mcps', 'skills', 'scripts', 'commands', 'hooks', 'agents', 'rules'];
 const PAGES = 'website/src/content/docs';
 
 interface Sandbox {
@@ -32,6 +32,7 @@ function sandbox(options: {
   commands: string[];
   hooks?: Record<string, object>;
   agents?: Record<string, string>;
+  rules?: Record<string, string>;
   readmeSections?: string[];
   profile?: object;
 }): Sandbox {
@@ -56,6 +57,7 @@ function sandbox(options: {
     commands: options.commands,
     ...(options.hooks ? { hooks: Object.keys(options.hooks) } : {}),
     ...(options.agents ? { agents: Object.keys(options.agents) } : {}),
+    ...(options.rules ? { rules: Object.keys(options.rules) } : {}),
   };
   write('catalog/catalog.json', JSON.stringify({ version: 1, items }));
   for (const name of options.commands) {
@@ -66,6 +68,9 @@ function sandbox(options: {
   }
   for (const [name, description] of Object.entries(options.agents ?? {})) {
     write(`catalog/agents/${name}.md`, `---\nname: ${name}\ndescription: ${description}\ntools: Read\n---\n\nBody.\n`);
+  }
+  for (const [name, description] of Object.entries(options.rules ?? {})) {
+    write(`catalog/rules/${name}.md`, `---\nname: ${name}\ndescription: ${description}\n---\n\nBody.\n`);
   }
   if (options.profile) write('catalog/profiles/team.json', JSON.stringify(options.profile));
   const markers = (options.readmeSections ?? SECTIONS).map(
@@ -399,5 +404,71 @@ describe('docs:website-catalog (agent pages)', () => {
     const without = sandbox({ commands: [], profile: { name: 'team' } });
     without.run('website');
     expect(without.read(`${PAGES}/en/catalog/profiles/team.md`)).not.toContain('## Agents');
+  });
+});
+
+describe('docs:catalog (rule table)', () => {
+  it('renders a rules table with the description and passes check', () => {
+    const box = sandbox({ commands: [], rules: { naming: 'Name | things', 'no-secrets': 'Keep secrets out' } });
+    expect(box.run('catalog').status).toBe(0);
+    const readme = box.read('README.md');
+    expect(readme).toContain('| `naming`     | Name \\| things');
+    expect(readme).toMatch(/\| `no-secrets` \| Keep secrets out +\|/);
+    expect(box.run('catalog', '--check').status).toBe(0);
+  });
+
+  it('fails check when a rule description drifts from the README', () => {
+    const box = sandbox({ commands: [], rules: { naming: 'Name things' } });
+    box.run('catalog');
+    box.write('catalog/rules/naming.md', '---\nname: naming\ndescription: Changed upstream\n---\n\nBody\n');
+    const check = box.run('catalog', '--check');
+    expect(check.status).toBe(1);
+    expect(check.stderr).toContain('README.md is out of date');
+  });
+
+  it('says so for an empty rule catalog and fails when the README has no rules markers', () => {
+    const empty = sandbox({ commands: [] });
+    expect(empty.run('catalog').status).toBe(0);
+    expect(empty.read('README.md')).toContain('No rules in the bundled catalog yet.');
+    const box = sandbox({ commands: [], readmeSections: SECTIONS.filter((s) => s !== 'rules') });
+    const run = box.run('catalog');
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain('<!-- catalog:rules:start -->');
+  });
+});
+
+describe('docs:website-catalog (rule pages)', () => {
+  it('emits en and es rule pages with usage text and check passes', () => {
+    const box = sandbox({ commands: [], rules: { naming: 'Name things' } });
+    expect(box.run('website').status).toBe(0);
+    const en = box.read(`${PAGES}/en/catalog/rules/naming.md`);
+    const es = box.read(`${PAGES}/es/catalog/rules/naming.md`);
+    for (const page of [en, es]) {
+      expect(page).toContain('Name things');
+      expect(page).toContain('`catalog/rules/naming.md`');
+    }
+    expect(en).toContain('.claude/rules');
+    expect(es).toContain('.claude/rules');
+    expect(es).toContain('instruye');
+    expect(box.run('website', '--check').status).toBe(0);
+  });
+
+  it('fails check on drift, on a missing page, and on a page for a removed rule', () => {
+    const box = sandbox({ commands: [], rules: { naming: 'Name things' } });
+    box.run('website');
+    box.write('catalog/rules/naming.md', '---\nname: naming\ndescription: Changed\n---\n\nBody\n');
+    expect(box.run('website', '--check').stderr).toContain(`drift ${PAGES}/en/catalog/rules/naming.md`);
+    box.run('website');
+    rmSync(join(box.dir, `${PAGES}/es/catalog/rules/naming.md`));
+    expect(box.run('website', '--check').stderr).toContain(`missing ${PAGES}/es/catalog/rules/naming.md`);
+    box.run('website');
+    box.write('catalog/catalog.json', JSON.stringify({ version: 1, items: { rules: [] } }));
+    expect(box.run('website', '--check').stderr).toContain(`unexpected ${PAGES}/en/catalog/rules/naming.md`);
+  });
+
+  it('writes no rule pages for an empty catalog', () => {
+    const box = sandbox({ commands: [] });
+    expect(box.run('website').status).toBe(0);
+    expect(existsSync(join(box.dir, `${PAGES}/en/catalog/rules`))).toBe(false);
   });
 });

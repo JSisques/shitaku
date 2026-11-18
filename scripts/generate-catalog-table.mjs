@@ -7,7 +7,7 @@ const root = join(import.meta.dirname, '..');
 const catalogDir = join(root, 'catalog');
 const readmePath = join(root, 'README.md');
 
-const SECTIONS = ['mcps', 'skills', 'scripts', 'commands', 'hooks', 'agents'];
+const SECTIONS = ['mcps', 'skills', 'scripts', 'commands', 'hooks', 'agents', 'rules'];
 
 const startMarker = (section) => `<!-- catalog:${section}:start -->`;
 const endMarker = (section) => `<!-- catalog:${section}:end -->`;
@@ -42,6 +42,8 @@ function scriptDescription(name) {
   return meta.description;
 }
 
+const ruleDescription = (name) => frontmatterDescription(join(catalogDir, 'rules', `${name}.md`), `rules/${name}.md`);
+
 const NOUN = {
   mcps: 'MCP servers',
   skills: 'skills',
@@ -49,6 +51,7 @@ const NOUN = {
   commands: 'slash commands',
   hooks: 'hooks',
   agents: 'agents',
+  rules: 'rules',
 };
 
 const DESCRIBE = {
@@ -58,6 +61,7 @@ const DESCRIBE = {
   commands: commandDescription,
   hooks: (name) => readJson(join(catalogDir, 'hooks', `${name}.json`)).description,
   agents: agentDescription,
+  rules: ruleDescription,
 };
 
 function rows(section, items) {
