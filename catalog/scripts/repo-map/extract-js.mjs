@@ -330,7 +330,8 @@ function exportListItems(tokens, open, close) {
 function readExport(tokens, start, sink) {
   let index = start + 1;
   if (isIdent(tokens[index], 'default')) {
-    sink.addExport('default', defaultKind(tokens, index + 1), null);
+    const kind = defaultKind(tokens, index + 1);
+    sink.addExport('default', kind, kind === 'expression' ? null : index + 1);
     return index;
   }
   if (isIdent(tokens[index], 'type') && (isPunct(tokens[index + 1], '{') || isPunct(tokens[index + 1], '*'))) index++;
@@ -363,6 +364,126 @@ function readExport(tokens, start, sink) {
   if (star) sink.addExport(namespace ?? '*', namespace === null ? 'reexport-all' : 'reexport', null);
   for (const item of items) sink.addExport(item.name, 'reexport', null);
   return index + 1;
+}
+
+/**
+ * Index just past the header that starts at `header`. A header ends at the body `{` (functions,
+ * classes, interfaces, enums, namespaces), at the initializer `=` (`const`, `let`, `var`) or at the
+ * end of the statement (type aliases), always at parenthesis, bracket, angle and brace depth 0.
+ * It also stops at `;` and at the next `export`.
+ * @param {Token[]} tokens
+ * @param {number} header
+ * @param {string} kind
+ */
+function headerEnd(tokens, header, kind) {
+  const variable = kind === 'const' || kind === 'let' || kind === 'var';
+  const alias = kind === 'type';
+  let parens = 0;
+  let angle = 0;
+  let braces = 0;
+  for (let index = header; index < tokens.length; index++) {
+    const token = tokens[index];
+    const previous = tokens[index - 1];
+    if (token === undefined) break;
+    const flat = parens === 0 && angle === 0 && braces === 0;
+    if (flat && index > header) {
+      if (isIdent(token, 'export')) return index;
+      if (alias && previous !== undefined && token.line > previous.line && !continuesAcrossLines(previous, token)) {
+        return index;
+      }
+    }
+    if (token.type !== 'punct') continue;
+    switch (token.value) {
+      case '(':
+      case '[':
+        parens++;
+        break;
+      case ')':
+      case ']':
+        parens = Math.max(0, parens - 1);
+        break;
+      case '<':
+        angle++;
+        break;
+      case '>':
+        angle = Math.max(0, angle - 1);
+        break;
+      case '{':
+        // A `{` at depth 0 opens the body, unless it starts a pattern or an object type.
+        if (flat && !variable && !alias && !startsTypeLiteral(previous)) return index;
+        braces++;
+        break;
+      case '}':
+        braces = Math.max(0, braces - 1);
+        break;
+      case ';':
+        if (flat) return index;
+        break;
+      case '=':
+        if (flat && variable) return index;
+        break;
+      default:
+        break;
+    }
+  }
+  return tokens.length;
+}
+
+/** Punctuation after which a `{` opens an object type, not a body. */
+const TYPE_LITERAL_PRECEDERS = new Set([':', '|', '&', '=>', '?', '=']);
+
+/** @param {Token | undefined} previous */
+function startsTypeLiteral(previous) {
+  return previous !== undefined && previous.type === 'punct' && TYPE_LITERAL_PRECEDERS.has(previous.value);
+}
+
+const CONTINUES_AFTER = new Set([
+  '=',
+  '|',
+  '&',
+  '<',
+  ',',
+  '=>',
+  '?',
+  ':',
+  '.',
+  '?.',
+  'keyof',
+  'typeof',
+  'extends',
+  'infer',
+]);
+const CONTINUES_BEFORE = new Set(['|', '&', '?', ':', '.', '?.', '=>', ',', 'extends']);
+
+/**
+ * Whether a type alias carries on after a line break, as in a multi-line union.
+ * @param {Token} previous
+ * @param {Token} token
+ */
+function continuesAcrossLines(previous, token) {
+  return CONTINUES_AFTER.has(previous.value) || CONTINUES_BEFORE.has(token.value);
+}
+
+/** Longest signature kept; longer ones are clipped and end in `...`. */
+const SIGNATURE_MAX = 200;
+
+/**
+ * Rebuild a declaration header from its tokens. One space stands where the source had whitespace
+ * or a comment, so comments and line endings never reach the output.
+ * @param {Token[]} tokens
+ * @param {number} header
+ * @param {string} kind
+ */
+function buildSignature(tokens, header, kind) {
+  const end = headerEnd(tokens, header, kind);
+  let text = '';
+  for (let index = header; index < end; index++) {
+    const token = tokens[index];
+    if (token === undefined) break;
+    const value = token.type === 'template' ? token.value.replace(/\s+/g, ' ') : token.value;
+    text += (index > header && token.gap ? ' ' : '') + value;
+  }
+  return text.length > SIGNATURE_MAX ? `${text.slice(0, SIGNATURE_MAX - 3)}...` : text;
 }
 
 /**
@@ -462,6 +583,10 @@ export function extractJs(source) {
   const imports = [...found.values()].sort((a, b) => compare(a.specifier, b.specifier) || compare(a.kind, b.kind));
   const exports = [...exported.values()]
     .sort((a, b) => compare(a.name, b.name) || compare(a.kind, b.kind))
-    .map(({ name, kind }) => ({ name, kind, signature: null }));
+    .map(({ name, kind, header }) => ({
+      name,
+      kind,
+      signature: header === null ? null : buildSignature(tokens, header, kind),
+    }));
   return { imports, exports };
 }

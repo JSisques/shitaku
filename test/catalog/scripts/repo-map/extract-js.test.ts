@@ -292,3 +292,137 @@ describe('extractJs: exports', () => {
     expect(exportsOf(source)).toEqual([{ name: 'real', kind: 'const' }]);
   });
 });
+
+/** Signature of the export called `name`, or undefined when there is no such export. */
+const signatureOf = (source: string, name: string): string | null | undefined =>
+  extractJs(source).exports.find((entry) => entry.name === name)?.signature;
+
+describe('extractJs: signatures', () => {
+  it.each([
+    [
+      'a function',
+      'export function add(a: number, b: number): number {\n  return a + b;\n}',
+      'add',
+      'function add(a: number, b: number): number',
+    ],
+    [
+      'an async generic function',
+      "export async function load<T extends { id: string }>(id: T['id']): Promise<T> { return fetch(id); }",
+      'load',
+      "async function load<T extends { id: string }>(id: T['id']): Promise<T>",
+    ],
+    [
+      'an object return type',
+      'export function f(): { a: number } { return { a: 1 }; }',
+      'f',
+      'function f(): { a: number }',
+    ],
+    [
+      'a class',
+      'export class Foo<T> extends Base<T> implements I {\n  x = 1;\n}',
+      'Foo',
+      'class Foo<T> extends Base<T> implements I',
+    ],
+    ['an abstract class', 'export abstract class Shape { abstract area(): number; }', 'Shape', 'abstract class Shape'],
+    ['an interface', 'export interface Props extends Base { a: string }', 'Props', 'interface Props extends Base'],
+    ['an enum', 'export enum Color { Red, Green }', 'Color', 'enum Color'],
+    ['a const enum', 'export const enum Dir { Up }', 'Dir', 'const enum Dir'],
+    ['a namespace', 'export namespace N { export const x = 1; }', 'N', 'namespace N'],
+    [
+      'an ambient function',
+      'export declare function f(): void;\nexport declare function g(): void;',
+      'f',
+      'declare function f(): void',
+    ],
+  ])('ends the header of %s at its body', (_label, source, name, expected) => {
+    expect(signatureOf(source, name)).toBe(expected);
+  });
+
+  it.each([
+    ['an arrow function', 'export const add = (a: number): number => a;', 'add', 'const add'],
+    [
+      'an annotated function type',
+      'export const f: (a: number) => void = () => {};',
+      'f',
+      'const f: (a: number) => void',
+    ],
+    ['a destructuring pattern', 'export const { a, b } = obj;', 'a', 'const { a, b }'],
+    ['an ambient const', 'export declare const x: number;', 'x', 'declare const x: number'],
+    ['a let without initializer', 'export let counter: number;', 'counter', 'let counter: number'],
+  ])('ends the header of %s at the initializer', (_label, source, name, expected) => {
+    expect(signatureOf(source, name)).toBe(expected);
+  });
+
+  it.each([
+    ['a generic alias', 'export type Pair<T> = [T, T];', 'Pair', 'type Pair<T> = [T, T]'],
+    ['a multi-line union', "export type A =\n  | 'a'\n  | 'b';\nexport const x = 1;", 'A', "type A = | 'a' | 'b'"],
+    [
+      'an object type',
+      'export type Opts = {\n  a: string;\n  b?: number;\n};',
+      'Opts',
+      'type Opts = { a: string; b?: number; }',
+    ],
+    ['an alias without a semicolon', 'export type U = string\nconst next = 1;', 'U', 'type U = string'],
+  ])('ends the header of %s at the statement end', (_label, source, name, expected) => {
+    expect(signatureOf(source, name)).toBe(expected);
+  });
+
+  it('never lets comments leak and replaces whitespace or comment gaps with one space', () => {
+    const source = 'export function /* one */ f(a: /* two */ number)   // three\n  : void {}';
+    expect(signatureOf(source, 'f')).toBe('function f(a: number) : void');
+  });
+
+  it('does not depend on line endings', () => {
+    const source = 'export function f(a: number,\r\n  b: string): void {\r\n  return;\r\n}';
+    expect(signatureOf(source, 'f')).toBe('function f(a: number, b: string): void');
+  });
+
+  it('never includes body text', () => {
+    const source = "export function f() { const secret = 'body'; return secret; }";
+    expect(signatureOf(source, 'f')).toBe('function f()');
+  });
+
+  it('clips signatures longer than 200 characters and ends them with ...', () => {
+    const exact = `export function f(${'x'.repeat(188)}) {}`;
+    const over = `export function f(${'x'.repeat(189)}) {}`;
+    expect(signatureOf(exact, 'f')).toHaveLength(200);
+    expect(signatureOf(exact, 'f')?.endsWith('...')).toBe(false);
+    const clipped = signatureOf(over, 'f');
+    expect(clipped).toHaveLength(200);
+    expect(clipped?.startsWith('function f(xxx')).toBe(true);
+    expect(clipped?.endsWith('...')).toBe(true);
+  });
+
+  it('copies the signature of the local declaration for export lists, even when declared later', () => {
+    const source = [
+      'export { a, a as b, late, missing };',
+      'function a(x: number): void {}',
+      'const late: number = 1;',
+    ].join('\n');
+    expect(signatureOf(source, 'a')).toBe('function a(x: number): void');
+    expect(signatureOf(source, 'b')).toBe('function a(x: number): void');
+    expect(signatureOf(source, 'late')).toBe('const late: number');
+    expect(signatureOf(source, 'missing')).toBeNull();
+  });
+
+  it('records default export signatures for functions and classes but not expressions', () => {
+    expect(signatureOf('export default function foo(a: number): string { return ""; }', 'default')).toBe(
+      'function foo(a: number): string',
+    );
+    expect(signatureOf('export default class Foo extends Bar {}', 'default')).toBe('class Foo extends Bar');
+    expect(signatureOf('export default 42;', 'default')).toBeNull();
+  });
+
+  it('keeps the first overload signature and gives re-exports and CommonJS exports no signature', () => {
+    const source = [
+      'export function f(a: string): string;',
+      'export function f(a: number): number;',
+      'export function f(a: unknown) { return a; }',
+      "export { r } from './r';",
+      'module.exports.c = 1;',
+    ].join('\n');
+    expect(signatureOf(source, 'f')).toBe('function f(a: string): string');
+    expect(signatureOf(source, 'r')).toBeNull();
+    expect(signatureOf(source, 'c')).toBeNull();
+  });
+});
