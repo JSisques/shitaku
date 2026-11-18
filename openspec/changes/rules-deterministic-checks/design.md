@@ -345,6 +345,11 @@ N/A — no routing, shell, subprocess, VCS/PR automation, executable-file classi
 
 Total ~1,290 authored lines. Slice 2 must ship the docs and `rules-docs.test.ts` change together with the reservation removal, or the docs test fails; that is why its estimate is the largest. Each slice is independently green: slice 1 adds an unused option, slice 2 makes checks loadable but nothing evaluates them, slice 3 adds unused evaluators.
 
+## Resolved Assumptions
+
+- **A: `file-exists` with `each` and a glob `path` (resolved in PR 2a, task 2.8).** `path` is always a validated glob (`parseGlob`), with and without `each`; `each` is a validated glob too. Without `each`, `path` is matched against whole snapshot paths. With `each`, the evaluator does NOT join `each` and `path` into one glob string (a matched directory name could itself contain `*` or `?`); for every directory `D` matching `each`, it strips the literal prefix `D/` from snapshot file paths and matches the remainder against `path`. So `path: README.md` means `D/README.md`, `path: '*.md'` means any direct child `.md`, and `path: '**/index.ts'` means `index.ts` anywhere below `D`. A directory is a proper prefix of at least one file path; the finding for a directory lacking a match uses the expected path `D/<path glob source>`. No schema restriction beyond `parseGlob` is needed. Task 4.4 and 4.5 implement exactly this.
+- Schema deviation from the Interfaces sketch: list-or-scalar fields use `z.preprocess` wrapping to a list followed by `z.array(...)` instead of `z.union([...]).transform(...)`, so zod reports `files.0` with the glob reason instead of an opaque union error. Behavior and normalized output are identical.
+
 ## Migration / Rollout
 
 No migration required: no manifest version, install path or catalog data changes. Rules without `check` behave exactly as before. Rules that declare a check are inert until #226; docs state this.
