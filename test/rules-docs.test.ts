@@ -46,6 +46,35 @@ const NOTE: Record<string, Record<string, RegExp>> = {
   'website/src/content/docs/es/catalog/overview.md': { rules: /catalog\/rules\/<name>\.md/ },
 };
 
+const CHECK_TYPES = ['file-exists', 'contains-sections', 'pattern-absent', 'max-lines', 'tool'];
+const SEVERITY_EN = /default `error`/;
+const SEVERITY_ES = /por defecto `error`/;
+const GLOB_LIMIT = /at most 256 characters/;
+const GLOB_LIMIT_ES = /máximo 256 caracteres/;
+const REGEX_LIMIT = /regular expression of 1 to 200 characters/;
+const REGEX_LIMIT_ES = /expresión regular de JavaScript de 1 a 200 caracteres/;
+
+describe('rules docs check contract', () => {
+  describe.each([
+    ['README.md', SEVERITY_EN, GLOB_LIMIT, REGEX_LIMIT],
+    ['CONTRIBUTING.md', SEVERITY_EN, GLOB_LIMIT, REGEX_LIMIT],
+    ['website/src/content/docs/en/security.md', SEVERITY_EN, GLOB_LIMIT, REGEX_LIMIT],
+    ['website/src/content/docs/es/security.md', SEVERITY_ES, GLOB_LIMIT_ES, REGEX_LIMIT_ES],
+  ])('%s', (file, severity, glob, regex) => {
+    const text = read(file);
+    it.each(CHECK_TYPES)('describes the check type `%s`', (type) => {
+      expect(text).toContain(`\`${type}\``);
+    });
+    it('states the default severity', () => {
+      expect(text).toMatch(severity);
+    });
+    it('states the glob and regex limits', () => {
+      expect(text).toMatch(glob);
+      expect(text).toMatch(regex);
+    });
+  });
+});
+
 describe('rules docs', () => {
   describe.each(Object.entries(NOTE))('%s', (file, tokens) => {
     const text = read(file);
