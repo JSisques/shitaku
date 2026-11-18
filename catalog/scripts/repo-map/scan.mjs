@@ -5,19 +5,28 @@
  */
 import { spawnSync } from 'node:child_process';
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { join } from 'node:path';
+import { extractorFor } from './extractors.mjs';
 import { isIgnored } from './glob.mjs';
 import { parseJsonc } from './jsonc.mjs';
 
 export const MAX_FILE_BYTES = 1_048_576;
 export const BUILTIN_IGNORES = ['node_modules', 'dist', 'build', 'coverage', '.git', '.hg', '.svn', '.shitaku'];
 
-const SOURCE_EXTENSIONS = new Set(['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx']);
 const TEXT_FILES = new Set(['pnpm-workspace.yaml']);
 
 /**
  * @typedef {'too-large' | 'unreadable' | 'symlink' | 'invalid-json'} SkipReason
  * @typedef {{ path: string, reason: SkipReason }} Skipped
+ * @typedef {{
+ *   commit: string | null,
+ *   files: string[],
+ *   sources: Map<string, string>,
+ *   manifests: Map<string, Record<string, unknown> | { invalid: true }>,
+ *   tsconfigs: Map<string, unknown>,
+ *   skipped: Skipped[],
+ *   textFiles: Map<string, string>,
+ * }} Snapshot
  */
 
 /**
@@ -190,7 +199,7 @@ export function scan(root, { ignore, outRel }) {
 
   for (const path of files) {
     const base = baseOf(path);
-    const isSource = SOURCE_EXTENSIONS.has(extname(base));
+    const isSource = extractorFor(base) !== null;
     if (!isSource && base !== 'package.json' && base !== 'tsconfig.json' && !TEXT_FILES.has(base)) continue;
     const text = readGuarded(root, path, skipped);
     if (text === null) continue;

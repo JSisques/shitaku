@@ -77,6 +77,67 @@ export const nonGit: Tree = {
   '.shitaku/repo-map.json': '{}\n',
 };
 
+const SOURCE_EXTENSION = /\.(?:ts|mts|cts|tsx|js|mjs|cjs|jsx)$/;
+
+const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Build a snapshot from a virtual tree without touching the filesystem, so pure modules can be
+ * tested with in-memory input. Mirrors what `scan` returns for a non-git directory.
+ */
+export function snapshotFromTree(tree: Tree, overrides: Partial<Snapshot> = {}): Snapshot {
+  const snapshot: Snapshot = {
+    commit: null,
+    files: Object.keys(tree).sort(compareCodeUnits),
+    sources: new Map(),
+    manifests: new Map(),
+    tsconfigs: new Map(),
+    skipped: [],
+    textFiles: new Map(),
+  };
+  for (const path of snapshot.files) {
+    const text = tree[path] ?? '';
+    const slash = path.lastIndexOf('/');
+    const dir = slash === -1 ? '.' : path.slice(0, slash);
+    const base = path.slice(slash + 1);
+    if (base === 'package.json') {
+      try {
+        snapshot.manifests.set(dir, JSON.parse(text) as Record<string, unknown>);
+      } catch {
+        snapshot.manifests.set(dir, { invalid: true });
+        snapshot.skipped.push({ path, reason: 'invalid-json' });
+      }
+    } else if (base === 'tsconfig.json') {
+      snapshot.tsconfigs.set(dir, JSON.parse(text) as unknown);
+    } else if (base === 'pnpm-workspace.yaml') {
+      snapshot.textFiles.set(path, text);
+    } else if (SOURCE_EXTENSION.test(base)) {
+      snapshot.sources.set(path, text);
+    }
+  }
+  return { ...snapshot, ...overrides };
+}
+
+export type RepoMapDocument = {
+  schema: string;
+  commit: string | null;
+  root: { packageName: string | null };
+  stack: Record<string, unknown>;
+  workspaces: { name: string | null; path: string }[];
+  commands: { packageManager: string | null; scripts: { path: string; name: string; command: string }[] };
+  entryPoints: unknown[];
+  tree: { path: string; files: number; totalFiles: number }[];
+  modules: { path: string; language: string; imports: unknown[]; exports: unknown[] }[];
+  graph: { edges: { from: string; to: string }[]; importedByCount: Record<string, number> };
+  conventions: Record<string, unknown>;
+  skipped: { path: string; reason: SkipReason }[];
+};
+
+export type BuildMapModule = {
+  buildRepoMap: (snapshot: Snapshot) => RepoMapDocument;
+  SCHEMA: string;
+};
+
 /** Write a virtual tree under `dir`, creating parent directories. */
 export async function writeTree(dir: string, files: Tree): Promise<void> {
   for (const [path, content] of Object.entries(files)) {
