@@ -28,6 +28,13 @@ type ProjectModule = {
     formatters: string[];
     bundlers: string[];
   };
+  detectConventions: (snapshot: Snapshot) => {
+    moduleSystem: string;
+    testFiles: { pattern: string | null; dirs: string[] };
+    relativeImportExtensions: string | null;
+    pathAliases: string[];
+    tsStrict: boolean | null;
+  };
   detectPackageManager: (snapshot: Snapshot) => string | null;
   detectCommands: (snapshot: Snapshot) => {
     packageManager: string | null;
@@ -452,5 +459,90 @@ describe('detectStack', () => {
       node: null,
       frameworks: [],
     });
+  });
+});
+
+describe('detectConventions', () => {
+  const conventions = (tree: Tree) => project.detectConventions(snapshotFromTree(tree));
+  const typeModule = { 'package.json': pkg({ type: 'module' }) };
+  const typeCommonjs = { 'package.json': pkg({ type: 'commonjs' }) };
+
+  it('describes a simple app', () => {
+    expect(conventions(simpleApp)).toEqual({
+      moduleSystem: 'esm',
+      testFiles: { pattern: 'test', dirs: ['test'] },
+      relativeImportExtensions: null,
+      pathAliases: ['@/*'],
+      tsStrict: true,
+    });
+  });
+
+  it.each([
+    ['type module with .ts and .js', { ...typeModule, 'a.ts': '', 'b.js': '' }, 'esm'],
+    ['type commonjs with .ts and .js', { ...typeCommonjs, 'a.ts': '', 'b.js': '' }, 'commonjs'],
+    ['no type field with .js only', { 'a.js': '' }, 'commonjs'],
+    ['type module with .mjs only', { ...typeModule, 'a.mjs': '' }, 'esm'],
+    ['no type field with .mjs only', { 'a.mjs': '', 'b.mts': '' }, 'esm'],
+    ['type module with a .cjs file', { ...typeModule, 'a.js': '', 'b.cjs': '' }, 'mixed'],
+    ['no type field with .mjs and .js', { 'a.mjs': '', 'b.js': '' }, 'mixed'],
+    ['type module and no sources', { ...typeModule, 'README.md': '' }, 'esm'],
+    ['no type field and no sources', { 'README.md': '' }, 'commonjs'],
+  ])('derives moduleSystem for %s', (_label, tree, expected) => {
+    expect(conventions(tree).moduleSystem).toBe(expected);
+  });
+
+  it.each([
+    ['test files only', { 'src/a.test.ts': '', 'src/b.test.tsx': '' }, 'test'],
+    ['spec files only', { 'src/a.spec.ts': '', 'src/b.spec.js': '' }, 'spec'],
+    ['both kinds', { 'src/a.test.ts': '', 'lib/b.spec.ts': '' }, 'mixed'],
+    ['neither', { 'src/a.ts': '', 'src/testing.ts': '' }, null],
+  ])('derives the test file pattern for %s', (_label, tree, expected) => {
+    expect(conventions(tree).testFiles.pattern).toBe(expected);
+  });
+
+  it('lists test directories: the shallowest test-like segment, else the file directory', () => {
+    const tree: Tree = {
+      'test/a.test.ts': '',
+      'test/deep/b.test.ts': '',
+      'packages/p/__tests__/c.test.ts': '',
+      'src/feature/d.spec.ts': '',
+      'src/feature/e.spec.ts': '',
+    };
+    expect(conventions(tree).testFiles).toEqual({
+      pattern: 'mixed',
+      dirs: ['packages/p/__tests__', 'src/feature', 'test'],
+    });
+  });
+
+  it('has no test directories when there are no test files', () => {
+    expect(conventions({ 'src/a.ts': '' }).testFiles).toEqual({ pattern: null, dirs: [] });
+  });
+
+  it('takes sorted path aliases from the root and workspace tsconfigs', () => {
+    const tree: Tree = {
+      'package.json': pkg({ workspaces: ['pkgs/*'] }),
+      'tsconfig.json': JSON.stringify({ compilerOptions: { paths: { '~/*': ['src/*'], '@app/*': ['app/*'] } } }),
+      'pkgs/a/package.json': pkg({ name: 'a' }),
+      'pkgs/a/tsconfig.json': JSON.stringify({ compilerOptions: { paths: { '@app/*': ['x/*'], '#a': ['a.ts'] } } }),
+      'other/tsconfig.json': JSON.stringify({ compilerOptions: { paths: { 'ignored/*': ['*'] } } }),
+    };
+    expect(conventions(tree).pathAliases).toEqual(['#a', '@app/*', '~/*']);
+    expect(conventions({ 'tsconfig.json': '{}' }).pathAliases).toEqual([]);
+  });
+
+  it.each([
+    ['strict true', JSON.stringify({ compilerOptions: { strict: true } }), true],
+    ['strict false', JSON.stringify({ compilerOptions: { strict: false } }), false],
+    ['strict unset', JSON.stringify({ compilerOptions: {} }), null],
+    ['strict not a boolean', JSON.stringify({ compilerOptions: { strict: 'yes' } }), null],
+  ])('reads tsStrict from the root tsconfig (%s)', (_label, tsconfig, expected) => {
+    expect(conventions({ 'tsconfig.json': tsconfig }).tsStrict).toBe(expected);
+  });
+
+  it('gives tsStrict null without a usable root tsconfig and leaves relativeImportExtensions null', () => {
+    const snapshot = snapshotFromTree({ 'a.ts': '' });
+    snapshot.tsconfigs.set('.', null);
+    expect(project.detectConventions(snapshot)).toMatchObject({ tsStrict: null, relativeImportExtensions: null });
+    expect(conventions({ 'a.ts': '' }).tsStrict).toBeNull();
   });
 });

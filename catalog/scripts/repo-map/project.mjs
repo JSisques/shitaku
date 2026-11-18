@@ -409,3 +409,72 @@ export function detectStack(snapshot) {
     bundlers: toolLabels(dependencies, BUNDLER_DEPENDENCIES, configFiles, BUNDLER_CONFIGS),
   };
 }
+
+const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
+const TEST_DIRECTORIES = new Set(['test', 'tests', '__tests__', 'spec', 'specs']);
+
+/**
+ * `esm`, `commonjs` or `mixed`, the way Node reads file extensions: `.mjs` and `.mts` are
+ * ES modules, `.cjs` and `.cts` are CommonJS, and the other extensions follow the root `type`.
+ * @param {Snapshot} snapshot
+ */
+function moduleSystem(snapshot) {
+  const followsType = manifestAt(snapshot, '.')?.['type'] === 'module' ? 'esm' : 'commonjs';
+  const systems = new Set();
+  for (const path of snapshot.sources.keys()) {
+    const extension = path.slice(path.lastIndexOf('.'));
+    if (extension === '.mjs' || extension === '.mts') systems.add('esm');
+    else if (extension === '.cjs' || extension === '.cts') systems.add('commonjs');
+    else systems.add(followsType);
+  }
+  if (systems.size > 1) return 'mixed';
+  return [...systems][0] ?? followsType;
+}
+
+/**
+ * @param {Snapshot} snapshot
+ * @returns {{ pattern: 'test' | 'spec' | 'mixed' | null, dirs: string[] }}
+ */
+function testFiles(snapshot) {
+  const kinds = new Set();
+  const dirs = new Set();
+  for (const path of snapshot.files) {
+    const kind = TEST_FILE.exec(path.slice(path.lastIndexOf('/') + 1))?.[1];
+    if (kind === undefined) continue;
+    kinds.add(kind);
+    const segments = path.split('/').slice(0, -1);
+    const marker = segments.findIndex((segment) => TEST_DIRECTORIES.has(segment));
+    dirs.add(segments.slice(0, marker === -1 ? segments.length : marker + 1).join('/') || '.');
+  }
+  const pattern = kinds.size > 1 ? 'mixed' : kinds.has('test') ? 'test' : kinds.has('spec') ? 'spec' : null;
+  return { pattern, dirs: [...dirs].sort(compare) };
+}
+
+/**
+ * Keys of `compilerOptions.paths` over the root and workspace tsconfigs.
+ * @param {Snapshot} snapshot
+ */
+function pathAliases(snapshot) {
+  const aliases = new Set();
+  for (const dir of ['.', ...detectWorkspaces(snapshot).map((workspace) => workspace.path)]) {
+    const paths = asRecord(asRecord(asRecord(snapshot.tsconfigs.get(dir))?.['compilerOptions'])?.['paths']);
+    for (const alias of Object.keys(paths ?? {})) aliases.add(alias);
+  }
+  return [...aliases].sort(compare);
+}
+
+/**
+ * Conventions read from manifests, tsconfig and file names. `relativeImportExtensions` needs
+ * the extracted imports and is filled in by a later stage, so it is null here.
+ * @param {Snapshot} snapshot
+ */
+export function detectConventions(snapshot) {
+  const strict = asRecord(asRecord(snapshot.tsconfigs.get('.'))?.['compilerOptions'])?.['strict'];
+  return {
+    moduleSystem: moduleSystem(snapshot),
+    testFiles: testFiles(snapshot),
+    relativeImportExtensions: null,
+    pathAliases: pathAliases(snapshot),
+    tsStrict: typeof strict === 'boolean' ? strict : null,
+  };
+}
