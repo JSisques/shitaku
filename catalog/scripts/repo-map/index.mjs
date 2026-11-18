@@ -6,7 +6,7 @@
  * optional. Exit 0 when written, 2 for CLI, IO or fatal failures.
  */
 import { mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from './args.mjs';
 import { buildRepoMap } from './build-map.mjs';
 import { renderJson } from './render-json.mjs';
@@ -15,6 +15,27 @@ import { scan } from './scan.mjs';
 
 const JSON_FILE = 'repo-map.json';
 const MARKDOWN_FILE = 'repo-map.md';
+
+/**
+ * Resolve symlinks in the deepest ancestor of `path` that exists, then re-append the rest, so an
+ * output directory reached through a symlinked path compares equal to the real root.
+ * @param {string} path absolute
+ */
+function realpathOfExisting(path) {
+  /** @type {string[]} */
+  const rest = [];
+  let current = path;
+  for (;;) {
+    try {
+      return join(realpathSync(current), ...rest.reverse());
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return path;
+      rest.push(basename(current));
+      current = parent;
+    }
+  }
+}
 
 /**
  * The output directory relative to the root as a POSIX path (`''` for the root itself), or
@@ -47,7 +68,7 @@ function writeAtomic(target, text) {
 function main() {
   const options = parseArgs(process.argv.slice(2));
   const root = realpathSync(process.cwd());
-  const outDir = resolve(root, options.out);
+  const outDir = realpathOfExisting(resolve(root, options.out));
 
   const snapshot = scan(root, { ignore: options.ignore, outRel: outputRelative(root, outDir) });
   const map = buildRepoMap(snapshot);

@@ -1,5 +1,5 @@
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { mkdir, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   aliases,
@@ -110,6 +110,27 @@ describe('repo-map CLI', () => {
     const paths = (await readMap(dir)).modules.map((m) => m.path);
     expect(paths).not.toContain('gen/a.ts');
     expect(paths).toContain('src/gen/b.ts');
+  });
+
+  it.each([
+    ['an absolute path through a symlink', (link: string) => join(link, 'mm')],
+    ['a relative path through a symlink', (link: string) => `../${basename(link)}/mm`],
+  ])('excludes its own output reached through %s', async (_label, outFor) => {
+    const dir = await project(simpleApp);
+    const link = join(dirname(dir), `${basename(dir)}-lnk`);
+    await symlink(dir, link);
+    try {
+      await run(dir, ['--out', outFor(link)]);
+      const first = await readFile(join(dir, 'mm', 'repo-map.json'));
+      expect((await run(dir, ['--out', outFor(link)])).code).toBe(0);
+      const second = await readFile(join(dir, 'mm', 'repo-map.json'));
+      expect(second.equals(first)).toBe(true);
+      expect((JSON.parse(second.toString('utf8')) as RepoMapDocument).tree.map((entry) => entry.path)).not.toContain(
+        'mm',
+      );
+    } finally {
+      await rm(link, { force: true });
+    }
   });
 
   it('is stable when --out is the repository root itself', async () => {
