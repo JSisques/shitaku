@@ -263,6 +263,95 @@ describe('bundled catalog', () => {
     });
   });
 
+  it('ships pr-creator as a registered loadable bundled agent', async () => {
+    const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
+      items: { agents?: unknown };
+    };
+    expect(index.items.agents).toEqual(['pr-creator']);
+
+    const entries = readdirSync(join(catalogRoot, 'agents'))
+      .filter((name) => !name.startsWith('.'))
+      .sort();
+    expect(entries).toEqual(['pr-creator.md']);
+
+    const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
+    expect(catalog.issues).toEqual([]);
+    expect(catalog.agents.map((a) => a.name)).toEqual(['pr-creator']);
+    expect(catalog.agents[0]?.description.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the pr-creator agent content contract', () => {
+    const raw = readFileSync(join(catalogRoot, 'agents', 'pr-creator.md'), 'utf8');
+    const [, frontmatter = '', body = ''] = raw.split(/^---\r?\n|\r?\n---\r?\n/);
+    const lines = frontmatter.split(/\r?\n/).filter((line) => line.length > 0);
+    expect(lines).toHaveLength(5);
+    expect(lines[0]).toBe('name: pr-creator');
+    const descriptionLine = lines.find((line) => line.startsWith('description:')) ?? '';
+    const description = descriptionLine.slice('description:'.length).trim();
+    expect(description.length).toBeGreaterThan(0);
+    expect(description).not.toMatch(/: |['"|]/);
+    expect(lines.filter((line) => line.startsWith('skills:'))).toEqual(['skills:']);
+    expect(lines.filter((line) => /^\s+- /.test(line))).toEqual(['  - pr-writing']);
+    expect(lines.filter((line) => line.startsWith('tools:'))).toHaveLength(1);
+    expect(frontmatter).not.toMatch(/[>|]\s*$/m);
+
+    const toolsLine = lines.find((line) => line.startsWith('tools:')) ?? '';
+    const tools = toolsLine
+      .slice('tools:'.length)
+      .split(',')
+      .map((tool) => tool.trim());
+    const mcpTools = [
+      'list_branches',
+      'list_commits',
+      'get_commit',
+      'get_file_contents',
+      'list_pull_requests',
+      'issue_read',
+      'list_label',
+      'pull_request_read',
+      'create_pull_request',
+      'update_pull_request',
+    ].map((tool) => `mcp__github__${tool}`);
+    expect([...tools].sort()).toEqual(['Glob', 'Grep', 'Read', ...mcpTools].sort());
+    for (const tool of tools.filter((t) => t.startsWith('mcp__'))) {
+      expect(tool).toMatch(/^mcp__github__[a-z_]+$/);
+    }
+    for (const forbidden of [
+      'Bash',
+      'Write',
+      'Edit',
+      '*',
+      'merge',
+      'create_branch',
+      'push_files',
+      'create_or_update_file',
+    ]) {
+      expect(toolsLine).not.toContain(forbidden);
+    }
+
+    for (const required of [
+      'pr-writing',
+      'mcp__github__create_pull_request',
+      'mcp__github__update_pull_request',
+      'CONFIRMED: create pull request',
+      'CONFIRMED: update pull request #',
+      'pushed',
+      'Not discovered',
+      'draft: false',
+      'Never set `state`',
+      '`maintainer_can_modify`',
+      'unverified',
+      'Change `draft` only if',
+      'not supported',
+      'Before calling it, confirm the head exists on the remote',
+    ]) {
+      expect(body).toContain(required);
+    }
+    expect(body).not.toMatch(/\b(?:git|gh) (?:log|diff|push|pr|status|commit|symbolic-ref|repo)\b/);
+    expect(raw).not.toMatch(/shitaku/i);
+    expect(raw).not.toContain('Co-Authored-By');
+  });
+
   it('documents scripts in README with generated markers and shitaku run', () => {
     const readme = readFileSync(join(catalogRoot, '..', 'README.md'), 'utf8');
     expect(readme).toContain('<!-- catalog:scripts:start -->');

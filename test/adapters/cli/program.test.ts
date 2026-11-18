@@ -50,10 +50,7 @@ function fakePrompter(
       calls.push('commands'),
       Promise.resolve((script.commands as string[] | undefined) ?? unscripted('commands'))
     ),
-    selectAgents: () => (
-      calls.push('agents'),
-      Promise.resolve((script.agents as string[] | undefined) ?? unscripted('agents'))
-    ),
+    selectAgents: () => (calls.push('agents'), Promise.resolve((script.agents as string[] | undefined) ?? [])),
     selectHooks: () => (
       calls.push('hooks'),
       Promise.resolve((script.hooks as string[] | undefined) ?? unscripted('hooks'))
@@ -210,7 +207,7 @@ describe('runCli', () => {
   it('prompts for MCPs, scope and confirmation interactively', async () => {
     usePrompter({ mcps: ['context7'], skills: [], scripts: [], scope: 'project', confirm: true });
     expect(await run('init')).toBe(0);
-    expect(calls).toEqual(['mcps', 'skills', 'scripts', 'scope', 'confirm']);
+    expect(calls).toEqual(['mcps', 'skills', 'scripts', 'agents', 'scope', 'confirm']);
     expect(Object.keys(parseDoc(await readFile(mcpFile(), 'utf8')).mcpServers)).toEqual(['context7']);
   });
 
@@ -314,7 +311,7 @@ describe('runCli', () => {
     it('prompts for MCPs, skills, scope and confirmation, then installs the skill', async () => {
       usePrompter({ mcps: [], skills: ['example-skill'], scripts: [], scope: 'project', confirm: true });
       expect(await run('init')).toBe(0);
-      expect(calls).toEqual(['mcps', 'skills', 'scripts', 'scope', 'confirm']);
+      expect(calls).toEqual(['mcps', 'skills', 'scripts', 'agents', 'scope', 'confirm']);
       expect(await readFile(skillFile(), 'utf8')).toBe(await bundled());
       await expect(readFile(mcpFile(), 'utf8')).rejects.toThrow();
     });
@@ -1375,9 +1372,10 @@ describe('runCli', () => {
 
       it('lists the bundled catalog with a header per kind', async () => {
         expect(await run('list')).toBe(0);
-        expect(out.filter((l) => !l.startsWith(' '))).toEqual(['mcps:', 'profiles:', 'scripts:', 'skills:']);
+        expect(out.filter((l) => !l.startsWith(' '))).toEqual(['agents:', 'mcps:', 'profiles:', 'scripts:', 'skills:']);
         expect(out).toContainEqual(expect.stringMatching(/^ {2}github\s+\S/));
         expect(out).toContainEqual(expect.stringMatching(/^ {2}complexity\s+\S/));
+        expect(out).toContainEqual(expect.stringMatching(/^ {2}pr-creator\s+\S/));
       });
     });
 
@@ -1866,7 +1864,7 @@ describe('runCli', () => {
     ])('hides the banner with --no-banner %s', async (_label, args) => {
       interactive();
       expect(await run(...args)).toBe(0);
-      expect(calls).toEqual(['mcps', 'skills', 'scripts', 'scope', 'confirm']);
+      expect(calls).toEqual(['mcps', 'skills', 'scripts', 'agents', 'scope', 'confirm']);
       expect(shown()).not.toContain(art());
     });
 
