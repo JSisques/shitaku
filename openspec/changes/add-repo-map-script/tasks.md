@@ -242,19 +242,19 @@ Prerequisite: PR 2 merged to main.
 
 ## Phase 3.A: Renderer
 
-- [ ] 3.1 **`render-markdown.mjs` sections and ordering** (commit `feat(repo-map): render the Markdown digest`).
+- [x] 3.1 **`render-markdown.mjs` sections and ordering** [4fa499f] (commit `feat(repo-map): render the Markdown digest`).
   - Files: `test/catalog/scripts/repo-map/render-markdown.test.ts`, `catalog/scripts/repo-map/render-markdown.mjs`, bundled-catalog file list.
   - RED: header with schema, commit (`none` when null), package and a pointer to `repo-map.json`; sections in order Stack, Commands, Workspaces, Entry points, Conventions, Tree (directories only, depth up to `maxDepth`), Modules; modules ordered by `importedByCount` descending then `path`; each block has a heading with the path and imported-by count, a `deps:` line of internal resolved imports, and one line per export signature; a small repo has no omission note; output is a pure function (same input gives identical string); ends with a trailing newline.
   - GREEN. Checks: C. Spec: Under cap.
 
-- [ ] 3.2 **Cap and truncation stages** (commit `feat(repo-map): cap the Markdown at about 8k tokens`).
+- [x] 3.2 **Cap and truncation stages** [1dcec21] (commit `feat(repo-map): cap the Markdown at about 8k tokens`).
   - Files: `test/catalog/scripts/repo-map/render-markdown.test.ts`, `catalog/scripts/repo-map/render-markdown.mjs`.
   - RED: `MAX_TOKENS = 8000`, `CHARS_PER_TOKEN = 4` (32,000 chars including the note); stage order: (1) collapse signatures to an `exports: a, b, c` names line, least important first (ascending `importedByCount`, then descending path); (2) lower tree depth one level at a time from `maxDepth` toward 1; (3) drop whole module blocks, least important first; (4) safety net cut at the last line boundary that fits; the `## Omitted` section states each stage's count and that `repo-map.json` is complete, with 512 chars reserved up front; a synthetic 2,000-module map gives `length <= 32000` and identical bytes on two renders; fixed sections alone over budget hit stage 4; measure blocks once (no re-render loop; assert completion time under a generous bound).
   - GREEN. Checks: C. Spec: Over cap truncation, Tree reduction after signatures, JSON stays complete, Deterministic truncation.
 
 ## Phase 3.B: CLI and metadata
 
-- [ ] 3.3 **`--format markdown|both`, `--max-depth`, default `both`** (commit `feat(repo-map): write Markdown and default to both formats`).
+- [x] 3.3 **`--format markdown|both`, `--max-depth`, default `both`** [5d1f2bf] (commit `feat(repo-map): write Markdown and default to both formats`).
   - Files: `test/catalog/scripts/repo-map/args.test.ts`, `test/catalog/scripts/repo-map.test.ts`, `catalog/scripts/repo-map/args.mjs`, `catalog/scripts/repo-map/index.mjs`, `catalog/scripts/repo-map/script.json`, regenerated README and website pages.
   - RED: args default `format: 'both'`, `maxDepth: 4`; `--max-depth 0`, `abc`, `-1`, `1.5` exit 2; spawn: default writes both files; `--format json` writes only JSON and `--format markdown` only Markdown (an unselected file is neither written nor deleted, so a pre-existing one survives); `--out maps`; bad argument writes no files; `--max-depth 2` limits only the Markdown tree and JSON `tree` stays full depth; two runs byte-identical for both files, including a second run that sees the first run's output; truncated Markdown leaves the JSON complete; render-all-before-write (a render failure leaves old files untouched).
   - GREEN: update `script.json` args (`--format json|markdown|both`, `--max-depth`) and the output description. Run `docs:catalog`, `docs:website-catalog`, `docs:catalog:check`.
@@ -262,12 +262,12 @@ Prerequisite: PR 2 merged to main.
 
 ## Phase 3.C: Hand-written documentation
 
-- [ ] 3.4 **Update prose that enumerates bundled scripts** (commit `docs(repo-map): list repo-map in the hand-written docs`).
+- [x] 3.4 **Update prose that enumerates bundled scripts** [d0354b0] (commit `docs(repo-map): list repo-map in the hand-written docs`).
   - Files: `README.md` (prose outside generated markers), `website/src/content/docs/en/overview.md` and `website/src/content/docs/es/overview.md` (confirm the exact paths with `fd overview.md website`), `CONTRIBUTING.md`, `test/adapters/catalog/bundled-catalog.test.ts` (README assertion).
   - RED: extend the README/docs assertions in `bundled-catalog.test.ts` (and any existing doc guard such as `test/tooling.test.ts`; check with `rg -n "duplication" test`) so each hand-written enumeration of `complexity`, `dead-code`, `duplication` must also contain `repo-map`; observe RED, then GREEN by editing the prose. Spanish text is neutral/professional; docs say "no timestamps, deterministic, `.shitaku/` output, git optional".
   - Checks: C plus `docs:catalog:check`. Spec: Prose updated, Gitignore untouched (documented: the script never edits `.gitignore`).
 
-- [ ] 3.5 **Slice 3 closure and change verification.** Run C and docs checks; run the script on this repository and verify `.shitaku/repo-map.md` is within 32,000 chars and states omissions when applicable; confirm every spec scenario has a passing test (build a scenario-to-test map for `sdd-verify`); record evidence, `review assess` outcome, and prepare PR 3. Next step: `sdd-verify`, then `sdd-archive`.
+- [x] 3.5 **Slice 3 closure and change verification.** [docs(openspec) closure commit] Run C and docs checks; run the script on this repository and verify `.shitaku/repo-map.md` is within 32,000 chars and states omissions when applicable; confirm every spec scenario has a passing test (build a scenario-to-test map for `sdd-verify`); record evidence, `review assess` outcome, and prepare PR 3. Next step: `sdd-verify`, then `sdd-archive`.
 
 ---
 
