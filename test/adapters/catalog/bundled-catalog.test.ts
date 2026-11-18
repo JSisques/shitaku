@@ -44,6 +44,7 @@ const REPO_MAP_FILES = [
   'render-json.mjs',
   'scan.mjs',
   'script.json',
+  'tokenize-js.mjs',
 ];
 
 function expectSkillContract(

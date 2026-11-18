@@ -164,6 +164,20 @@ export type BuildMapModule = {
   SCHEMA: string;
 };
 
+export type Token = {
+  type: 'ident' | 'punct' | 'string' | 'template' | 'number';
+  value: string;
+  start: number;
+  end: number;
+  line: number;
+  /** True when whitespace or a comment sits between the previous token and this one. */
+  gap: boolean;
+};
+
+export type TokenizeModule = {
+  tokenize: (source: string) => Token[];
+};
+
 /** Write a virtual tree under `dir`, creating parent directories. */
 export async function writeTree(dir: string, files: Tree): Promise<void> {
   for (const [path, content] of Object.entries(files)) {
