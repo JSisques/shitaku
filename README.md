@@ -349,7 +349,21 @@ Before downgrading shitaku, run `shitaku undo` or `shitaku uninstall` for any in
 
 A rule is one Markdown file, `catalog/rules/<name>.md`, that Claude Code loads as an instruction. The file needs frontmatter with a single-line `name` equal to the file name (without `.md`, matching `^[a-z0-9][a-z0-9-]*$`) and a single-line `description`, plus a non-empty body. List it under `items.rules` in `catalog/catalog.json`; an unlisted or invalid file is skipped with a warning.
 
-Other frontmatter keys, such as Claude Code's own `paths`, may span several lines. They are copied verbatim and are not validated by shitaku, so malformed YAML in them is not detected; quote glob patterns in `paths`, because an unquoted pattern that starts with `*` or `{` is invalid YAML. The keys `check` and `severity` are reserved for a future rule-check feature and are rejected today.
+Other frontmatter keys, such as Claude Code's own `paths`, may span several lines. They are copied verbatim and are not validated by shitaku, so malformed YAML in them is not detected; quote glob patterns in `paths`, because an unquoted pattern that starts with `*` or `{` is invalid YAML.
+
+**Checks (declared, not enforced).** A rule may declare one optional `check` (a nested mapping) and a `severity` (`error` or `warn`; default `error` when a check is present). A `severity` without a `check` is invalid. Checks are declared but not enforced until #226: no command evaluates them yet, so they only have to validate when the catalog loads. An invalid `check` or `severity` skips only that rule, with a warning. The check `type` is one of `file-exists` (`path`, optional `each`), `contains-sections` (`files`, `exclude`, `sections`), `pattern-absent` (`files`, `exclude`, `pattern`, `ignore-case`, `message`), `max-lines` (`files`, `exclude`, `max`) and `tool` (`tool`, `args`; data only, never executed). Unknown fields are rejected.
+
+```yaml
+check:
+  type: pattern-absent
+  files: 'src/**/*.ts'
+  pattern: ':\s*any\b'
+severity: warn
+```
+
+- The `check` block reads a strict YAML subset, one level deep: kebab-case keys, plain, single-quoted or double-quoted scalars (double quotes only allow `\\ \" \/ \n \t`, so prefer single quotes for regular expressions), and block sequences of scalars. Flow collections, anchors, aliases, tags, block scalars, multi-line scalars, deeper nesting and duplicate keys are rejected.
+- Globs (`files`, `exclude`, `path`, `each`) are at most 256 characters, relative and POSIX, and support `*`, `?` and `**` only. Absolute paths, `..`, `./`, empty segments, a trailing `/`, braces, character classes, `!` and backslashes are rejected. Lists hold 1 to 32 entries.
+- A `pattern` is a JavaScript regular expression of 1 to 200 characters. Backreferences, lookbehind and nested quantifiers such as `(a+)+` are rejected. Catalog checks are reviewed data at the same trust level as hooks, and these guards are defense in depth, not a security boundary.
 
 **Recommended rules.** A catalog can mark a starting set under `recommended.rules` in `catalog/catalog.json`. In the interactive prompt those rules start preselected and you can deselect any of them; `--rules` is always explicit and never adds the recommended set for you. The bundled catalog recommends `ask-when-unsure`, `conventional-commits`, `module-readme`, `no-secrets` and `tests-for-changes`.
 

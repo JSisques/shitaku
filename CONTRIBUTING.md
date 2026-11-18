@@ -249,7 +249,10 @@ Validation limits:
 
 - Only `name` and `description` are validated. Other keys, such as Claude Code's own `paths`, may span several lines, are copied verbatim and are not validated, so malformed nested YAML is not detected. Unknown keys pass through.
 - Quote glob patterns in `paths` (`- "src/**/*.ts"`): an unquoted pattern that starts with `*` or `{` is invalid YAML, and shitaku cannot catch it.
-- The keys `check` and `severity` are reserved for a future rule-check feature and are rejected today.
+- A rule may declare one `check` (a nested mapping) and a `severity` (`error` or `warn`, default `error` when a check is present); `severity` without `check` is invalid. Checks are declared but not enforced until #226: no command evaluates them yet. An invalid `check` or `severity` skips only that rule. Types: `file-exists`, `contains-sections`, `pattern-absent`, `max-lines` and `tool` (data only, never executed); unknown fields are rejected.
+- The `check` block reads a strict YAML subset one level deep: kebab-case keys, plain, single-quoted or double-quoted scalars (double quotes only allow `\\ \" \/ \n \t`; prefer single quotes for regular expressions) and block sequences of scalars. Flow collections, anchors, aliases, tags, block scalars, multi-line scalars, deeper nesting and duplicate keys are rejected.
+- Check globs are at most 256 characters, relative and POSIX, with `*`, `?` and `**` only (no absolute paths, `..`, `./`, braces, character classes, `!` or backslashes); lists hold 1 to 32 entries.
+- A check `pattern` is a JavaScript regular expression of 1 to 200 characters without backreferences, lookbehind or nested quantifiers such as `(a+)+`. Catalog checks are reviewed data at the same trust level as hooks; the guards are defense in depth, not a security boundary.
 - A `name` or `description` written as a block scalar (`|` or `>`) is rejected (single-line only).
 - Bundled rules stay at or below 1,500 bytes each and declare no `paths`; a test enforces both.
 

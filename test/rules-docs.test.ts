@@ -5,6 +5,10 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(import.meta.dirname, '..');
 const read = (file: string): string => readFileSync(join(ROOT, file), 'utf8');
 
+/** Checks are declared but no command evaluates them until the runner of #226 exists. */
+const NOT_ENFORCED = /declared but not enforced until #226/i;
+const NOT_ENFORCED_ES = /declaradas pero no se aplican hasta #226/i;
+
 /** Stable tokens of the rules docs; a minor rewording keeps them, deleting the note does not. */
 const NOTE: Record<string, Record<string, RegExp>> = {
   'README.md': {
@@ -16,10 +20,11 @@ const NOTE: Record<string, Record<string, RegExp>> = {
     'nested yaml limit': /not validated/i,
     'recommended preselected': /recommended[^\n]*preselected/i,
     'quote paths': /quote[^\n]*`paths`/i,
+    'checks not enforced': NOT_ENFORCED,
   },
   'CONTRIBUTING.md': {
     section: /^### Adding catalog items: rules$/m,
-    'reserved keys': /`check`[^\n]*`severity`[^\n]*reserved/i,
+    'checks not enforced': NOT_ENFORCED,
     'quote paths': /quote[^\n]*`paths`/i,
     'size cap': /1,500 bytes/,
     'recommended set': /`recommended\.rules`/,
@@ -29,11 +34,13 @@ const NOTE: Record<string, Record<string, RegExp>> = {
     section: /^## Rules safety$/m,
     '--source trust': /Rules from a `--source` folder/,
     downgrade: /before downgrading/i,
+    'checks not enforced': NOT_ENFORCED,
   },
   'website/src/content/docs/es/security.md': {
     section: /^## Seguridad de las reglas$/m,
     '--source trust': /reglas de una carpeta `--source`/i,
     downgrade: /bajar de versión/i,
+    'checks not enforced': NOT_ENFORCED_ES,
   },
   'website/src/content/docs/en/catalog/overview.md': { rules: /catalog\/rules\/<name>\.md/ },
   'website/src/content/docs/es/catalog/overview.md': { rules: /catalog\/rules\/<name>\.md/ },
@@ -72,6 +79,15 @@ describe('rules docs', () => {
     ['website/src/content/docs/es/cli/commands.md', /agente, regla o hook instalado/],
   ])('lists rules among the kinds in %s (%s)', (file, pattern) => {
     expect(read(file)).toMatch(pattern);
+  });
+
+  it.each([
+    'README.md',
+    'CONTRIBUTING.md',
+    'website/src/content/docs/en/security.md',
+    'website/src/content/docs/es/security.md',
+  ])('does not call check or severity reserved in %s', (file) => {
+    expect(read(file)).not.toMatch(/reserved|reservad/i);
   });
 
   it('no longer claims the CLI cannot install rules', () => {
