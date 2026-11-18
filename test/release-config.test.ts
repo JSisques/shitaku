@@ -17,6 +17,11 @@ describe('Node floor', () => {
     expect(pkg.engines.node).toBe('>=22.18');
   });
 
+  it('aligns website engines.node with the Node floor', () => {
+    const pkg = JSON.parse(read('website/package.json')) as { engines: { node: string } };
+    expect(pkg.engines.node).toBe('>=22.18');
+  });
+
   it('pins .nvmrc at or above the engines floor', () => {
     const [major = 0, minor = 0] = read('.nvmrc').trim().replace(/^v/, '').split('.').map(Number);
     expect(major > 22 || (major === 22 && minor >= 18)).toBe(true);
