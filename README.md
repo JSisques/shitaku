@@ -9,7 +9,7 @@
   <a href="https://www.npmjs.com/package/@jsisques/shitaku"><img alt="npm downloads" src="https://img.shields.io/npm/dm/@jsisques/shitaku" /></a>
   <a href="https://github.com/JSisques/shitaku/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/JSisques/shitaku/actions/workflows/ci.yml/badge.svg" /></a>
   <a href="https://jsisques.github.io/shitaku/en/"><img alt="Website" src="https://img.shields.io/badge/website-docs-0ea5e9" /></a>
-  <a href="package.json"><img alt="Node" src="https://img.shields.io/badge/node-%3E%3D22.13-339933?logo=node.js&logoColor=white" /></a>
+  <a href="package.json"><img alt="Node" src="https://img.shields.io/badge/node-%3E%3D22.18-339933?logo=node.js&logoColor=white" /></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
   <a href="CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" /></a>
 </p>
@@ -22,7 +22,7 @@
 
 ## Quickstart
 
-Requires Node `>=22.13`.
+Requires Node `>=22.18`.
 
 ```sh
 # One-off (no install)
@@ -259,7 +259,7 @@ Limits: skills are copied as plain files, so shitaku does not run, lint or sandb
 
 ### Scripts
 
-A script is a directory `catalog/scripts/<name>/` with `index.mjs` (ESM entry, Node `>=22.13`) and `script.json` metadata. `script.json` requires `name` (equal to the directory name, matching `^[a-z0-9][a-z0-9-]*$`) and a non-empty `description`. Optional fields: `tools` (CLI binaries the script expects), `args`, `output`, and `exitCodes`. List the script under `items.scripts` in `catalog/catalog.json`. Unlisted or invalid scripts are skipped with a warning (path-escaping names fail the whole catalog).
+A script is a directory `catalog/scripts/<name>/` with `index.mjs` (ESM entry, Node `>=22.18`) and `script.json` metadata. `script.json` requires `name` (equal to the directory name, matching `^[a-z0-9][a-z0-9-]*$`) and a non-empty `description`. Optional fields: `tools` (CLI binaries the script expects), `args`, `output`, and `exitCodes`. List the script under `items.scripts` in `catalog/catalog.json`. Unlisted or invalid scripts are skipped with a warning (path-escaping names fail the whole catalog).
 
 Install roots (never agent skill dirs):
 

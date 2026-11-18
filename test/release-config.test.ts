@@ -11,6 +11,18 @@ function read(path: string): string {
   return readFileSync(join(ROOT, path), 'utf8');
 }
 
+describe('Node floor', () => {
+  it('declares a valid engines.node range of >=22.18', () => {
+    const pkg = JSON.parse(read('package.json')) as { engines: { node: string } };
+    expect(pkg.engines.node).toBe('>=22.18');
+  });
+
+  it('pins .nvmrc at or above the engines floor', () => {
+    const [major = 0, minor = 0] = read('.nvmrc').trim().replace(/^v/, '').split('.').map(Number);
+    expect(major > 22 || (major === 22 && minor >= 18)).toBe(true);
+  });
+});
+
 describe('ci.yml reuse contract', () => {
   const ci = read('.github/workflows/ci.yml');
 

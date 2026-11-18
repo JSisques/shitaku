@@ -2,7 +2,7 @@ schema: spec-driven
 context: |
   Project: shitaku (npm package @jsisques/shitaku).
   Purpose: CLI that installs portable AI agent setups (skills, MCPs, profiles) via npx/pnpm.
-  Stack: Node >=22.13, TypeScript (strict ESM NodeNext; package typescript 6 + typescript-native 7 for build/typecheck),
+  Stack: Node >=22.18, TypeScript (strict ESM NodeNext; package typescript 6 + typescript-native 7 for build/typecheck),
   pnpm, Vitest 5, commander, @clack/prompts, zod.
   Architecture: hexagonal under src/ — domain, ports, application, adapters/{catalog,claude-code,cli,fs};
   composition root src/main.ts. Boundaries enforced by test/architecture.test.ts.
@@ -15,7 +15,7 @@ strict_tdd_note: >
   Single in-scope project at "." with workspace-level test command "pnpm test" (vitest run).
 projects:
   - path: .
-    stack: Node >=22.13 ESM TypeScript CLI (pnpm)
+    stack: Node >=22.18 ESM TypeScript CLI (pnpm)
     test_command: pnpm test
     framework: vitest
     coverage_command: pnpm run test:coverage
