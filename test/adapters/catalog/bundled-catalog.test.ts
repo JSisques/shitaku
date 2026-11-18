@@ -32,6 +32,9 @@ function danglingSkills(agents: readonly { name: string; text: string }[], regis
   );
 }
 
+/** Exact flat file list of catalog/scripts/repo-map/. Update it in the same commit that adds a module. */
+const REPO_MAP_FILES = ['index.mjs', 'script.json'];
+
 function expectSkillContract(
   name: string,
   { required, forbidden }: { required: readonly string[]; forbidden: readonly (string | RegExp)[] },
@@ -194,22 +197,22 @@ describe('bundled catalog', () => {
     expect(index.items.commands).toEqual([]);
   });
 
-  it('ships complexity, dead-code, and duplication as registered and loadable bundled scripts', async () => {
+  it('ships complexity, dead-code, duplication, and repo-map as registered and loadable bundled scripts', async () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { scripts?: unknown };
     };
-    expect(index.items.scripts).toEqual(['complexity', 'dead-code', 'duplication']);
+    expect(index.items.scripts).toEqual(['complexity', 'dead-code', 'duplication', 'repo-map']);
 
     const scriptsDir = join(catalogRoot, 'scripts');
     expect(statSync(scriptsDir).isDirectory()).toBe(true);
     const entries = readdirSync(scriptsDir)
       .filter((name) => !name.startsWith('.'))
       .sort();
-    expect(entries).toEqual(['complexity', 'dead-code', 'duplication']);
+    expect(entries).toEqual(['complexity', 'dead-code', 'duplication', 'repo-map']);
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.scripts).toHaveLength(3);
+    expect(catalog.scripts).toHaveLength(4);
 
     const byName = Object.fromEntries(catalog.scripts.map((s) => [s.name, s]));
     expect(byName['complexity']).toMatchObject({
@@ -236,6 +239,12 @@ describe('bundled catalog', () => {
       tools: ['jscpd'],
     });
     expect(byName['duplication']?.files.map((f) => f.path).sort()).toEqual(['index.mjs', 'script.json']);
+
+    expect(byName['repo-map']).toMatchObject({
+      name: 'repo-map',
+      tools: [],
+    });
+    expect(byName['repo-map']?.files.map((f) => f.path).sort()).toEqual(REPO_MAP_FILES);
   });
 
   it('ships dead-code and duplication without script-root npm bootstrap artifacts', () => {
@@ -251,6 +260,20 @@ describe('bundled catalog', () => {
       expect(entries).not.toContain('package-lock.json');
       expect(entries).not.toContain('node_modules');
     }
+  });
+
+  it('ships repo-map as a flat set of modules without script-root npm bootstrap artifacts', () => {
+    const scriptDir = join(catalogRoot, 'scripts', 'repo-map');
+    expect(statSync(scriptDir).isDirectory()).toBe(true);
+
+    const entries = readdirSync(scriptDir)
+      .filter((name) => !name.startsWith('.'))
+      .sort();
+    expect(entries).toEqual(REPO_MAP_FILES);
+    expect(entries).not.toContain('package.json');
+    expect(entries).not.toContain('package-lock.json');
+    expect(entries).not.toContain('node_modules');
+    expect(entries).not.toContain('lib');
   });
 
   it('ships docs-writing, example-skill, pr-writing, product-owner and socratic-method as registered loadable bundled skills', async () => {
