@@ -4,7 +4,7 @@ Instructions for AI coding agents working on shitaku. For what the tool does and
 
 ## Overview
 
-shitaku (`@jsisques/shitaku`) is a Node CLI (ESM, TypeScript, Node >= 22.13, pnpm) that installs a portable AI agent setup (skills, MCP servers, profiles) from a catalog into an agent target. Subcommands: `init`, `undo`, `status`.
+shitaku (`@jsisques/shitaku`) is a Node CLI (ESM, TypeScript, Node >= 22.18, pnpm) that installs a portable AI agent setup (skills, MCP servers, profiles) from a catalog into an agent target. Subcommands: `init`, `undo`, `status`.
 
 ## Layout
 

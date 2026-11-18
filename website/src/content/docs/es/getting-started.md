@@ -5,7 +5,7 @@ description: Instala shitaku y ejecuta tu primer init.
 
 # Primeros pasos
 
-Requiere Node `>=22.13`.
+Requiere Node `>=22.18`.
 
 ```sh
 npx @jsisques/shitaku init

@@ -9,7 +9,7 @@ shitaku installs a curated AI agent setup (MCP servers and skills) for Claude Co
 
 ## Requirements
 
-- Node `>=22.13`
+- Node `>=22.18`
 
 ## One command
 

@@ -2,6 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as prettier from 'prettier';
+import { itemDescription } from './lib/frontmatter-description.mjs';
 
 const root = join(import.meta.dirname, '..');
 const catalogDir = join(root, 'catalog');
@@ -14,26 +15,6 @@ const endMarker = (section) => `<!-- catalog:${section}:end -->`;
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
-function frontmatterDescription(path, label) {
-  const text = readFileSync(path, 'utf8');
-  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? '';
-  const line = frontmatter.split(/\r?\n/).find((l) => l.startsWith('description:'));
-  if (!line) throw new Error(`${label} has no single-line description`);
-  return line
-    .slice('description:'.length)
-    .trim()
-    .replace(/^(['"])(.*)\1$/, '$2');
-}
-
-const skillDescription = (name) =>
-  frontmatterDescription(join(catalogDir, 'skills', name, 'SKILL.md'), `skills/${name}/SKILL.md`);
-
-const commandDescription = (name) =>
-  frontmatterDescription(join(catalogDir, 'commands', `${name}.md`), `commands/${name}.md`);
-
-const agentDescription = (name) =>
-  frontmatterDescription(join(catalogDir, 'agents', `${name}.md`), `agents/${name}.md`);
-
 function scriptDescription(name) {
   const meta = readJson(join(catalogDir, 'scripts', name, 'script.json'));
   if (typeof meta.description !== 'string' || meta.description.length === 0) {
@@ -41,8 +22,6 @@ function scriptDescription(name) {
   }
   return meta.description;
 }
-
-const ruleDescription = (name) => frontmatterDescription(join(catalogDir, 'rules', `${name}.md`), `rules/${name}.md`);
 
 const NOUN = {
   mcps: 'MCP servers',
@@ -56,12 +35,12 @@ const NOUN = {
 
 const DESCRIBE = {
   mcps: (name) => readJson(join(catalogDir, 'mcps', `${name}.json`)).description,
-  skills: skillDescription,
+  skills: (name) => itemDescription(catalogDir, 'skills', name),
   scripts: scriptDescription,
-  commands: commandDescription,
+  commands: (name) => itemDescription(catalogDir, 'commands', name),
   hooks: (name) => readJson(join(catalogDir, 'hooks', `${name}.json`)).description,
-  agents: agentDescription,
-  rules: ruleDescription,
+  agents: (name) => itemDescription(catalogDir, 'agents', name),
+  rules: (name) => itemDescription(catalogDir, 'rules', name),
 };
 
 function rows(section, items) {

@@ -7,12 +7,16 @@ on:
       - 'website/**'
       - 'catalog/**'
       - 'scripts/generate-website-catalog.mjs'
+      - 'scripts/lib/**'
+      - 'src/domain/catalog/frontmatter.ts'
       - '.github/workflows/website.yml'
   pull_request:
     paths:
       - 'website/**'
       - 'catalog/**'
       - 'scripts/generate-website-catalog.mjs'
+      - 'scripts/lib/**'
+      - 'src/domain/catalog/frontmatter.ts'
       - '.github/workflows/website.yml'
   workflow_dispatch:
 

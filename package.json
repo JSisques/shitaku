@@ -18,7 +18,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": "v26.10.0"
+    "node": ">=22.18"
   },
   "publishConfig": {
     "access": "public"

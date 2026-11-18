@@ -4,7 +4,7 @@ Thanks for helping. This guide covers local setup, adding catalog items (MCPs, s
 
 ## Local setup
 
-Requirements: Node `>=22.13` (`engines`; `.nvmrc` pins 22.22.1, which CI uses, and `nvm use` reads it) and pnpm. The pnpm version is pinned in the `packageManager` field of `package.json`. Run `corepack enable` once so it is used automatically (Node 25+ no longer bundles Corepack: run `npm i -g corepack` first). Without Corepack, `npm i -g pnpm@10` also works. `npm install` is not supported for development.
+Requirements: Node `>=22.18` (`engines`; `.nvmrc` pins 22.23.3, which CI uses, and `nvm use` reads it) and pnpm. The pnpm version is pinned in the `packageManager` field of `package.json`. Run `corepack enable` once so it is used automatically (Node 25+ no longer bundles Corepack: run `npm i -g corepack` first). Without Corepack, `npm i -g pnpm@10` also works. `npm install` is not supported for development.
 
 ```sh
 pnpm install
@@ -125,7 +125,7 @@ Examples: `catalog/mcps/github.json` (http with a secret header) and `catalog/mc
 ### Add a script
 
 1. Create `catalog/scripts/<name>/` with:
-   - `index.mjs` — ESM entry point (Node `>=22.13`). shitaku runs it with `process.execPath` and `shell:false`.
+   - `index.mjs` — ESM entry point (Node `>=22.18`). shitaku runs it with `process.execPath` and `shell:false`.
    - `script.json` — metadata. Required: `name` (must equal the directory name) and non-empty `description`. Optional: `tools` (binaries expected on PATH / `.bin`), `args`, `output`, `exitCodes`.
 2. Add the name to `items.scripts` in `catalog/catalog.json`:
 

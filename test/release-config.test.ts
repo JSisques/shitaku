@@ -11,6 +11,23 @@ function read(path: string): string {
   return readFileSync(join(ROOT, path), 'utf8');
 }
 
+describe('Node floor', () => {
+  it('declares a valid engines.node range of >=22.18', () => {
+    const pkg = JSON.parse(read('package.json')) as { engines: { node: string } };
+    expect(pkg.engines.node).toBe('>=22.18');
+  });
+
+  it('aligns website engines.node with the Node floor', () => {
+    const pkg = JSON.parse(read('website/package.json')) as { engines: { node: string } };
+    expect(pkg.engines.node).toBe('>=22.18');
+  });
+
+  it('pins .nvmrc at or above the engines floor', () => {
+    const [major = 0, minor = 0] = read('.nvmrc').trim().replace(/^v/, '').split('.').map(Number);
+    expect(major > 22 || (major === 22 && minor >= 18)).toBe(true);
+  });
+});
+
 describe('ci.yml reuse contract', () => {
   const ci = read('.github/workflows/ci.yml');
 
@@ -212,6 +229,16 @@ describe('website workflow isolation', () => {
     expect(website).toContain('catalog/**');
     expect(website).toContain('scripts/generate-website-catalog.mjs');
     expect(website).toContain('.github/workflows/website.yml');
+  });
+
+  it('watches the frontmatter reader and scripts lib in push and pull_request paths', () => {
+    const website = read('.github/workflows/website.yml');
+    const pushBlock = website.slice(website.indexOf('  push:'), website.indexOf('  pull_request:'));
+    const prBlock = website.slice(website.indexOf('  pull_request:'), website.indexOf('  workflow_dispatch:'));
+    for (const block of [pushBlock, prBlock]) {
+      expect(block).toContain("- 'src/domain/catalog/frontmatter.ts'");
+      expect(block).toContain("- 'scripts/lib/**'");
+    }
   });
 
   it('keeps ci.yml free of website build, install, and Pages deploy', () => {
