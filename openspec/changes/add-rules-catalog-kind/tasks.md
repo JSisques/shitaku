@@ -4,14 +4,14 @@ Strict TDD (`pnpm test`): every behavior task is RED (failing test) -> GREEN (mi
 
 ## Review Workload Forecast
 
-| Field | Value |
-|-------|-------|
+| Field                   | Value                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
 | Estimated changed lines | ~1800 total (additions + deletions, generated website pages excluded), 5 slices of ~350-380 |
-| 400-line budget risk | High |
-| Chained PRs recommended | Yes |
-| Suggested split | PR 1 -> PR 2 -> PR 3 -> PR 4 -> PR 5 |
-| Delivery strategy | ask-on-risk |
-| Chain strategy | stacked-to-main |
+| 400-line budget risk    | High                                                                                        |
+| Chained PRs recommended | Yes                                                                                         |
+| Suggested split         | PR 1 -> PR 2 -> PR 3 -> PR 4 -> PR 5                                                        |
+| Delivery strategy       | ask-on-risk                                                                                 |
+| Chain strategy          | stacked-to-main                                                                             |
 
 Decision needed before apply: Yes
 Chained PRs recommended: Yes
@@ -22,40 +22,40 @@ Decision note: strategy is already chosen (stacked-to-main, decisions are final)
 
 Branch and base per stacked-to-main (each PR targets the previous PR branch; the first targets `main`):
 
-| PR | Branch | Base |
-|----|--------|------|
-| 1 | `feat/rules-1-domain-catalog` | `main` |
-| 2 | `feat/rules-2-manifest-plan` | `feat/rules-1-domain-catalog` |
-| 3 | `feat/rules-3-apply-lifecycle` | `feat/rules-2-manifest-plan` |
-| 4 | `feat/rules-4-seed-docs-generators` | `feat/rules-3-apply-lifecycle` |
-| 5 | `feat/rules-5-cli-user-docs` | `feat/rules-4-seed-docs-generators` |
+| PR  | Branch                              | Base                                |
+| --- | ----------------------------------- | ----------------------------------- |
+| 1   | `feat/rules-1-domain-catalog`       | `main`                              |
+| 2   | `feat/rules-2-manifest-plan`        | `feat/rules-1-domain-catalog`       |
+| 3   | `feat/rules-3-apply-lifecycle`      | `feat/rules-2-manifest-plan`        |
+| 4   | `feat/rules-4-seed-docs-generators` | `feat/rules-3-apply-lifecycle`      |
+| 5   | `feat/rules-5-cli-user-docs`        | `feat/rules-4-seed-docs-generators` |
 
 Each child PR carries a dependency diagram marking itself with the pin marker, and states start, end, prior dependencies, follow-up and out-of-scope. Child diffs must show only their own unit; a polluted diff is a base bug (retarget/rebase).
 
 ### Suggested Work Units
 
-| Unit | Goal | Likely PR | Focused test command | Runtime harness | Rollback boundary |
-|------|------|-----------|----------------------|-----------------|-------------------|
-| 1 | Domain catalog: `parseRule`, schema, listing, loader, recommended validation | PR 1 | `pnpm vitest run test/domain/catalog test/adapters/catalog/folder-source.test.ts` | `list rules --source <temp catalog with one rule>` via the CLI test harness in `test/adapters/cli/program.test.ts` (rules appear; bundled catalog still empty) | `src/domain/catalog/rule.ts`, schema/listing/loader hunks, `test/helpers/rules.ts`; `rules: []` literals are harmless to keep |
-| 2 | Manifest kind, ownership, `ChangePlan.rules`, `rulesDir`, `planInit` rules | PR 2 | `pnpm vitest run test/domain/manifest.test.ts test/adapters/claude-code/target.test.ts test/application/init-mcps.test.ts` | N/A: plan is computed but never applied and no CLI flag exists; covered by application-level plan tests | manifest/plan/port/target/init-mcps plan hunks (inert without slice 3 and 5) |
-| 3 | Apply and lifecycle: apply, uninstall, installed-state, doctor, round trips | PR 3 | `pnpm vitest run test/application test/domain/plan/doctor-plan.test.ts` | Application-API round trip on the in-memory fs: install -> status -> edit -> uninstall refused -> `--force` -> undo (no CLI exposure yet) | `init-mcps` apply hunks, `uninstall-item.ts`, `installed-state.ts`, `doctor-plan.ts` map |
-| 4 | Seed rules (10) + `catalog.json` + generators + generated docs | PR 4 | `pnpm vitest run test/adapters/catalog/bundled-catalog.test.ts test/generators.test.ts` | `pnpm run docs:catalog --check` and `pnpm run build` then `node dist/main.js list rules` shows 10 rules | `catalog/rules/*.md`, `catalog.json` keys, generator hunks, generated pages |
-| 5 | CLI surface, interactive recommended set, user docs, manual smoke check | PR 5 | `pnpm vitest run test/adapters/cli test/rules-docs.test.ts` | `node dist/main.js init --rules no-secrets --scope project --yes` in a scratch dir, then manual Claude Code `/memory` check | `program.ts`, `clack-prompter.ts`, `prompter.ts` `selectRules`, docs hunks (revert hides the feature) |
+| Unit | Goal                                                                         | Likely PR | Focused test command                                                                                                       | Runtime harness                                                                                                                                                | Rollback boundary                                                                                                             |
+| ---- | ---------------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Domain catalog: `parseRule`, schema, listing, loader, recommended validation | PR 1      | `pnpm vitest run test/domain/catalog test/adapters/catalog/folder-source.test.ts`                                          | `list rules --source <temp catalog with one rule>` via the CLI test harness in `test/adapters/cli/program.test.ts` (rules appear; bundled catalog still empty) | `src/domain/catalog/rule.ts`, schema/listing/loader hunks, `test/helpers/rules.ts`; `rules: []` literals are harmless to keep |
+| 2    | Manifest kind, ownership, `ChangePlan.rules`, `rulesDir`, `planInit` rules   | PR 2      | `pnpm vitest run test/domain/manifest.test.ts test/adapters/claude-code/target.test.ts test/application/init-mcps.test.ts` | N/A: plan is computed but never applied and no CLI flag exists; covered by application-level plan tests                                                        | manifest/plan/port/target/init-mcps plan hunks (inert without slice 3 and 5)                                                  |
+| 3    | Apply and lifecycle: apply, uninstall, installed-state, doctor, round trips  | PR 3      | `pnpm vitest run test/application test/domain/plan/doctor-plan.test.ts`                                                    | Application-API round trip on the in-memory fs: install -> status -> edit -> uninstall refused -> `--force` -> undo (no CLI exposure yet)                      | `init-mcps` apply hunks, `uninstall-item.ts`, `installed-state.ts`, `doctor-plan.ts` map                                      |
+| 4    | Seed rules (10) + `catalog.json` + generators + generated docs               | PR 4      | `pnpm vitest run test/adapters/catalog/bundled-catalog.test.ts test/generators.test.ts`                                    | `pnpm run docs:catalog --check` and `pnpm run build` then `node dist/main.js list rules` shows 10 rules                                                        | `catalog/rules/*.md`, `catalog.json` keys, generator hunks, generated pages                                                   |
+| 5    | CLI surface, interactive recommended set, user docs, manual smoke check      | PR 5      | `pnpm vitest run test/adapters/cli test/rules-docs.test.ts`                                                                | `node dist/main.js init --rules no-secrets --scope project --yes` in a scratch dir, then manual Claude Code `/memory` check                                    | `program.ts`, `clack-prompter.ts`, `prompter.ts` `selectRules`, docs hunks (revert hides the feature)                         |
 
 ## Phase 1: Slice 1 - Domain catalog (PR 1, branch `feat/rules-1-domain-catalog`, base `main`)
 
 Start: no rule concept. Finish: `list rules` works against a `--source` catalog; bundled catalog still has no rules. Out of scope: manifest, plan, CLI flags, seed data.
 
-- [ ] 1.1 RED: create `test/helpers/rules.ts` (`ruleBytes`, `ruleItem` mirroring `test/helpers/agents.ts`) and `test/domain/catalog/rule.test.ts` covering: valid rule; name != stem; missing/empty/whitespace/opaque `name` and `description`; empty/whitespace body; scalar `paths`; nested `paths` list accepted; unknown key `futurefield: 1` passes through with bytes identical; `check` and `severity` rejected with `key '<key>' is reserved for rule checks (see #288)`; invalid stems `Naming`, `-x`, `a_b` rejected and `rule2` accepted. Fails (module missing). (catalog / Rule catalog entries; Opt-in nested frontmatter reader)
-- [ ] 1.2 GREEN: create `src/domain/catalog/rule.ts` with `RuleNameSchema`, `RuleItem` (with `recommended: boolean`), `RESERVED_RULE_KEYS`, `parseRule(stem, bytes)` using `readFrontmatter(..., { allowNested: true })`, returning `recommended: false`. Stays pure (no `fs`/`path`).
-- [ ] 1.3 RED: extend `test/domain/catalog/schema.test.ts`: `items.rules` defaults to `[]`; `recommended` defaults to `{ rules: [] }`; invalid rule name (`../evil`) in `items.rules` or `recommended.rules` fails naming the entry; old catalog without either key still parses; `ProfileSchema` accepts and rejects exactly as before. (catalog / Old catalog without rules; Invalid name in the index; Profiles unaffected)
-- [ ] 1.4 GREEN: modify `src/domain/catalog/schema.ts`: `items.rules` default `[]`, top-level `recommended: z.object({ rules: ... }).prefault({})`, `Catalog.rules: RuleItem[]`. Do not touch `ProfileSchema`.
-- [ ] 1.5 RED: extend `test/domain/catalog/listing.test.ts`: `listEntries` returns kind `rule` entries sorted with others; `list rules` filter returns only rules; `LIST_KINDS` includes `rules`. (catalog-list / Rules list shape; Kind filter)
-- [ ] 1.6 GREEN: modify `src/domain/catalog/listing.ts`: `LIST_KINDS` + `rules`, `EntryKind` + `rule`, `ENTRY_KIND.rules`, rules in `listEntries`.
-- [ ] 1.7 RED: extend `test/adapters/catalog/folder-source.test.ts` (temp catalog dirs): listed rule loads with bytes unchanged; listed ghost -> issue; unlisted `rules/x.md` -> issue; symlinked rule refused; invalid rule yields issue while valid rules stay usable; `recommended.rules` name flips `RuleItem.recommended` to true; unknown or failed recommended name -> `CatalogIssue { file: 'catalog.json', reason: "recommended rule '<name>' is not a loaded rule" }` and is dropped; rule subdirectories not scanned. (catalog / Rule catalog entries - Unlisted, ghost, or guarded)
-- [ ] 1.8 GREEN: modify `src/adapters/catalog/folder-source.ts`: `loadRules` via `loadFileItems('rules', '.md', ...)`, recommended validation + flag, `rules` in the returned catalog. `known` for profiles unchanged.
-- [ ] 1.9 GREEN (mechanical): add `rules: []` to every `Catalog` literal: run `rg -n "agents: \[\]" src test` and update each `Catalog` site (not yet `ChangePlan`); fix any typecheck fallout.
-- [ ] 1.10 REFACTOR + verify: `pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm test`; confirm `rg -n "ProfileSchema|resolveProfile" src` shows no diff and `rg -n "CLAUDE\.md" src` is empty.
+- [x] 1.1 RED: create `test/helpers/rules.ts` (`ruleBytes`, `ruleItem` mirroring `test/helpers/agents.ts`) and `test/domain/catalog/rule.test.ts` covering: valid rule; name != stem; missing/empty/whitespace/opaque `name` and `description`; empty/whitespace body; scalar `paths`; nested `paths` list accepted; unknown key `futurefield: 1` passes through with bytes identical; `check` and `severity` rejected with `key '<key>' is reserved for rule checks (see #288)`; invalid stems `Naming`, `-x`, `a_b` rejected and `rule2` accepted. Fails (module missing). (catalog / Rule catalog entries; Opt-in nested frontmatter reader)
+- [x] 1.2 GREEN: create `src/domain/catalog/rule.ts` with `RuleNameSchema`, `RuleItem` (with `recommended: boolean`), `RESERVED_RULE_KEYS`, `parseRule(stem, bytes)` using `readFrontmatter(..., { allowNested: true })`, returning `recommended: false`. Stays pure (no `fs`/`path`).
+- [x] 1.3 RED: extend `test/domain/catalog/schema.test.ts`: `items.rules` defaults to `[]`; `recommended` defaults to `{ rules: [] }`; invalid rule name (`../evil`) in `items.rules` or `recommended.rules` fails naming the entry; old catalog without either key still parses; `ProfileSchema` accepts and rejects exactly as before. (catalog / Old catalog without rules; Invalid name in the index; Profiles unaffected)
+- [x] 1.4 GREEN: modify `src/domain/catalog/schema.ts`: `items.rules` default `[]`, top-level `recommended: z.object({ rules: ... }).prefault({})`, `Catalog.rules: RuleItem[]`. Do not touch `ProfileSchema`.
+- [x] 1.5 RED: extend `test/domain/catalog/listing.test.ts`: `listEntries` returns kind `rule` entries sorted with others; `list rules` filter returns only rules; `LIST_KINDS` includes `rules`. (catalog-list / Rules list shape; Kind filter)
+- [x] 1.6 GREEN: modify `src/domain/catalog/listing.ts`: `LIST_KINDS` + `rules`, `EntryKind` + `rule`, `ENTRY_KIND.rules`, rules in `listEntries`.
+- [x] 1.7 RED: extend `test/adapters/catalog/folder-source.test.ts` (temp catalog dirs): listed rule loads with bytes unchanged; listed ghost -> issue; unlisted `rules/x.md` -> issue; symlinked rule refused; invalid rule yields issue while valid rules stay usable; `recommended.rules` name flips `RuleItem.recommended` to true; unknown or failed recommended name -> `CatalogIssue { file: 'catalog.json', reason: "recommended rule '<name>' is not a loaded rule" }` and is dropped; rule subdirectories not scanned. (catalog / Rule catalog entries - Unlisted, ghost, or guarded)
+- [x] 1.8 GREEN: modify `src/adapters/catalog/folder-source.ts`: `loadRules` via `loadFileItems('rules', '.md', ...)`, recommended validation + flag, `rules` in the returned catalog. `known` for profiles unchanged.
+- [x] 1.9 GREEN (mechanical): add `rules: []` to every `Catalog` literal: run `rg -n "agents: \[\]" src test` and update each `Catalog` site (not yet `ChangePlan`); fix any typecheck fallout.
+- [x] 1.10 REFACTOR + verify: `pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm test`; confirm `rg -n "ProfileSchema|resolveProfile" src` shows no diff and `rg -n "CLAUDE\.md" src` is empty.
 - [ ] 1.11 Commit work units (e.g. `feat(catalog): add rule parser and schema`, `feat(catalog): load and list rules with recommended flag`); open PR 1 against `main` with chain context.
 
 ## Phase 2: Slice 2 - Manifest and plan (PR 2, branch `feat/rules-2-manifest-plan`, base `feat/rules-1-domain-catalog`)
@@ -130,20 +130,20 @@ Start: data and lifecycle exist. Finish: feature live. Out of scope: checks/seve
 
 ## Spec Coverage Map
 
-| Spec requirement | Tasks |
-|------------------|-------|
-| catalog / Rule catalog entries | 1.1-1.8 |
-| catalog / Catalog layout and schema | 1.3-1.4, 4.2 |
-| catalog / Opt-in nested frontmatter reader | 1.1-1.2, 5.5-5.6 |
-| catalog-list / Rules list shape, Kind filter | 1.5-1.6, 5.1 |
-| rules-install / Rule install roots | 2.3-2.4, 3.1-3.2 |
-| rules-install / Plan classification | 2.5-2.6 |
-| rules-install / Conflict, dry-run, backup, stale-file protection | 3.1-3.2, 5.1-5.2 |
-| rules-install / Rule selection | 2.5-2.6, 5.1-5.2 |
-| rules-install / Interactive selection and recommended set | 1.7-1.8, 4.1-4.2, 5.3-5.4 |
-| rules-install / Undo of rules | 3.9 |
-| rules-install / Rule uninstall | 3.7-3.8 |
-| rules-install / Manifest backward compatibility and downgrade note | 2.1-2.2, 5.5-5.6 |
-| rules-install / Seed rules and documentation | 4.1-4.4, 5.5-5.6 |
-| install-status / Doctor findings, report, item states | 3.3-3.6 |
-| item-uninstall / Rule uninstall resolution, Command surface, Kind collision | 3.7-3.8, 5.1-5.2 |
+| Spec requirement                                                            | Tasks                     |
+| --------------------------------------------------------------------------- | ------------------------- |
+| catalog / Rule catalog entries                                              | 1.1-1.8                   |
+| catalog / Catalog layout and schema                                         | 1.3-1.4, 4.2              |
+| catalog / Opt-in nested frontmatter reader                                  | 1.1-1.2, 5.5-5.6          |
+| catalog-list / Rules list shape, Kind filter                                | 1.5-1.6, 5.1              |
+| rules-install / Rule install roots                                          | 2.3-2.4, 3.1-3.2          |
+| rules-install / Plan classification                                         | 2.5-2.6                   |
+| rules-install / Conflict, dry-run, backup, stale-file protection            | 3.1-3.2, 5.1-5.2          |
+| rules-install / Rule selection                                              | 2.5-2.6, 5.1-5.2          |
+| rules-install / Interactive selection and recommended set                   | 1.7-1.8, 4.1-4.2, 5.3-5.4 |
+| rules-install / Undo of rules                                               | 3.9                       |
+| rules-install / Rule uninstall                                              | 3.7-3.8                   |
+| rules-install / Manifest backward compatibility and downgrade note          | 2.1-2.2, 5.5-5.6          |
+| rules-install / Seed rules and documentation                                | 4.1-4.4, 5.5-5.6          |
+| install-status / Doctor findings, report, item states                       | 3.3-3.6                   |
+| item-uninstall / Rule uninstall resolution, Command surface, Kind collision | 3.7-3.8, 5.1-5.2          |

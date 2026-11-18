@@ -13,25 +13,25 @@
 
 ## Issue Scope vs Dependencies
 
-| Issue item                                         | Status                                                                 |
-| -------------------------------------------------- | ---------------------------------------------------------------------- |
-| Rule item schema (md + frontmatter name/description) | In scope now                                                         |
-| Catalog loader, list/status/doctor/uninstall/undo  | In scope now                                                           |
-| `init --rules` plus prompt, install to `.claude/rules` | In scope now                                                       |
-| Docs and initial rule texts                        | In scope now                                                           |
-| Deterministic `check` and severity `error|warn`    | No consumer yet (`shitaku new` gates, #226)                            |
-| Precedence catalog < team < project                | Only catalog and project layers exist (team config, #181)              |
-| Learned rules, router suggestions                  | Not existing (#228, #244)                                              |
-| Rules in profiles                                  | Do not touch `ProfileSchema` / `resolveProfile` (#285 removes profiles) |
-| `shitaku add rule <name>`                          | Needs a new `add` command (none exists)                                |
+| Issue item                                             | Status                                                                  |
+| ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| Rule item schema (md + frontmatter name/description)   | In scope now                                                            |
+| Catalog loader, list/status/doctor/uninstall/undo      | In scope now                                                            |
+| `init --rules` plus prompt, install to `.claude/rules` | In scope now                                                            |
+| Docs and initial rule texts                            | In scope now                                                            |
+| Deterministic `check` and severity `error              | warn`                                                                   | No consumer yet (`shitaku new` gates, #226) |
+| Precedence catalog < team < project                    | Only catalog and project layers exist (team config, #181)               |
+| Learned rules, router suggestions                      | Not existing (#228, #244)                                               |
+| Rules in profiles                                      | Do not touch `ProfileSchema` / `resolveProfile` (#285 removes profiles) |
+| `shitaku add rule <name>`                              | Needs a new `add` command (none exists)                                 |
 
 ## Approaches
 
-| Approach                                                                  | Pros                                                                 | Cons                                                                | Effort  |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------- | ------- |
-| A. Flat files in `.claude/rules/<name>.md` (new `FlatFileKind` `rule`)    | Reuses flat-file plan, ownership, undo; native Claude Code loading; no shared-file merge | No `CLAUDE.md` injection; check/severity deferred                   | Low-Med |
-| B. Managed blocks inside `CLAUDE.md`                                      | Single visible file                                                  | New text-merge mechanism, drift/undo/status on a user-owned file    | High    |
-| C. Full issue now (A + checks + severity + precedence + `add`)            | Complete issue                                                       | Speculative, no runner/consumer; rework once #226/#181 land         | High    |
+| Approach                                                               | Pros                                                                                     | Cons                                                             | Effort  |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------- |
+| A. Flat files in `.claude/rules/<name>.md` (new `FlatFileKind` `rule`) | Reuses flat-file plan, ownership, undo; native Claude Code loading; no shared-file merge | No `CLAUDE.md` injection; check/severity deferred                | Low-Med |
+| B. Managed blocks inside `CLAUDE.md`                                   | Single visible file                                                                      | New text-merge mechanism, drift/undo/status on a user-owned file | High    |
+| C. Full issue now (A + checks + severity + precedence + `add`)         | Complete issue                                                                           | Speculative, no runner/consumer; rework once #226/#181 land      | High    |
 
 Recommendation: A, instruction-only slice. Frontmatter stays permissive (unknown keys pass through, as with agents) so `check` / `severity` can be added later without breaking. `add` becomes a separate change; checks a follow-up tied to #226.
 

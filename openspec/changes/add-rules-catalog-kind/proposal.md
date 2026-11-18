@@ -50,26 +50,26 @@ Exploration Approach A: a new `FlatFileKind` `rule` modeled on `agents`, which i
 
 ## Affected Areas
 
-| Layer       | Area                                                                                                 | Impact       |
-| ----------- | ---------------------------------------------------------------------------------------------------- | ------------ |
-| Domain      | `src/domain/catalog/{rule (new),schema,listing}.ts`, `src/domain/manifest.ts`, `src/domain/plan/*`   | New/Modified |
-| Ports       | `src/ports/agent-target.ts` (`rulesDir`), `src/ports/prompter.ts`                                    | Modified     |
-| Application | `init-mcps`, `uninstall-item`, `installed-state`, `undo-install`, `status`                           | Modified     |
-| Adapters    | `claude-code/target.ts`, `catalog/folder-source.ts`, `cli/{program,clack-prompter}.ts`               | Modified     |
+| Layer       | Area                                                                                                        | Impact       |
+| ----------- | ----------------------------------------------------------------------------------------------------------- | ------------ |
+| Domain      | `src/domain/catalog/{rule (new),schema,listing}.ts`, `src/domain/manifest.ts`, `src/domain/plan/*`          | New/Modified |
+| Ports       | `src/ports/agent-target.ts` (`rulesDir`), `src/ports/prompter.ts`                                           | Modified     |
+| Application | `init-mcps`, `uninstall-item`, `installed-state`, `undo-install`, `status`                                  | Modified     |
+| Adapters    | `claude-code/target.ts`, `catalog/folder-source.ts`, `cli/{program,clack-prompter}.ts`                      | Modified     |
 | Data/docs   | `catalog/catalog.json`, `catalog/rules/*.md` (new), `scripts/generate-*.mjs`, README, CONTRIBUTING, website | New/Modified |
-| Tests       | Mirrors of the above, bundled-catalog test, architecture/naming guards                               | New/Modified |
+| Tests       | Mirrors of the above, bundled-catalog test, architecture/naming guards                                      | New/Modified |
 
 ## Risks
 
-| Risk                                                         | Likelihood | Mitigation                                                                 |
-| ------------------------------------------------------------ | ---------- | -------------------------------------------------------------------------- |
-| Missed per-kind branch (~20 files of copy-per-kind code)     | Med        | `isFlatFileKind`, grep checklist, install/undo/uninstall round-trip test   |
-| User hand-edits files in `.claude/rules/`                    | Med        | Existing conflict/`--force`/backup semantics; never silent overwrite       |
-| Older shitaku versions reject `kind: 'rule'` manifests       | Low        | README downgrade note (same as agents/hooks)                               |
-| Rules without `paths` load every session (context cost)      | Med        | Keep seed rules short; recommended set is five, not all ten                |
-| Frontmatter shape blocks future `check`/`severity` (#288)    | Low        | Unknown keys pass through; no closed allow-list                            |
-| Collision with profile removal (#285)                        | Low        | Do not touch `profile.ts` or profile wiring                                |
-| `name`/`description` keys unused by Claude Code rule loading | Low        | Claude Code ignores unknown frontmatter; verify in design against docs     |
+| Risk                                                         | Likelihood | Mitigation                                                               |
+| ------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------ |
+| Missed per-kind branch (~20 files of copy-per-kind code)     | Med        | `isFlatFileKind`, grep checklist, install/undo/uninstall round-trip test |
+| User hand-edits files in `.claude/rules/`                    | Med        | Existing conflict/`--force`/backup semantics; never silent overwrite     |
+| Older shitaku versions reject `kind: 'rule'` manifests       | Low        | README downgrade note (same as agents/hooks)                             |
+| Rules without `paths` load every session (context cost)      | Med        | Keep seed rules short; recommended set is five, not all ten              |
+| Frontmatter shape blocks future `check`/`severity` (#288)    | Low        | Unknown keys pass through; no closed allow-list                          |
+| Collision with profile removal (#285)                        | Low        | Do not touch `profile.ts` or profile wiring                              |
+| `name`/`description` keys unused by Claude Code rule loading | Low        | Claude Code ignores unknown frontmatter; verify in design against docs   |
 
 ## Rollback Plan
 
@@ -91,13 +91,13 @@ Each PR slice is independently revertable. Reverting the CLI slice hides the fea
 
 ## Review Workload Forecast
 
-| PR  | Slice                                                                     | Est. lines |
-| --- | ------------------------------------------------------------------------- | ---------- |
-| 1   | Domain catalog: `rule.ts`, schema `items.rules`, listing, folder loader   | ~350       |
-| 2   | Manifest kind, ownership, `ChangePlan.rules`, `rulesDir`, plan build      | ~350       |
-| 3   | Apply, undo, uninstall, status, doctor                                    | ~380       |
-| 4   | Seed rules (10) + bundled-catalog test + catalog docs generators          | ~350       |
-| 5   | CLI `--rules`, interactive selection + recommended set, `--kind rule`, README/CONTRIBUTING/website | ~380 |
+| PR  | Slice                                                                                              | Est. lines |
+| --- | -------------------------------------------------------------------------------------------------- | ---------- |
+| 1   | Domain catalog: `rule.ts`, schema `items.rules`, listing, folder loader                            | ~350       |
+| 2   | Manifest kind, ownership, `ChangePlan.rules`, `rulesDir`, plan build                               | ~350       |
+| 3   | Apply, undo, uninstall, status, doctor                                                             | ~380       |
+| 4   | Seed rules (10) + bundled-catalog test + catalog docs generators                                   | ~350       |
+| 5   | CLI `--rules`, interactive selection + recommended set, `--kind rule`, README/CONTRIBUTING/website | ~380       |
 
 Total ~1800 authored lines; user-facing surface lands last.
 
