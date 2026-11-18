@@ -208,3 +208,171 @@ describe('tokenize: robustness', () => {
     }
   });
 });
+
+describe('tokenize: regex versus division', () => {
+  it.each([
+    ['an identifier', 'a / b / c'],
+    ['a number', '1 / 2 / 3'],
+    ['a closing paren', '(a) / 2 / 3'],
+    ['a closing bracket', 'x[0] / 2 / 3'],
+    ['a closing brace', '{} / 2 / 3'],
+    ['a string', '"a" / 2 / 3'],
+  ])('treats / after %s as division', (_label, source) => {
+    const values = pairs(source).map(([, value]) => value);
+    expect(values.filter((value) => value === '/')).toHaveLength(2);
+  });
+
+  it.each([
+    ['assignment', 'x = /ab+c/g', '/ab+c/g'],
+    ['an opening paren', 'f(/x/)', '/x/'],
+    ['a comma', '[1, /x/i]', '/x/i'],
+    ['the start of the input', '/start/ + 1', '/start/'],
+    ['a template substitution', '`${/x/.source}`', '/x/'],
+  ])('starts a regex after %s', (_label, source, regex) => {
+    expect(pairs(source)).toContainEqual(['string', regex]);
+  });
+
+  it.each([
+    'return',
+    'typeof',
+    'instanceof',
+    'in',
+    'of',
+    'new',
+    'delete',
+    'void',
+    'throw',
+    'case',
+    'do',
+    'else',
+    'yield',
+    'await',
+  ])('starts a regex after the keyword %s', (keyword) => {
+    expect(pairs(`${keyword} /x/`)).toEqual([
+      ['ident', keyword],
+      ['string', '/x/'],
+    ]);
+  });
+
+  it('keeps a regex containing import-like text as one token', () => {
+    expect(pairs("const r = /import x from 'y'/;")).toEqual([
+      ['ident', 'const'],
+      ['ident', 'r'],
+      ['punct', '='],
+      ['string', "/import x from 'y'/"],
+      ['punct', ';'],
+    ]);
+  });
+
+  it('does not end a regex at a slash inside a character class or after an escape', () => {
+    expect(pairs('x = /[/]a\\/b/g;')).toEqual([
+      ['ident', 'x'],
+      ['punct', '='],
+      ['string', '/[/]a\\/b/g'],
+      ['punct', ';'],
+    ]);
+  });
+
+  it('does not let a quote inside a regex start a string', () => {
+    expect(pairs('x = /"/; y = 1')).toEqual([
+      ['ident', 'x'],
+      ['punct', '='],
+      ['string', '/"/'],
+      ['punct', ';'],
+      ['ident', 'y'],
+      ['punct', '='],
+      ['number', '1'],
+    ]);
+  });
+
+  it('ends an unterminated regex at the end of its line', () => {
+    const tokens = tokenize('x = /abc\nnext');
+    expect(tokens.map((t) => [t.value, t.line])).toEqual([
+      ['x', 1],
+      ['=', 1],
+      ['/abc', 1],
+      ['next', 2],
+    ]);
+  });
+
+  it('keeps the closing tag slash of JSX out of a regex', () => {
+    expect(pairs('<p>a</p>)')).toEqual([
+      ['punct', '<'],
+      ['ident', 'p'],
+      ['punct', '>'],
+      ['ident', 'a'],
+      ['punct', '<'],
+      ['punct', '/'],
+      ['ident', 'p'],
+      ['punct', '>'],
+      ['punct', ')'],
+    ]);
+  });
+});
+
+describe('tokenize: recovery', () => {
+  it('ends an unterminated quoted string at the end of its line', () => {
+    const tokens = tokenize("const a = 'oops\nconst b = 2;");
+    expect(tokens.map((t) => [t.value, t.line])).toEqual([
+      ['const', 1],
+      ['a', 1],
+      ['=', 1],
+      ["'oops", 1],
+      ['const', 2],
+      ['b', 2],
+      ['=', 2],
+      ['2', 2],
+      [';', 2],
+    ]);
+  });
+
+  it('limits the damage of a JSX apostrophe to its own line', () => {
+    const tokens = tokenize("<p>Don't</p>;\nexport const ok = 1;");
+    expect(tokens.filter((t) => t.line === 2).map((t) => t.value)).toEqual(['export', 'const', 'ok', '=', '1', ';']);
+  });
+
+  it('continues a string over an escaped line break', () => {
+    expect(pairs("'a\\\nb' c")).toEqual([
+      ['string', "'a\\\nb'"],
+      ['ident', 'c'],
+    ]);
+  });
+
+  it('counts CRLF as one line break and a lone CR as a line break', () => {
+    const crlf = tokenize('a\r\nb\r\n/* x\r\n*/c');
+    expect(crlf.map((t) => [t.value, t.line])).toEqual([
+      ['a', 1],
+      ['b', 2],
+      ['c', 4],
+    ]);
+    expect(tokenize('a\rb').map((t) => [t.value, t.line])).toEqual([
+      ['a', 1],
+      ['b', 2],
+    ]);
+  });
+
+  it('degrades without crashing on the known residuals', () => {
+    // /* inside JSX text opens a comment that never closes: everything after it is skipped.
+    expect(pairs('<p>a /* b</p>\nexport const x = 1;')).toEqual([
+      ['punct', '<'],
+      ['ident', 'p'],
+      ['punct', '>'],
+      ['ident', 'a'],
+    ]);
+    // / after ) is read as division, so the regex in `if (x) /re/` becomes punct and idents.
+    expect(pairs('if (x) /re/.test(y)').map(([, value]) => value)).toEqual([
+      'if',
+      '(',
+      'x',
+      ')',
+      '/',
+      're',
+      '/',
+      '.',
+      'test',
+      '(',
+      'y',
+      ')',
+    ]);
+  });
+});

@@ -18,11 +18,56 @@
 /** Operators kept whole because later stages look at `=>`, `...` and `?.` as units. */
 const MULTI_PUNCT = ['...', '===', '!==', '=>', '==', '!=', '&&', '||', '??', '?.', '++', '--'];
 
+/** Keywords after which a `/` opens a regular expression instead of dividing. */
+const REGEX_KEYWORDS = new Set([
+  'return',
+  'typeof',
+  'instanceof',
+  'in',
+  'of',
+  'new',
+  'delete',
+  'void',
+  'throw',
+  'case',
+  'do',
+  'else',
+  'yield',
+  'await',
+]);
+
+/** Closers that end an operand, so a following `/` is a division. */
+const OPERAND_END = new Set([')', ']', '}']);
+
 const WHITESPACE = /\s/;
 const IDENT_START = /[A-Za-z_$\u0080-￿]/;
 const IDENT_PART = /[A-Za-z0-9_$\u0080-￿]/;
 const DIGIT = /[0-9]/;
 const NUMBER_PART = /[0-9A-Za-z_.]/;
+
+/**
+ * Whether a `/` at `start` opens a regular expression, judged by the previous significant token.
+ * Known residual: `/` after `)` in `if (x) /re/` is read as a division.
+ * @param {Token | undefined} previous
+ * @param {number} start
+ */
+function startsRegex(previous, start) {
+  if (previous === undefined) return true;
+  switch (previous.type) {
+    case 'number':
+    case 'string':
+      return false;
+    case 'ident':
+      return REGEX_KEYWORDS.has(previous.value);
+    case 'template':
+      // A chunk ending in `${` is followed by an expression; a closed template is an operand.
+      return previous.value.endsWith('${');
+    default:
+      if (OPERAND_END.has(previous.value)) return false;
+      // `</tag>`: a slash glued to `<` closes a JSX element.
+      return !(previous.value === '<' && previous.end === start);
+  }
+}
 
 /**
  * @param {string} source
@@ -44,7 +89,9 @@ export function tokenize(source) {
   /** @param {number} position */
   const lineAt = (position) => {
     for (; counted < position; counted++) {
-      if (source[counted] === '\n') line++;
+      const char = source[counted];
+      // CRLF counts once (at the LF); a lone CR is a line break of its own.
+      if (char === '\n' || (char === '\r' && source[counted + 1] !== '\n')) line++;
     }
     return line;
   };
@@ -83,7 +130,17 @@ export function tokenize(source) {
     return length;
   };
 
+  /** @param {number} position */
+  const isLineBreak = (position) => source[position] === '\n' || source[position] === '\r';
+
   /**
+   * Skip a backslash escape at `position`; an escaped CRLF counts as one escaped break.
+   * @param {number} position
+   */
+  const afterEscape = (position) => (source.startsWith('\r\n', position + 1) ? position + 3 : position + 2);
+
+  /**
+   * An unterminated string ends at the end of its line, as in JavaScript.
    * @param {number} start index of the opening quote
    * @returns {number} end offset of the string
    */
@@ -91,10 +148,37 @@ export function tokenize(source) {
     const quote = source[start];
     let j = start + 1;
     while (j < length) {
+      if (isLineBreak(j)) return j;
       const char = source[j];
-      if (char === '\\') j += 2;
+      if (char === '\\') j = afterEscape(j);
       else if (char === quote) return j + 1;
       else j++;
+    }
+    return length;
+  };
+
+  /**
+   * A regex also ends at the end of its line when unterminated; flags follow the closing slash.
+   * @param {number} start index of the opening slash
+   * @returns {number} end offset of the regex
+   */
+  const regexEnd = (start) => {
+    let j = start + 1;
+    let inClass = false;
+    while (j < length) {
+      if (isLineBreak(j)) return j;
+      const char = source[j];
+      if (char === '\\') {
+        j = isLineBreak(j + 1) ? j + 1 : j + 2;
+      } else if (char === '/' && !inClass) {
+        j++;
+        while (j < length && /[A-Za-z]/.test(source[j] ?? '')) j++;
+        return j;
+      } else {
+        if (char === '[') inClass = true;
+        else if (char === ']') inClass = false;
+        j++;
+      }
     }
     return length;
   };
@@ -127,6 +211,9 @@ export function tokenize(source) {
       gap = true;
       const close = source.indexOf('*/', i + 2);
       i = close === -1 ? length : close + 2;
+    } else if (char === '/' && startsRegex(tokens[tokens.length - 1], i)) {
+      // Regex literals are emitted as `string` tokens; their value starts with `/`, never a quote.
+      emit('string', i, regexEnd(i));
     } else if (char === '"' || char === "'") {
       emit('string', i, stringEnd(i));
     } else if (char === '`') {
