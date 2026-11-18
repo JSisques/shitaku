@@ -66,6 +66,11 @@ describe('claude-code target', () => {
     expect(target.agentsDir('project', paths)).toBe('/w/.claude/agents');
   });
 
+  it('puts rules under ~/.claude/rules for user scope and ./.claude/rules for project scope', () => {
+    expect(target.rulesDir('user', paths)).toBe('/h/.claude/rules');
+    expect(target.rulesDir('project', paths)).toBe('/w/.claude/rules');
+  });
+
   it('puts user settings at ~/.claude/settings.json', () => {
     expect(target.settingsPath('user', paths)).toBe('/h/.claude/settings.json');
   });

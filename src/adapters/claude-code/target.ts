@@ -19,6 +19,7 @@ export const claudeCodeTarget: AgentTarget = {
   commandsDir: (scope, paths) => join(scope === 'user' ? paths.homeDir : paths.cwd, '.claude', 'commands'),
 
   agentsDir: (scope, paths) => join(scope === 'user' ? paths.homeDir : paths.cwd, '.claude', 'agents'),
+  rulesDir: (scope, paths) => join(scope === 'user' ? paths.homeDir : paths.cwd, '.claude', 'rules'),
 
   settingsPath: (scope, paths) => join(scope === 'user' ? paths.homeDir : paths.cwd, '.claude', 'settings.json'),
 
