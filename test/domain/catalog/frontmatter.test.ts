@@ -197,3 +197,100 @@ describe('readFrontmatter nested mode', () => {
     expect(readFrontmatter(text, 'a.md', nested)).toEqual({ issue: 'a.md has no frontmatter block', file: 'a.md' });
   });
 });
+
+describe('readFrontmatter with the mappings option', () => {
+  const mapped = { allowNested: true, mappings: ['check'] } as const;
+
+  it('reads a listed key as a mapping instead of an opaque key', () => {
+    const text = "---\nname: a\ncheck:\n  type: pattern-absent\n  files:\n    - 'src/**/*.ts'\n---\nbody";
+    expect(readFrontmatter(text, 'a.md', mapped)).toEqual({
+      data: { name: 'a' },
+      opaque: [],
+      maps: { check: { type: 'pattern-absent', files: ['src/**/*.ts'] } },
+      body: 'body',
+    });
+  });
+
+  it.each([
+    ['paths before check', '---\npaths:\n  - src/**\ncheck:\n  type: tool\n  tool: x\nseverity: warn\n---\nb'],
+    ['check before paths', '---\ncheck:\n  type: tool\n  tool: x\npaths:\n  - src/**\nseverity: warn\n---\nb'],
+  ])('keeps paths opaque next to a mapping (%s)', (_title, text) => {
+    expect(readFrontmatter(text, 'a.md', mapped)).toEqual({
+      data: { severity: 'warn' },
+      opaque: ['paths'],
+      maps: { check: { type: 'tool', tool: 'x' } },
+      body: 'b',
+    });
+  });
+
+  it('keeps an inline value in data with no maps entry', () => {
+    expect(readFrontmatter('---\nname: a\ncheck: pattern-absent\n---\nb', 'a.md', mapped)).toEqual({
+      data: { name: 'a', check: 'pattern-absent' },
+      opaque: [],
+      maps: {},
+      body: 'b',
+    });
+  });
+
+  it('returns an empty maps object when the listed key is absent', () => {
+    expect(readFrontmatter('---\nname: a\ntools:\n  - A\n---\nb', 'a.md', mapped)).toEqual({
+      data: { name: 'a' },
+      opaque: ['tools'],
+      maps: {},
+      body: 'b',
+    });
+  });
+
+  it('reads a mapping with CRLF line endings', () => {
+    expect(readFrontmatter('---\r\ncheck:\r\n  type: tool\r\n  tool: x\r\n---\r\nbody', 'a.md', mapped)).toEqual({
+      data: {},
+      opaque: [],
+      maps: { check: { type: 'tool', tool: 'x' } },
+      body: 'body',
+    });
+  });
+
+  it('propagates reader issues against the given file', () => {
+    expect(readFrontmatter('---\ncheck:\n  files: [a]\n---\nb', 'rules/x.md', mapped)).toEqual({
+      issue: expect.stringContaining("frontmatter key 'check'") as string,
+      file: 'rules/x.md',
+    });
+    expect(readFrontmatter('---\ncheck:\nname: a\n---\nb', 'rules/x.md', mapped)).toEqual({
+      issue: expect.stringContaining('empty') as string,
+      file: 'rules/x.md',
+    });
+  });
+
+  it('only maps the listed keys', () => {
+    const text = '---\ncheck:\n  type: tool\nother:\n  x: y\n---\nb';
+    expect(readFrontmatter(text, 'a.md', mapped)).toMatchObject({
+      opaque: ['other'],
+      maps: { check: { type: 'tool' } },
+    });
+  });
+
+  it('returns exactly the nested shape, with no maps key, when mappings is not given', () => {
+    const result = readFrontmatter('---\nname: a\ncheck:\n  type: tool\n---\nb', 'a.md', { allowNested: true });
+    expect(result).toEqual({ data: { name: 'a' }, opaque: ['check'], body: 'b' });
+    expect(result).not.toHaveProperty('maps');
+  });
+
+  it('leaves strict mode unchanged for commands and skills', () => {
+    expect(readFrontmatter('---\ncheck:\n  type: tool\n---\nb', 'a.md')).toEqual({
+      issue: "frontmatter key 'check' has a multi-line or empty value",
+      file: 'a.md',
+    });
+    expect(readFrontmatter('---\nname: a\n\n   \ndescription: b\n---\nb', 'a.md')).toEqual({
+      data: { name: 'a', description: 'b' },
+      body: 'b',
+    });
+  });
+
+  it('keeps block scalars decoded in nested mode alongside mappings', () => {
+    const text = '---\ndescription: |\n  a\n  b\ncheck:\n  type: tool\n---\nb';
+    expect(readFrontmatter(text, 'a.md', mapped)).toMatchObject({
+      data: { description: 'a\nb\n' },
+      maps: { check: { type: 'tool' } },
+    });
+  });
+});

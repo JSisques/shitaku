@@ -1,3 +1,5 @@
+import { readBlockMapping, type BlockMapping } from '@/domain/catalog/frontmatter-map.js';
+
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 /** A problem in a frontmatter block. `file` is the file the problem lives in, as given by the caller. */
@@ -6,6 +8,10 @@ export type FrontmatterResult = { data: Record<string, string>; body: string } |
 /** Result of nested mode: `opaque` lists top-level keys whose (empty) value was not parsed. */
 export type NestedFrontmatterResult =
   { data: Record<string, string>; opaque: string[]; body: string } | FrontmatterIssue;
+/** Result of nested mode with `mappings`: `maps` holds the block mappings of the listed keys. */
+export type MappedFrontmatterResult =
+  | { data: Record<string, string>; opaque: string[]; maps: Record<string, BlockMapping>; body: string }
+  | FrontmatterIssue;
 
 const unquote = (value: string): string => {
   const quote = value[0];
@@ -101,25 +107,34 @@ const splitBlock = (text: string): { lines: string[]; body: string } | undefined
  * With `allowNested`, a top-level key with a literal or folded block scalar (`|` or `>`, optional chomping and
  * indentation indicators) is decoded into `data`; a key with an empty value, plus its indented lines, is opaque:
  * its name goes to `opaque` and its value is not parsed; an indented line with no owning key is an issue.
+ * With `mappings` (nested mode only), a listed key with an empty value has its indented block read one level deep
+ * into `maps` instead of being opaque (see `readBlockMapping`); a listed key with an inline value stays in `data`.
  * `file` names the source file in issue messages. `body` is the text after the closing `---`.
  */
+export function readFrontmatter(
+  text: string,
+  file: string,
+  options: { allowNested: true; mappings: readonly string[] },
+): MappedFrontmatterResult;
 export function readFrontmatter(text: string, file: string, options: { allowNested: true }): NestedFrontmatterResult;
 export function readFrontmatter(text: string, file: string, options?: { allowNested?: false }): FrontmatterResult;
 export function readFrontmatter(
   text: string,
   file: string,
-  options: { allowNested?: boolean },
-): FrontmatterResult | NestedFrontmatterResult;
+  options: { allowNested?: boolean; mappings?: readonly string[] },
+): FrontmatterResult | NestedFrontmatterResult | MappedFrontmatterResult;
 export function readFrontmatter(
   text: string,
   file: string,
-  options: { allowNested?: boolean } = {},
-): FrontmatterResult | NestedFrontmatterResult {
+  options: { allowNested?: boolean; mappings?: readonly string[] } = {},
+): FrontmatterResult | NestedFrontmatterResult | MappedFrontmatterResult {
   const split = splitBlock(text);
   if (!split) return { issue: `${file} has no frontmatter block`, file };
   const nested = options.allowNested === true;
   const data: Record<string, string> = {};
   const opaque: string[] = [];
+  const mappings = nested ? options.mappings : undefined;
+  const maps: Record<string, BlockMapping> = {};
   let owner = false;
   for (let i = 0; i < split.lines.length; i++) {
     const line = split.lines[i] ?? '';
@@ -143,11 +158,20 @@ export function readFrontmatter(
       owner = false;
       continue;
     }
+    if (value === '' && mappings?.includes(key)) {
+      const block = readBlockMapping(split.lines, i + 1, key);
+      if ('issue' in block) return { issue: block.issue, file };
+      maps[key] = block.value;
+      i = block.next - 1;
+      owner = false;
+      continue;
+    }
     owner = value === '' || (!nested && BLOCK_VALUE.test(value));
     if (owner) {
       if (!nested) return { issue: `frontmatter key '${line.slice(0, colon)}' has a multi-line or empty value`, file };
       opaque.push(key);
     } else data[key] = unquote(value);
   }
-  return nested ? { data, opaque, body: split.body } : { data, body: split.body };
+  if (!nested) return { data, body: split.body };
+  return mappings ? { data, opaque, maps, body: split.body } : { data, opaque, body: split.body };
 }
