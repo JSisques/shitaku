@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
+  aliases,
   copyScript,
   hasGit,
   initGitRepo,
@@ -9,6 +10,7 @@ import {
   nonGit,
   runRepoMap,
   simpleApp,
+  trickySyntax,
   workspaceMonorepo,
   type RepoMapDocument,
   type RunResult,
@@ -250,5 +252,121 @@ describe('repo-map determinism', () => {
     const b = await readFile(join(two, '.shitaku', 'repo-map.json'));
     expect(b.equals(a)).toBe(true);
     expect((await readMap(one)).commit).toMatch(/^[0-9a-f]{40,64}$/);
+  });
+});
+
+/** The map of `files` after one default run in a fresh non-git directory. */
+async function mapOf(files: Tree): Promise<{ dir: string; doc: RepoMapDocument; text: string }> {
+  const dir = await project(files);
+  const result = await run(dir);
+  expect(result).toEqual({ code: 0, stdout: 'wrote .shitaku/repo-map.json\n', stderr: '' });
+  const text = await readFile(join(dir, '.shitaku', 'repo-map.json'), 'utf8');
+  return { dir, doc: JSON.parse(text) as RepoMapDocument, text };
+}
+
+const importsOf = (doc: RepoMapDocument, path: string): string[] =>
+  (doc.modules.find((m) => m.path === path)?.imports ?? []).map(
+    (i) => `${i.specifier} ${i.kind} ${i.status} ${i.resolved ?? '-'}`,
+  );
+
+describe('repo-map extraction through the CLI', () => {
+  it('records real imports and exports from tricky syntax and exits 0 on a broken file', async () => {
+    const { dir, doc, text } = await mapOf(trickySyntax);
+    expect(importsOf(doc, 'src/index.ts')).toEqual([
+      './lazy dynamic internal src/lazy.ts',
+      './real.js static internal src/real.ts',
+      './reexport reexport internal src/reexport.ts',
+      './types type internal src/types.ts',
+    ]);
+    expect(doc.modules.find((m) => m.path === 'src/index.ts')?.exports.map((e) => e.name)).toEqual([
+      '*',
+      'lazy',
+      'main',
+    ]);
+    // The unparsable file yields what could be extracted; its unresolved import is marked, not fatal.
+    expect(importsOf(doc, 'src/broken.ts')).toEqual(['./missing static unresolved -']);
+    expect(doc.modules.find((m) => m.path === 'src/broken.ts')?.exports.map((e) => e.name)).toEqual(['after', 'ok']);
+    expect(doc.graph.importedByCount['src/real.ts']).toBe(2);
+    expect(text).not.toContain(dir);
+  });
+
+  it('resolves tsconfig aliases read from a JSONC config and its extended base', async () => {
+    const jsonc =
+      '{\n  // shared by every package\n  "compilerOptions": {\n    "baseUrl": ".",\n    "paths": {\n      "@/*": ["src/*"],\n      "~lib": ["src/lib/index.ts"],\n    },\n  },\n}\n';
+    const { doc } = await mapOf({ ...aliases, 'tsconfig.base.json': jsonc });
+    expect(importsOf(doc, 'src/main.ts')).toEqual([
+      '@/gone static unresolved -',
+      '@/util static internal src/util.ts',
+      'react static external -',
+      '~lib static internal src/lib/index.ts',
+    ]);
+    expect(doc.graph.edges).toEqual([
+      { from: 'src/main.ts', to: 'src/lib/index.ts' },
+      { from: 'src/main.ts', to: 'src/util.ts' },
+    ]);
+  });
+
+  it('resolves workspace package imports in a monorepo', async () => {
+    const { doc } = await mapOf(workspaceMonorepo);
+    expect(importsOf(doc, 'apps/web/src/page.ts')).toEqual([
+      './helper.js static internal apps/web/src/helper.ts',
+      '@acme/core static internal packages/core/src/index.ts',
+    ]);
+    expect(importsOf(doc, 'apps/web/bin/web.js')).toEqual([
+      '@acme/core static internal packages/core/src/index.ts',
+      'node:fs static external -',
+    ]);
+    expect(doc.graph.importedByCount['packages/core/src/index.ts']).toBe(2);
+  });
+
+  it('keeps the JSON complete and self-consistent', async () => {
+    const { doc } = await mapOf({
+      ...trickySyntax,
+      ...workspaceMonorepo,
+      'package.json': trickySyntax['package.json'] ?? '',
+    });
+    const modulePaths = doc.modules.map((m) => m.path);
+    expect(Object.keys(doc.graph.importedByCount).sort()).toEqual([...modulePaths].sort());
+    expect(modulePaths.length).toBeGreaterThan(10);
+    for (const { from, to } of doc.graph.edges) {
+      expect(modulePaths).toContain(from);
+      expect(modulePaths).toContain(to);
+    }
+    for (const module of doc.modules) {
+      for (const entry of module.imports) {
+        expect(entry.resolved === null).toBe(entry.status !== 'internal');
+      }
+    }
+  });
+
+  it.each([
+    ['tricky syntax', trickySyntax],
+    ['aliases', aliases],
+    ['a workspace monorepo', workspaceMonorepo],
+  ])('is byte-identical across two runs and two directories for %s', async (_label, files) => {
+    const first = await mapOf(files);
+    const again = await run(first.dir);
+    expect(again.code).toBe(0);
+    const second = await readFile(join(first.dir, '.shitaku', 'repo-map.json'), 'utf8');
+    expect(second).toBe(first.text);
+    expect((await mapOf(files)).text).toBe(first.text);
+  });
+
+  it('does not depend on file creation order with populated modules', async () => {
+    const paths = Object.keys(trickySyntax);
+    const forward = await mapOf(Object.fromEntries(paths.map((p) => [p, trickySyntax[p] ?? ''])));
+    const reverse = await mapOf(Object.fromEntries([...paths].reverse().map((p) => [p, trickySyntax[p] ?? ''])));
+    expect(reverse.text).toBe(forward.text);
+  });
+
+  it.skipIf(!hasGit)('gives the same modules and graph through git as through the walk', async () => {
+    const walked = await mapOf(workspaceMonorepo);
+    const dir = await project(workspaceMonorepo);
+    initGitRepo(dir, { commit: true });
+    expect((await run(dir, [], {})).code).toBe(0);
+    const viaGit = await readMap(dir);
+    expect(viaGit.commit).toMatch(/^[0-9a-f]{40,64}$/);
+    expect(viaGit.modules).toEqual(walked.doc.modules);
+    expect(viaGit.graph).toEqual(walked.doc.graph);
   });
 });
