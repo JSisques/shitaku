@@ -113,6 +113,7 @@ describe('bundled catalog', () => {
         .map((r) => r.name)
         .sort(),
     ).toEqual(['ask-when-unsure', 'conventional-commits', 'module-readme', 'no-secrets', 'tests-for-changes']);
+    expect(catalog.rules.filter((r) => 'check' in r || 'severity' in r)).toEqual([]);
   });
 
   it('keeps every seed rule small, global and instruction-only', () => {
