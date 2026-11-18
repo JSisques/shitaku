@@ -289,6 +289,20 @@ export interface CheckEvaluation {
 }
 export const MAX_FINDINGS = 200;
 export const MAX_LINE_LENGTH = 10_000;
+/** A finding before the rule name and effective severity are attached. */
+export interface FindingDraft {
+  path: string;
+  line?: number;
+  message: string;
+}
+/** Sorts, caps at MAX_FINDINGS and attaches rule/severity. Exported so the core can be tested before the evaluators. */
+export function finalizeEvaluation(
+  rule: { name: string; severity: Severity },
+  drafts: readonly FindingDraft[],
+  skipped: readonly string[],
+): CheckEvaluation;
+/** `\n`-separated lines ignoring one trailing newline. Exported to test the empty string (0 lines) directly. */
+export function countLines(text: string): number;
 export function evaluateRuleCheck(
   rule: { name: string; check: RuleCheck; severity: Severity },
   snapshot: ProjectSnapshot,
