@@ -99,3 +99,63 @@ export function detectWorkspaces(snapshot) {
   }
   return workspaces.sort((a, b) => compare(a.path, b.path));
 }
+
+/** Lockfile to package manager, in the order they are checked. */
+const LOCKFILES = [
+  ['pnpm-lock.yaml', 'pnpm'],
+  ['yarn.lock', 'yarn'],
+  ['package-lock.json', 'npm'],
+  ['bun.lockb', 'bun'],
+  ['bun.lock', 'bun'],
+];
+
+/**
+ * The `packageManager` field wins; otherwise the first lockfile found at the root.
+ * @param {Snapshot} snapshot
+ * @returns {string | null}
+ */
+export function detectPackageManager(snapshot) {
+  const field = manifestAt(snapshot, '.')?.['packageManager'];
+  if (typeof field === 'string') {
+    const name = field.split('@')[0] ?? '';
+    if (name !== '') return name;
+  }
+  const files = new Set(snapshot.files);
+  for (const [lockfile, manager] of LOCKFILES) {
+    if (files.has(lockfile)) return manager ?? null;
+  }
+  return null;
+}
+
+/**
+ * Package directories that carry commands and entry points: the root plus every workspace.
+ * @param {Snapshot} snapshot
+ * @returns {{ path: string, manifest: Record<string, unknown> }[]} sorted by path
+ */
+function packageManifests(snapshot) {
+  const dirs = ['.', ...detectWorkspaces(snapshot).map((workspace) => workspace.path)];
+  /** @type {{ path: string, manifest: Record<string, unknown> }[]} */
+  const packages = [];
+  for (const path of dirs) {
+    const manifest = manifestAt(snapshot, path);
+    if (manifest !== null) packages.push({ path, manifest });
+  }
+  return packages.sort((a, b) => compare(a.path, b.path));
+}
+
+/**
+ * @param {Snapshot} snapshot
+ * @returns {{ packageManager: string | null, scripts: { path: string, name: string, command: string }[] }}
+ */
+export function detectCommands(snapshot) {
+  const scripts = [];
+  for (const { path, manifest } of packageManifests(snapshot)) {
+    const declared = manifest['scripts'];
+    if (declared === null || typeof declared !== 'object' || Array.isArray(declared)) continue;
+    for (const [name, command] of Object.entries(declared)) {
+      if (typeof command === 'string') scripts.push({ path, name, command });
+    }
+  }
+  scripts.sort((a, b) => compare(a.path, b.path) || compare(a.name, b.name));
+  return { packageManager: detectPackageManager(snapshot), scripts };
+}

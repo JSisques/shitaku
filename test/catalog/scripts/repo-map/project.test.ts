@@ -9,6 +9,11 @@ import {
 
 type ProjectModule = {
   detectWorkspaces: (snapshot: Snapshot) => { name: string | null; path: string }[];
+  detectPackageManager: (snapshot: Snapshot) => string | null;
+  detectCommands: (snapshot: Snapshot) => {
+    packageManager: string | null;
+    scripts: { path: string; name: string; command: string }[];
+  };
 };
 
 let project: ProjectModule;
@@ -115,5 +120,95 @@ describe('detectWorkspaces', () => {
 
   it('returns no workspaces for a single package', () => {
     expect(project.detectWorkspaces(snapshotFromTree({ 'package.json': pkg({ name: 'solo' }) }))).toEqual([]);
+  });
+});
+
+describe('detectPackageManager', () => {
+  it.each([
+    ['pnpm@9.0.0', 'pnpm'],
+    ['yarn@4.1.0+sha256.abc', 'yarn'],
+    ['npm@10.2.0', 'npm'],
+    ['bun@1.1.0', 'bun'],
+  ])('takes the name before @ from packageManager %s', (field, expected) => {
+    const tree: Tree = { 'package.json': pkg({ packageManager: field }), 'yarn.lock': '' };
+    expect(project.detectPackageManager(snapshotFromTree(tree))).toBe(expected);
+  });
+
+  it('lets the packageManager field win over a lockfile', () => {
+    const tree: Tree = { 'package.json': pkg({ packageManager: 'pnpm@9' }), 'package-lock.json': '{}' };
+    expect(project.detectPackageManager(snapshotFromTree(tree))).toBe('pnpm');
+  });
+
+  it.each([
+    ['pnpm-lock.yaml', 'pnpm'],
+    ['yarn.lock', 'yarn'],
+    ['package-lock.json', 'npm'],
+    ['bun.lockb', 'bun'],
+    ['bun.lock', 'bun'],
+  ])('falls back to the lockfile %s', (lockfile, expected) => {
+    const tree: Tree = { 'package.json': pkg({ name: 'x' }), [lockfile]: '' };
+    expect(project.detectPackageManager(snapshotFromTree(tree))).toBe(expected);
+  });
+
+  it('checks lockfiles in the documented order', () => {
+    const tree: Tree = { 'bun.lock': '', 'package-lock.json': '', 'yarn.lock': '' };
+    expect(project.detectPackageManager(snapshotFromTree(tree))).toBe('yarn');
+    const withPnpm: Tree = { ...tree, 'pnpm-lock.yaml': '' };
+    expect(project.detectPackageManager(snapshotFromTree(withPnpm))).toBe('pnpm');
+    const bunOnly: Tree = { 'bun.lock': '', 'bun.lockb': '' };
+    expect(project.detectPackageManager(snapshotFromTree(bunOnly))).toBe('bun');
+  });
+
+  it('ignores lockfiles that are not at the root', () => {
+    expect(project.detectPackageManager(snapshotFromTree({ 'pkgs/a/yarn.lock': '' }))).toBeNull();
+  });
+
+  it('gives null when there is no signal, and ignores a malformed packageManager', () => {
+    expect(project.detectPackageManager(snapshotFromTree({ 'package.json': pkg({ name: 'x' }) }))).toBeNull();
+    expect(
+      project.detectPackageManager(snapshotFromTree({ 'package.json': pkg({ packageManager: '@9' }) })),
+    ).toBeNull();
+    expect(project.detectPackageManager(snapshotFromTree({ 'package.json': pkg({ packageManager: 7 }) }))).toBeNull();
+  });
+});
+
+describe('detectCommands', () => {
+  it('lists root and workspace scripts sorted by path then name', () => {
+    const doc = project.detectCommands(snapshotFromTree(workspaceMonorepo));
+    expect(doc).toEqual({
+      packageManager: 'pnpm',
+      scripts: [
+        { path: '.', name: 'build', command: 'pnpm -r build' },
+        { path: 'apps/web', name: 'dev', command: 'node bin/web.js' },
+        { path: 'packages/core', name: 'build', command: 'tsc -p .' },
+      ],
+    });
+  });
+
+  it('sorts script names by code unit within a package', () => {
+    const tree: Tree = { 'package.json': pkg({ scripts: { test: 't', build: 'b', Zed: 'z', lint: 'l' } }) };
+    expect(project.detectCommands(snapshotFromTree(tree)).scripts.map((s) => s.name)).toEqual([
+      'Zed',
+      'build',
+      'lint',
+      'test',
+    ]);
+  });
+
+  it('skips non-string scripts and manifests outside the root and the workspaces', () => {
+    const tree: Tree = {
+      'package.json': pkg({ scripts: { ok: 'x', bad: 1 }, workspaces: ['pkgs/*'] }),
+      'pkgs/a/package.json': pkg({ scripts: { a: 'run a' } }),
+      'other/package.json': pkg({ scripts: { z: 'nope' } }),
+    };
+    expect(project.detectCommands(snapshotFromTree(tree)).scripts).toEqual([
+      { path: '.', name: 'ok', command: 'x' },
+      { path: 'pkgs/a', name: 'a', command: 'run a' },
+    ]);
+  });
+
+  it('returns an empty list when there are no manifests or an invalid one', () => {
+    expect(project.detectCommands(snapshotFromTree({}))).toEqual({ packageManager: null, scripts: [] });
+    expect(project.detectCommands(snapshotFromTree({ 'package.json': '{ nope' })).scripts).toEqual([]);
   });
 });
