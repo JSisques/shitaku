@@ -318,7 +318,9 @@ describe('render-markdown size cap', () => {
     expect(text.endsWith('\n')).toBe(true);
     expect(note(text)).toContain('Output cut at the size limit.');
     // No half line: every task line that survived is complete.
-    for (const line of text.split('\n').filter((l) => l.includes('task'))) {
+    const taskLines = text.split('\n').filter((l) => l.includes('task'));
+    expect(taskLines.length).toBeGreaterThan(0);
+    for (const line of taskLines) {
       expect(line.endsWith('--verbose`')).toBe(true);
     }
     expect(render(doc, { maxDepth: 4 })).toBe(text);

@@ -457,10 +457,12 @@ describe('repo-map extraction through the CLI', () => {
     const modulePaths = doc.modules.map((m) => m.path);
     expect(Object.keys(doc.graph.importedByCount).sort()).toEqual([...modulePaths].sort());
     expect(modulePaths.length).toBeGreaterThan(10);
+    expect(doc.graph.edges.length).toBeGreaterThan(0);
     for (const { from, to } of doc.graph.edges) {
       expect(modulePaths).toContain(from);
       expect(modulePaths).toContain(to);
     }
+    expect(doc.modules.some((m) => m.imports.length > 0)).toBe(true);
     for (const module of doc.modules) {
       for (const entry of module.imports) {
         expect(entry.resolved === null).toBe(entry.status !== 'internal');
