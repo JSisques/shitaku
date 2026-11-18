@@ -22,6 +22,6 @@
     "profiles": ["base", "web", "backend"],
     "scripts": ["complexity", "dead-code", "duplication"],
     "commands": [],
-    "agents": []
+    "agents": ["pr-creator"]
   }
 }
