@@ -155,7 +155,7 @@ The frontmatter reader MUST offer an opt-in `allowNested` mode, used only for ag
 ### Requirement: Rule catalog entries
 
 The catalog MUST support `rules/<name>.md` listed in `items.rules` (optional, default empty). The loader MUST validate each rule on load. A rule is invalid when: a listed name has no file, a `rules/*.md` file is not listed, frontmatter is missing or unparseable, `name` or `description` is missing or empty or whitespace, `name` differs from the file stem, the body is empty, the name does not match `^[a-z0-9][a-z0-9-]*$`, or the rule declares a `check` or `severity` that does not validate against the `rule-checks` capability. A valid rule that declares a `check` MUST expose the parsed check and its effective severity. `check` and `severity` are no longer reserved keys, and the former rejection (`key 'X' is reserved for rule checks`) MUST NOT exist. Invalid rules MUST be reported with path and reason and MUST NOT be installable; valid items remain usable. Source guards (traversal, symlink, size limit) MUST apply. Rules MUST NOT be validated against an allowed-field list: unknown frontmatter keys other than `check` and `severity`, and nested frontmatter such as a `paths:` list, MUST pass through and bytes MUST stay verbatim. Rule subdirectories are not scanned. The bundled catalog MUST ship the ten seed rules defined in `rules-install`.
-(Previously: `check` and `severity` were reserved keys and a rule using either was rejected; a valid rule exposed no check)
+(Previously: the requirement did not mention `check` or `severity`; the loader rejected both as reserved keys, and a valid rule exposed no check)
 
 #### Scenario: Valid rule loads
 
