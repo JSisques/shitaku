@@ -230,7 +230,7 @@ export function scan(root, { ignore, outRel }) {
     if (base === 'package.json') {
       let parsed;
       try {
-        parsed = JSON.parse(text);
+        parsed = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
       } catch {
         parsed = null;
       }

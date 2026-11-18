@@ -132,6 +132,12 @@ describe('scan (walk)', () => {
     ]);
   });
 
+  it('accepts a package.json that starts with a byte order mark', async () => {
+    const { snapshot } = await scanTree({ 'package.json': '﻿{"name":"bom"}' });
+    expect(snapshot.manifests.get('.')).toEqual({ name: 'bom' });
+    expect(snapshot.skipped).toEqual([]);
+  });
+
   it('parses tsconfig.json as JSONC and gives null when it is invalid', async () => {
     const { snapshot } = await scanTree({
       'tsconfig.json': '{\n  // comment\n  "compilerOptions": { "strict": true, },\n}\n',
