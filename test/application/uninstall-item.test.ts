@@ -422,6 +422,7 @@ describe('uninstallItem (scripts)', () => {
             commands: [],
             hooks: [],
             agents: [],
+            rules: [],
             profiles: [],
             issues: [],
           }),

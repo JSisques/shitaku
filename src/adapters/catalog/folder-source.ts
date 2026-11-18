@@ -78,7 +78,7 @@ export class FolderCatalogSource implements CatalogSource {
       }
     });
 
-    return { mcps, skills, scripts, commands, hooks, agents, profiles, issues };
+    return { mcps, skills, scripts, commands, hooks, agents, rules: [], profiles, issues };
   }
 
   /** Loads each listed skill as bytes. A bad skill is skipped with an issue; an unlisted directory is an issue too. */

@@ -176,6 +176,42 @@ describe('CatalogIndexSchema', () => {
     expect(res.error?.message).toContain('../evil');
   });
 
+  it('defaults items.rules and recommended.rules to empty lists when absent', () => {
+    const idx = CatalogIndexSchema.parse({ version: 1, items: { mcps: [] } });
+    expect(idx.items.rules).toEqual([]);
+    expect(idx.recommended).toEqual({ rules: [] });
+  });
+
+  it('parses listed rules and the recommended set', () => {
+    const idx = CatalogIndexSchema.parse({
+      version: 1,
+      items: { mcps: [], rules: ['naming', 'rule2'] },
+      recommended: { rules: ['naming'] },
+    });
+    expect(idx.items.rules).toEqual(['naming', 'rule2']);
+    expect(idx.recommended.rules).toEqual(['naming']);
+  });
+
+  it('defaults recommended.rules when recommended is an empty object', () => {
+    expect(CatalogIndexSchema.parse({ version: 1, items: { mcps: [] }, recommended: {} }).recommended.rules).toEqual(
+      [],
+    );
+  });
+
+  it('rejects a rule name that could traverse paths in items.rules, naming the entry', () => {
+    const res = CatalogIndexSchema.safeParse({ version: 1, items: { mcps: [], rules: ['../evil'] } });
+    expect(res.success).toBe(false);
+    expect(JSON.stringify(res.error?.issues)).toContain('rules');
+    expect(res.error?.message).toContain('../evil');
+  });
+
+  it('rejects a rule name that could traverse paths in recommended.rules, naming the entry', () => {
+    const res = CatalogIndexSchema.safeParse({ version: 1, items: { mcps: [] }, recommended: { rules: ['../evil'] } });
+    expect(res.success).toBe(false);
+    expect(JSON.stringify(res.error?.issues)).toContain('recommended');
+    expect(res.error?.message).toContain('../evil');
+  });
+
   it('rejects an unsupported version', () => {
     expect(CatalogIndexSchema.safeParse({ version: 2, items: { mcps: [] } }).success).toBe(false);
   });

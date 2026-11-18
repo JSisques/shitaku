@@ -8,7 +8,17 @@ export { enc, faultyFs };
 export const scriptSource = (scripts: ScriptItem[]): CatalogSource => ({
   ref: () => ({ kind: 'bundled', location: '/catalog' }),
   load: () =>
-    Promise.resolve({ mcps: [], skills: [], scripts, commands: [], hooks: [], agents: [], profiles: [], issues: [] }),
+    Promise.resolve({
+      mcps: [],
+      skills: [],
+      scripts,
+      commands: [],
+      hooks: [],
+      agents: [],
+      rules: [],
+      profiles: [],
+      issues: [],
+    }),
 });
 
 /** Four files; index.mjs is written last by apply so a half-written script never loads. */

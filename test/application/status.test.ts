@@ -37,7 +37,7 @@ describe('getStatus', () => {
     load: () => (catalog instanceof Error ? Promise.reject(catalog) : Promise.resolve(catalog)),
   };
   const setCatalog = (mcps: McpItem[], skills: SkillItem[] = []): void => {
-    catalog = { mcps, skills, scripts: [], commands: [], hooks: [], agents: [], profiles: [], issues: [] };
+    catalog = { mcps, skills, scripts: [], commands: [], hooks: [], agents: [], rules: [], profiles: [], issues: [] };
   };
   const deps = (): InitDeps => ({
     source,
@@ -140,6 +140,7 @@ describe('getStatus', () => {
       commands: [],
       hooks: [],
       agents: [],
+      rules: [],
       profiles: [],
       issues: [{ file: 'mcps/bad.json', reason: 'invalid' }],
     };
@@ -310,6 +311,7 @@ describe('getStatus (scripts)', () => {
       commands: [],
       hooks: [],
       agents: [],
+      rules: [],
       profiles: [],
       issues: [],
     };
@@ -334,6 +336,7 @@ describe('getStatus (scripts)', () => {
       commands: [],
       hooks: [],
       agents: [],
+      rules: [],
       profiles: [],
       issues: [],
     };
@@ -367,6 +370,7 @@ describe('getStatus (scripts)', () => {
       hooks: [],
       commands: [],
       agents: [],
+      rules: [],
       profiles: [],
       issues: [],
     };
@@ -414,7 +418,7 @@ describe('getStatus (agents)', () => {
     env: {},
   });
   const setCatalog = (agents: AgentItem[], skills: SkillItem[] = []): void => {
-    catalog = { mcps: [], skills, scripts: [], commands: [], hooks: [], agents, profiles: [], issues: [] };
+    catalog = { mcps: [], skills, scripts: [], commands: [], hooks: [], agents, rules: [], profiles: [], issues: [] };
   };
   const file = (scope: 'project' | 'user' = 'project') =>
     join(scope === 'user' ? tmp.homeDir : tmp.cwd, '.claude', 'agents', 'reviewer.md');
