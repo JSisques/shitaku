@@ -14,6 +14,7 @@ export const MAX_FILE_BYTES = 1_048_576;
 export const BUILTIN_IGNORES = ['node_modules', 'dist', 'build', 'coverage', '.git', '.hg', '.svn', '.shitaku'];
 
 const TEXT_FILES = new Set(['pnpm-workspace.yaml']);
+const OUTPUT_FILES = new Set(['repo-map.json', 'repo-map.md']);
 
 /**
  * @typedef {'too-large' | 'unreadable' | 'symlink' | 'invalid-json'} SkipReason
@@ -172,15 +173,22 @@ function readGuarded(root, path, skipped) {
 /**
  * @param {string} root absolute, real path
  * @param {{ ignore: string[], outRel: string | null }} options `outRel` is the POSIX output
- *   directory relative to `root`, or null when it lies outside of it
+ *   directory relative to `root` (`''` when it is the root itself), or null when it lies
+ *   outside of it
  */
 export function scan(root, { ignore, outRel }) {
   /** @type {Skipped[]} */
   const skipped = [];
   const patterns = [...BUILTIN_IGNORES, ...ignore];
   /** @param {string} path */
-  const excluded = (path) =>
-    (outRel !== null && (path === outRel || path.startsWith(`${outRel}/`))) || isIgnored(path, patterns);
+  const inOutput = (path) => {
+    if (outRel === null) return false;
+    // An output directory that is the root itself only excludes the output files.
+    if (outRel === '') return OUTPUT_FILES.has(path);
+    return path === outRel || path.startsWith(`${outRel}/`);
+  };
+  /** @param {string} path */
+  const excluded = (path) => inOutput(path) || isIgnored(path, patterns);
 
   const listed = gitListing(root);
   const commit = listed === null ? null : gitHead(root);

@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -179,6 +179,13 @@ export type TempTree = { dir: string; cleanup: () => Promise<void> };
 export async function makeTempTree(files: Tree = {}): Promise<TempTree> {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'shitaku-repo-map-')));
   await writeTree(dir, files);
+  return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+/** Copy the bundled script to a temp directory, as an install would, so a run uses that copy. */
+export async function copyScript(): Promise<TempTree> {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'shitaku-repo-map-script-')));
+  await cp(SCRIPT_DIR, dir, { recursive: true });
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
