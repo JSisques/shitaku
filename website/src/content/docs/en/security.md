@@ -59,11 +59,11 @@ Unknown fields and several handlers in one file are rejected.
 
 ## Agents safety
 
-An agent is one Markdown file, `catalog/agents/<name>.md`, that Claude Code loads as a subagent. It needs a single-line `name` equal to the file name, a single-line `description` and a non-empty body. Other keys such as `tools`, `model`, `hooks` or `mcpServers` may span several lines; they are copied verbatim and are not validated, and unknown keys are ignored.
+An agent is one Markdown file, `catalog/agents/<name>.md`, that Claude Code loads as a subagent. It needs a `name` equal to the file name, a `description` and a non-empty body; both may be on one line or a block scalar. Other keys such as `tools`, `model`, `hooks` or `mcpServers` may span several lines; they are copied verbatim and are not validated, and unknown keys are ignored.
 
 - An agent's frontmatter can grant tools or permissions. Installed agents are trusted like skills and slash commands: shitaku copies the file and does not analyze or sandbox it.
 - Agents from a `--source` folder are untrusted code. Read them before installing, and only use folders you trust.
-- A `name` or `description` written as a block scalar (`|` or `>`) is rejected in v1. Write both on one line; support is tracked in https://github.com/JSisques/shitaku/issues/238.
+- A `name` or `description` may be a literal (`|`) or folded (`>`) block scalar. The description is shown on one line with whitespace collapsed and the file is installed verbatim. Other multi-line forms for these two keys are rejected.
 - Agents install to `~/.claude/agents/<name>.md` (`user`) or `./.claude/agents/<name>.md` (`project`). A different file that shitaku did not install is never overwritten silently: `init` exits `2` and writes nothing, and `--force` backs it up first so `undo` can restore it.
 - `uninstall` refuses an agent modified since the install unless `--force` is set.
 - Older shitaku versions throw a `ManifestError` on a manifest entry with `kind: 'agent'`: run `undo` or `uninstall` for agents before downgrading.
