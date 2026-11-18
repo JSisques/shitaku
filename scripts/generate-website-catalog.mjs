@@ -3,6 +3,7 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import * as prettier from 'prettier';
+import { itemDescription } from './lib/frontmatter-description.mjs';
 
 const root = join(import.meta.dirname, '..');
 const catalogDir = join(root, 'catalog');
@@ -10,23 +11,6 @@ const locales = ['en', 'es'];
 const generatedKinds = ['mcps', 'skills', 'profiles', 'scripts', 'commands', 'hooks', 'agents', 'rules'];
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
-
-function frontmatterDescription(path, label) {
-  const text = readFileSync(path, 'utf8');
-  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? '';
-  const line = frontmatter.split(/\r?\n/).find((l) => l.startsWith('description:'));
-  if (!line) throw new Error(`${label} has no single-line description`);
-  return line
-    .slice('description:'.length)
-    .trim()
-    .replace(/^(['"])(.*)\1$/, '$2');
-}
-
-const skillDescription = (name) =>
-  frontmatterDescription(join(catalogDir, 'skills', name, 'SKILL.md'), `skills/${name}/SKILL.md`);
-
-const commandDescription = (name) =>
-  frontmatterDescription(join(catalogDir, 'commands', `${name}.md`), `commands/${name}.md`);
 
 function yamlEscape(value) {
   return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
@@ -116,7 +100,7 @@ function renderMcp(name) {
 }
 
 function renderSkill(name) {
-  const description = skillDescription(name);
+  const description = itemDescription(catalogDir, 'skills', name);
   return `${frontmatter(name, description)}# \`${name}\`
 
 ${description}
@@ -133,7 +117,7 @@ const COMMAND_USAGE = {
 };
 
 function renderCommand(name, locale) {
-  const description = commandDescription(name);
+  const description = itemDescription(catalogDir, 'commands', name);
   return `${frontmatter(name, description)}# \`${name}\`
 
 ${description}
@@ -144,9 +128,6 @@ This page is generated from \`catalog/commands/${name}.md\`.
 `;
 }
 
-const agentDescription = (name) =>
-  frontmatterDescription(join(catalogDir, 'agents', `${name}.md`), `agents/${name}.md`);
-
 const AGENT_USAGE = {
   en: (name) =>
     `A Claude Code subagent: installing it writes \`${name}.md\` into the Claude Code agents directory. Its frontmatter can grant tools or permissions, so read the file before you install it.`,
@@ -155,7 +136,7 @@ const AGENT_USAGE = {
 };
 
 function renderAgent(name, locale) {
-  const description = agentDescription(name);
+  const description = itemDescription(catalogDir, 'agents', name);
   return `${frontmatter(name, description)}# \`${name}\`
 
 ${description}
@@ -166,8 +147,6 @@ This page is generated from \`catalog/agents/${name}.md\`.
 `;
 }
 
-const ruleDescription = (name) => frontmatterDescription(join(catalogDir, 'rules', `${name}.md`), `rules/${name}.md`);
-
 const RULE_USAGE = {
   en: (name) =>
     `A Claude Code rule: installing it writes \`${name}.md\` into the Claude Code rules directory (\`.claude/rules\`). Its text instructs the agent on every session, so read the file before you install it.`,
@@ -176,7 +155,7 @@ const RULE_USAGE = {
 };
 
 function renderRule(name, locale) {
-  const description = ruleDescription(name);
+  const description = itemDescription(catalogDir, 'rules', name);
   return `${frontmatter(name, description)}# \`${name}\`
 
 ${description}

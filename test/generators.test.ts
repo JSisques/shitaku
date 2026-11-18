@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -46,6 +47,11 @@ function sandbox(options: {
     mkdirSync(join(dir, 'scripts'), { recursive: true });
     copyFileSync(join(ROOT, 'scripts', file), join(dir, 'scripts', file));
   }
+  // The generators import the domain frontmatter reader through `scripts/lib/`, loaded by plain Node type stripping.
+  cpSync(join(ROOT, 'scripts', 'lib'), join(dir, 'scripts', 'lib'), { recursive: true });
+  mkdirSync(join(dir, 'src/domain/catalog'), { recursive: true });
+  copyFileSync(join(ROOT, 'src/domain/catalog/frontmatter.ts'), join(dir, 'src/domain/catalog/frontmatter.ts'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }));
   symlinkSync(join(ROOT, 'node_modules'), join(dir, 'node_modules'));
   copyFileSync(join(ROOT, '.prettierrc'), join(dir, '.prettierrc'));
 
@@ -470,5 +476,82 @@ describe('docs:website-catalog (rule pages)', () => {
     const box = sandbox({ commands: [] });
     expect(box.run('website').status).toBe(0);
     expect(existsSync(join(box.dir, `${PAGES}/en/catalog/rules`))).toBe(false);
+  });
+});
+
+const BLOCK_CASES = {
+  agent: { kind: 'agents', rendered: 'Review code carefully' },
+  rule: { kind: 'rules', rendered: 'Name things clearly' },
+} as const;
+
+describe('block scalar descriptions (agents and rules)', () => {
+  it('renders an agent literal block scalar as one line in the README and en/es pages', () => {
+    const box = sandbox({ commands: [], agents: { reviewer: '|\n  Review code\n  carefully' } });
+    expect(box.run('catalog').status).toBe(0);
+    expect(box.run('website').status).toBe(0);
+    expect(box.read('README.md')).toContain('| `reviewer` | Review code carefully |');
+    for (const lang of ['en', 'es']) {
+      const page = box.read(`${PAGES}/${lang}/catalog/agents/reviewer.md`);
+      expect(page).toContain("description: 'Review code carefully'");
+      expect(page).toContain('\nReview code carefully\n');
+      expect(page).not.toMatch(/description: '?\|/);
+    }
+    expect(box.run('catalog', '--check').status).toBe(0);
+    expect(box.run('website', '--check').status).toBe(0);
+  });
+
+  it('renders an agent folded block scalar as one line in the README and en/es pages', () => {
+    const box = sandbox({ commands: [], agents: { reviewer: '>\n  Review code\n  carefully' } });
+    expect(box.run('catalog').status).toBe(0);
+    expect(box.run('website').status).toBe(0);
+    expect(box.read('README.md')).toContain('| `reviewer` | Review code carefully |');
+    for (const lang of ['en', 'es']) {
+      const page = box.read(`${PAGES}/${lang}/catalog/agents/reviewer.md`);
+      expect(page).toContain("description: 'Review code carefully'");
+      expect(page).not.toMatch(/description: '?>/);
+    }
+  });
+
+  it.each(['>', '|'])('renders a rule block scalar (%s) as one line in the README and en/es pages', (indicator) => {
+    const box = sandbox({ commands: [], rules: { naming: `${indicator}\n  Name things\n  clearly` } });
+    expect(box.run('catalog').status).toBe(0);
+    expect(box.run('website').status).toBe(0);
+    expect(box.read('README.md')).toContain(`| \`naming\` | ${BLOCK_CASES.rule.rendered} |`);
+    for (const lang of ['en', 'es']) {
+      const page = box.read(`${PAGES}/${lang}/catalog/rules/naming.md`);
+      expect(page).toContain(`description: '${BLOCK_CASES.rule.rendered}'`);
+      expect(page).toContain(`\n${BLOCK_CASES.rule.rendered}\n`);
+    }
+  });
+
+  it('escapes a pipe inside a block scalar description in the README table', () => {
+    const box = sandbox({ commands: [], agents: { reviewer: '|\n  Review | code\n  carefully' } });
+    expect(box.run('catalog').status).toBe(0);
+    expect(box.read('README.md')).toContain('| `reviewer` | Review \\| code carefully |');
+  });
+});
+
+describe('strict kinds (skills and commands)', () => {
+  it.each(['catalog', 'website'] as const)(
+    '%s generator rejects a command block scalar and emits nothing',
+    (script) => {
+      const box = sandbox({ commands: ['review'] });
+      box.write('catalog/commands/review.md', '---\ndescription: |\n  Review\n  changes\n---\n\nBody\n');
+      const run = box.run(script);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain('commands/review.md');
+      expect(run.stderr).toContain('multi-line');
+      if (script === 'catalog') expect(box.read('README.md')).not.toContain('| `review`');
+      else expect(existsSync(join(box.dir, `${PAGES}/en/catalog/commands/review.md`))).toBe(false);
+    },
+  );
+
+  it('keeps single-line command descriptions unchanged', () => {
+    const box = sandbox({ commands: ['review'] });
+    box.write('catalog/commands/review.md', "---\ndescription: 'Review changes'\n---\n\nBody\n");
+    expect(box.run('catalog').status).toBe(0);
+    expect(box.run('website').status).toBe(0);
+    expect(box.read('README.md')).toContain('| `review` | Review changes |');
+    expect(box.read(`${PAGES}/en/catalog/commands/review.md`)).toContain('Review changes');
   });
 });
