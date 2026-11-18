@@ -4,6 +4,7 @@
  */
 import { extractorFor } from './extractors.mjs';
 import { matchAny } from './glob.mjs';
+import { compilerOption } from './resolve.mjs';
 
 /** @typedef {import('./scan.mjs').Snapshot} Snapshot */
 
@@ -457,7 +458,7 @@ function testFiles(snapshot) {
 function pathAliases(snapshot) {
   const aliases = new Set();
   for (const dir of ['.', ...detectWorkspaces(snapshot).map((workspace) => workspace.path)]) {
-    const paths = asRecord(asRecord(asRecord(snapshot.tsconfigs.get(dir))?.['compilerOptions'])?.['paths']);
+    const paths = asRecord(compilerOption(snapshot.tsconfigs, dir, 'paths')?.value);
     for (const alias of Object.keys(paths ?? {})) aliases.add(alias);
   }
   return [...aliases].sort(compare);
@@ -497,7 +498,7 @@ function relativeImportExtensions(modules) {
  * @param {{ language: string, imports: { specifier: string }[] }[]} [modules]
  */
 export function detectConventions(snapshot, modules = []) {
-  const strict = asRecord(asRecord(snapshot.tsconfigs.get('.'))?.['compilerOptions'])?.['strict'];
+  const strict = compilerOption(snapshot.tsconfigs, '.', 'strict')?.value;
   return {
     moduleSystem: moduleSystem(snapshot),
     testFiles: testFiles(snapshot),

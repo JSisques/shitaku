@@ -542,6 +542,22 @@ describe('detectConventions', () => {
     expect(conventions({ 'tsconfig.json': tsconfig }).tsStrict).toBe(expected);
   });
 
+  it('follows a relative tsconfig extends for path aliases and tsStrict', () => {
+    const tree: Tree = {
+      'tsconfig.json': JSON.stringify({ extends: './tsconfig.base.json' }),
+      'tsconfig.base.json': JSON.stringify({ compilerOptions: { strict: true, paths: { '@/*': ['src/*'] } } }),
+    };
+    expect(conventions(tree)).toMatchObject({ pathAliases: ['@/*'], tsStrict: true });
+  });
+
+  it('lets the extending tsconfig override the extended options', () => {
+    const tree: Tree = {
+      'tsconfig.json': JSON.stringify({ extends: './base/tsconfig.base', compilerOptions: { strict: false } }),
+      'base/tsconfig.base.json': JSON.stringify({ compilerOptions: { strict: true, paths: { '~/*': ['*'] } } }),
+    };
+    expect(conventions(tree)).toMatchObject({ pathAliases: ['~/*'], tsStrict: false });
+  });
+
   it('gives tsStrict null without a usable root tsconfig and leaves relativeImportExtensions null', () => {
     const snapshot = snapshotFromTree({ 'a.ts': '' });
     snapshot.tsconfigs.set('.', null);

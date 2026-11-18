@@ -148,6 +148,42 @@ function matchAlias(paths, specifier) {
 }
 
 /**
+ * The parsed config at a normalized file path: `tsconfig.json` files are keyed by their
+ * directory, any other config by its file path.
+ * @param {Map<string, unknown>} tsconfigs
+ * @param {string} path
+ */
+function configFile(tsconfigs, path) {
+  return asRecord(
+    tsconfigs.get(path === 'tsconfig.json' || path.endsWith('/tsconfig.json') ? dirKey(dirOf(path)) : path),
+  );
+}
+
+/**
+ * A `compilerOptions` value in effect for the tsconfig.json in `dir`: its own, else the one it
+ * inherits from the config it extends (one level, relative paths only). `dir` is where the value
+ * was declared, because relative values such as `baseUrl` and `paths` targets resolve against it.
+ * The resolver and the conventions share this so both see the same effective config.
+ * @param {Map<string, unknown>} tsconfigs
+ * @param {string} dir
+ * @param {string} key
+ * @returns {{ dir: string, value: unknown } | null}
+ */
+export function compilerOption(tsconfigs, dir, key) {
+  const own = asRecord(tsconfigs.get(dir));
+  if (own === null) return null;
+  const mine = asRecord(own['compilerOptions'])?.[key];
+  if (mine !== undefined) return { dir, value: mine };
+  const target = own['extends'];
+  if (typeof target !== 'string' || !isRelative(target)) return null;
+  const joined = joinDir(dir, target);
+  if (joined === null) return null;
+  const path = joined.endsWith('.json') ? joined : `${joined}.json`;
+  const inherited = asRecord(configFile(tsconfigs, path)?.['compilerOptions'])?.[key];
+  return inherited === undefined ? null : { dir: dirKey(dirOf(path)), value: inherited };
+}
+
+/**
  * @param {{
  *   files: Iterable<string>,
  *   tsconfigs?: Map<string, unknown>,
@@ -189,30 +225,6 @@ export function createResolver(context) {
     return found === null ? UNRESOLVED : { resolved: found, status: /** @type {const} */ ('internal') };
   };
 
-  /**
-   * The parsed config at a normalized file path: `tsconfig.json` files are keyed by their
-   * directory, any other config by its file path.
-   * @param {string} path
-   */
-  const configFile = (path) =>
-    asRecord(tsconfigs.get(path === 'tsconfig.json' || path.endsWith('/tsconfig.json') ? dirKey(dirOf(path)) : path));
-
-  /**
-   * The config that `own` extends, one level only and only for relative paths.
-   * @param {Record<string, unknown>} own
-   * @param {string} dir
-   * @returns {{ config: Record<string, unknown>, dir: string } | null}
-   */
-  const extendedConfig = (own, dir) => {
-    const target = own['extends'];
-    if (typeof target !== 'string' || !isRelative(target)) return null;
-    const joined = joinDir(dir, target);
-    if (joined === null) return null;
-    const path = joined.endsWith('.json') ? joined : `${joined}.json`;
-    const config = configFile(path);
-    return config === null ? null : { config, dir: dirKey(dirOf(path)) };
-  };
-
   /** @type {Map<string, Aliases | null>} */
   const aliasCache = new Map();
 
@@ -227,17 +239,8 @@ export function createResolver(context) {
     /** @type {Aliases | null} */
     let aliases = null;
     if (own !== null) {
-      const extended = extendedConfig(own, dir);
-      /**
-       * @param {string} key
-       * @returns {{ dir: string, value: unknown } | null}
-       */
-      const option = (key) => {
-        const mine = asRecord(own['compilerOptions'])?.[key];
-        if (mine !== undefined) return { dir, value: mine };
-        const inherited = asRecord(extended?.config['compilerOptions'])?.[key];
-        return inherited !== undefined && extended !== null ? { dir: extended.dir, value: inherited } : null;
-      };
+      /** @param {string} key */
+      const option = (key) => compilerOption(tsconfigs, dir, key);
       const baseUrl = option('baseUrl');
       const pathsOption = option('paths');
       const baseDir =
