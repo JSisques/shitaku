@@ -37,7 +37,7 @@ Issue #227: agents starting work in an unfamiliar repository spend many turns re
 - Import graph and `importedByCount` per module; entry points from `package.json` `main`/`module`/`bin`/`exports`.
 - JSON writer (complete, sorted, deterministic) and Markdown renderer as a pure function of the JSON, with the ~8k-token cap (estimated as characters/4), deterministic truncation order and an omission note.
 - Registration in `catalog/catalog.json` `items.scripts`.
-- Tests first (strict TDD): unit-style spawn tests in `test/catalog/scripts/repo-map.test.ts`, fixtures under `test/fixtures/repo-map/**` (simple app, tricky syntax, aliases, workspace monorepo, non-git directory), and a determinism test (two runs, identical bytes).
+- Tests first (strict TDD): unit-style spawn tests in `test/catalog/scripts/repo-map.test.ts`, in-memory fixture trees in `test/helpers/repo-map.ts` (simple app, tricky syntax, aliases, workspace monorepo, non-git directory), and a determinism test (two runs, identical bytes).
 - `test/adapters/catalog/bundled-catalog.test.ts` updates (script list, length, files) while keeping `repo-map` out of the exactly-two-files loop.
 - Docs: regenerate README script table (`pnpm run docs:catalog`) and website pages (`pnpm run docs:website-catalog`, en/es); fix the stale hand-written prose that enumerates scripts (README, website overview en/es, `CONTRIBUTING.md`).
 
@@ -73,7 +73,7 @@ Follow the `dead-code`/`duplication` sibling pattern (own argument parsing, plai
 | `catalog/scripts/repo-map/`                                        | New              | `index.mjs`, `script.json`, helper `.mjs` modules                        |
 | `catalog/catalog.json`                                             | Modified         | Add `repo-map` to `items.scripts`                                        |
 | `test/catalog/scripts/repo-map.test.ts`                            | New              | Extraction, resolution, rendering, CLI, exit codes, determinism          |
-| `test/fixtures/repo-map/**`                                        | New              | Simple, tricky-syntax, alias, workspace and non-git fixtures             |
+| `test/helpers/repo-map.ts`                                         | New              | Simple, tricky-syntax, alias, workspace and non-git fixtures             |
 | `test/adapters/catalog/bundled-catalog.test.ts`                    | Modified         | Script list, length 4, `repo-map` file list; excluded from two-file loop |
 | `test/application/init-mcps.test.ts`                               | Optional         | Install block for `repo-map` if siblings have one                        |
 | `openspec/specs/scripts-install/spec.md`                           | Modified (delta) | Bundled list includes `repo-map`                                         |

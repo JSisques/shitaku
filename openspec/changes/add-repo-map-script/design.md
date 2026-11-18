@@ -452,6 +452,6 @@ The JSON-only default in slices 1 and 2 changes to `both` in slice 3. That is sa
 
 ## Open Questions
 
-- [ ] **Decision needed before tasks/apply**: approve the re-cut slices (slice 1 must be registered because unlisted script directories are catalog issues). Choose the three-slice cut or the two-slice variant, and whether to accept a `size:exception` for slices over 400 lines.
-- [ ] The spec must include the design-level envelope refinements: per-import `status`, `root: { packageName }`, `entryPoints[].key/file` and `skipped[].reason` values. These refine the proposal sketch without changing a confirmed decision.
-- [ ] Fixtures move from `test/fixtures/repo-map/**` (proposal) to in-memory trees in `test/helpers/repo-map.ts`, for the typecheck, lint and lint-staged reasons above. The spec and tasks should reference the helper instead.
+- [x] Resolved (three-slice cut, `size:exception` accepted, stacked-to-main): approve the re-cut slices (slice 1 must be registered because unlisted script directories are catalog issues). Choose the three-slice cut or the two-slice variant, and whether to accept a `size:exception` for slices over 400 lines.
+- [x] Resolved (the spec carries them): the spec must include the design-level envelope refinements: per-import `status`, `root: { packageName }`, `entryPoints[].key/file` and `skipped[].reason` values. These refine the proposal sketch without changing a confirmed decision.
+- [x] Resolved (in-memory trees in `test/helpers/repo-map.ts`): fixtures move from `test/fixtures/repo-map/**` (proposal) to in-memory trees in `test/helpers/repo-map.ts`, for the typecheck, lint and lint-staged reasons above. The spec and tasks should reference the helper instead.

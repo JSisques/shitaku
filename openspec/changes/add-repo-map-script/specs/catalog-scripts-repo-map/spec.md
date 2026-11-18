@@ -10,8 +10,6 @@ CLI, file listing, JS/TS extraction, import resolution, graph, envelope, Markdow
 
 `shitaku run repo-map` MUST produce a structural map of the cwd repository. MUST support `--format json|markdown|both` (default `both`), `--out <dir>` (default `.shitaku`, relative to cwd), `--max-depth <n>` (default `4`), and repeatable `--ignore <glob>`. Unknown flags, unsupported `--format` values, and non-positive-integer or non-numeric `--max-depth` MUST exit 2. `--format` selects which files are written. `--max-depth` MUST affect only the Markdown tree.
 
-Delivery is staged. In the first two slices only `--format json` is accepted and it is the default; `markdown` and `both`, `--max-depth` and the default of `both` arrive in the third slice. Until then, `--format markdown` and `--format both` MUST exit 2 as unsupported values.
-
 #### Scenario: Defaults write both files
 
 - GIVEN a JS/TS repository
@@ -78,7 +76,7 @@ Exit MUST be 0 when the map is written, and 2 for CLI, IO, or fatal failure. Exi
 
 ### Requirement: File listing and guards
 
-Inside a git repository, files MUST be listed via `git ls-files` (tracked plus untracked-not-ignored). Otherwise a deterministic directory walk with built-in ignores MUST be used. Built-in ignores MUST include `node_modules`, `dist`, `build`, `coverage`, and VCS directories; `--ignore` globs MUST be added to them. The scanner MUST always exclude the `--out` directory and `.shitaku/`. Files above 1 MiB MUST be omitted from extraction and listed in `skipped[]` with a reason. Git MUST be optional and not a declared tool. Git MUST be spawned only with a fixed argument array, without a shell, with the working directory as its `cwd`; `--ignore` and `--out` values MUST NOT be forwarded to git and MUST NOT be interpreted by a shell. Paths returned by git that contain a `..` segment MUST be dropped. Tracked files deleted from the work tree, submodule gitlinks and symlinks MUST NOT be listed as files (symlinks are recorded in `skipped[]`). The script MUST NOT modify the git index or `HEAD`.
+Inside a git repository, files MUST be listed via `git ls-files` (tracked plus untracked-not-ignored). Otherwise a deterministic directory walk with built-in ignores MUST be used. Built-in ignores MUST include `node_modules`, `dist`, `build`, `coverage`, and VCS directories; `--ignore` globs MUST be added to them. The scanner MUST always exclude the `--out` directory, including when it is reached through a symlinked path, and `.shitaku/`. A leading `/` in an `--ignore` glob MUST anchor it at the root. Files above 1 MiB MUST be omitted from extraction and listed in `skipped[]` with a reason. Git MUST be optional and not a declared tool. Git MUST be spawned only with a fixed argument array, without a shell, with the working directory as its `cwd`; `--ignore` and `--out` values MUST NOT be forwarded to git and MUST NOT be interpreted by a shell. Paths returned by git that contain a `..` segment MUST be dropped. Tracked files deleted from the work tree, submodule gitlinks and symlinks MUST NOT be listed as files (symlinks are recorded in `skipped[]`). The script MUST NOT modify the git index or `HEAD`.
 
 #### Scenario: Git repository listing
 
@@ -244,7 +242,7 @@ The extractor MUST handle `.ts .tsx .mts .cts .js .jsx .mjs .cjs` through a per-
 
 ### Requirement: Import resolution and graph
 
-Relative specifiers MUST be resolved with extension and `index` probing, including `.js` to `.ts` mapping. `tsconfig.json` `compilerOptions.paths` and `baseUrl` MUST be honored (full `extends` chains beyond one level are not required). A package-name specifier that matches a detected workspace name MUST resolve to that workspace's path; any other bare specifier MUST have `status: 'external'` and `resolved: null`. Resolved specifiers MUST have `status: 'internal'`. Unresolvable relative or alias specifiers, `#imports`, absolute paths and URLs MUST have `resolved: null` and `status: 'unresolved'`. `graph.edges` MUST list resolved module-to-module imports and `graph.importedByCount` MUST count inbound edges per module.
+Relative specifiers MUST be resolved with extension and `index` probing, including `.js` to `.ts` mapping. `tsconfig.json` `compilerOptions.paths` and `baseUrl` MUST be honored (one level of relative `extends` is followed, and `conventions.pathAliases` and `conventions.tsStrict` use the same effective config; longer chains are not required). A package-name specifier that matches a detected workspace name MUST resolve to that workspace's path; any other bare specifier MUST have `status: 'external'` and `resolved: null`. Resolved specifiers MUST have `status: 'internal'`. Unresolvable relative or alias specifiers, `#imports`, absolute paths and URLs MUST have `resolved: null` and `status: 'unresolved'`. `graph.edges` MUST list resolved module-to-module imports and `graph.importedByCount` MUST count inbound edges per module.
 
 #### Scenario: Relative with extension probing
 
@@ -336,7 +334,7 @@ The map MUST detect the package manager from the `packageManager` field or lockf
 
 ### Requirement: Markdown digest and size cap
 
-The Markdown MUST be a pure function of the JSON document. It MUST render the folder tree at directory level limited by `--max-depth`, the stack, commands, entry points, and signatures of exported symbols. Its size MUST NOT exceed approximately 8k tokens, estimated as characters divided by 4. When over the cap, truncation MUST be deterministic: first drop signatures of the least-imported files (ties broken by path), then reduce deeper tree levels. The Markdown MUST state explicitly what was omitted. The JSON MUST NOT be affected by truncation.
+The Markdown MUST be a pure function of the JSON document. It MUST render the folder tree at directory level limited by `--max-depth`, the stack, commands, entry points, and signatures of exported symbols. Its size MUST NOT exceed approximately 8k tokens, estimated as characters divided by 4. When over the cap, truncation MUST be deterministic and run these stages in order until the output fits: (1) collapse the signature lines of the least-imported modules to one line of export names (ties broken by path); (2) reduce the tree depth one level at a time toward 1; (3) drop whole module blocks, least imported first; (4) hard cut at the last line boundary that fits. When any stage ran, the Markdown MUST end with an omission note that states what was collapsed, limited, not listed or cut, and that the JSON is complete. The JSON MUST NOT be affected by truncation.
 
 #### Scenario: Under cap
 
@@ -348,13 +346,19 @@ The Markdown MUST be a pure function of the JSON document. It MUST render the fo
 
 - GIVEN a repository whose full Markdown exceeds the cap
 - WHEN run
-- THEN the Markdown is within the cap, least-imported files' signatures were dropped first, and an omission note states what was omitted
+- THEN the Markdown is within the cap, least-imported modules' signatures were collapsed to names first, and an omission note states what was omitted
 
 #### Scenario: Tree reduction after signatures
 
-- GIVEN signatures already fully dropped and the output still over the cap
+- GIVEN every signature already collapsed to names and the output still over the cap
 - WHEN rendered
 - THEN deeper tree levels are removed deterministically and the omission note reflects it
+
+#### Scenario: Module blocks dropped and hard cut
+
+- GIVEN the tree already at depth 1 and the output still over the cap
+- WHEN rendered
+- THEN whole module blocks are dropped, least imported first, and, only if the fixed sections alone exceed the cap, the output is cut at a line boundary; the omission note reports both
 
 #### Scenario: JSON stays complete
 
@@ -370,7 +374,7 @@ The Markdown MUST be a pure function of the JSON document. It MUST render the fo
 
 ### Requirement: Catalog registration and documentation
 
-`repo-map` MUST be registered in `catalog/catalog.json` `items.scripts` with valid `script.json` metadata declaring `tools: []`, and MUST ship no dependencies or script-root `package.json`. Registration lands in the first slice, because an unlisted script directory is a catalog issue; the hand-written prose lands in the third slice. The generated README script table and website catalog pages (en/es) MUST include `repo-map`, and hand-written prose that enumerates the bundled scripts (README, website overview en/es, `CONTRIBUTING.md`) MUST list it. The script MUST NOT edit `.gitignore`.
+`repo-map` MUST be registered in `catalog/catalog.json` `items.scripts` with valid `script.json` metadata declaring `tools: []`, and MUST ship no dependencies or script-root `package.json`. An unlisted script directory is a catalog issue, so registration and the generated docs MUST stay in sync with the script directory. The generated README script table and website catalog pages (en/es) MUST include `repo-map`, and hand-written prose that enumerates the bundled scripts (README, website overview en/es, `CONTRIBUTING.md`) MUST list it. The script MUST NOT edit `.gitignore`.
 
 #### Scenario: Registered with metadata
 
