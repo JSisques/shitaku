@@ -77,6 +77,32 @@ export const nonGit: Tree = {
   '.shitaku/repo-map.json': '{}\n',
 };
 
+/** A pnpm monorepo with two packages. Manifests only; sources arrive with the slice 2 tasks. */
+export const workspaceMonorepo: Tree = {
+  'package.json': json({
+    name: 'acme',
+    private: true,
+    packageManager: 'pnpm@9.0.0',
+    scripts: { build: 'pnpm -r build' },
+    devDependencies: { typescript: '^5.4.0' },
+  }),
+  'pnpm-workspace.yaml': "packages:\n  - 'packages/*'\n  - 'apps/*'\n",
+  'packages/core/package.json': json({
+    name: '@acme/core',
+    version: '1.0.0',
+    main: 'dist/index.js',
+    types: 'dist/index.d.ts',
+    scripts: { build: 'tsc -p .' },
+  }),
+  'apps/web/package.json': json({
+    name: '@acme/web',
+    version: '1.0.0',
+    bin: { web: 'bin/web.js' },
+    scripts: { dev: 'node bin/web.js' },
+    dependencies: { '@acme/core': 'workspace:*' },
+  }),
+};
+
 const SOURCE_EXTENSION = /\.(?:ts|mts|cts|tsx|js|mjs|cjs|jsx)$/;
 
 const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
