@@ -9,7 +9,7 @@ After a global install the binary is `shitaku`. With `npx`, prefix every command
 
 ## `init`
 
-Install MCP servers, skills, slash commands, agents and hooks from a catalog. Interactive by default; use flags to skip prompts.
+Install MCP servers, skills, slash commands, agents, rules and hooks from a catalog. Interactive by default; use flags to skip prompts.
 
 ```sh
 shitaku init
@@ -17,13 +17,14 @@ shitaku init --mcps github,context7 --scope project --yes
 shitaku init --skills example-skill --scope user --dry-run
 shitaku init --commands review --scope project
 shitaku init --agents reviewer --scope project
+shitaku init --rules no-secrets,naming --scope project
 shitaku init --hooks fmt --scope project
 shitaku init --hooks fmt --scope project --yes --allow-hooks
 ```
 
-Scopes: `project` writes MCPs to `./.mcp.json` and skills to `./.claude/skills/`; `user` writes MCPs to `~/.claude.json` and skills to `~/.claude/skills/` (close Claude Code first when writing `~/.claude.json`). Slash commands are single files written flat to `./.claude/commands/` (`project`) or `~/.claude/commands/` (`user`). Hooks are merged into `./.claude/settings.json` (`project`) or `~/.claude/settings.json` (`user`).
+Scopes: `project` writes MCPs to `./.mcp.json` and skills to `./.claude/skills/`; `user` writes MCPs to `~/.claude.json` and skills to `~/.claude/skills/` (close Claude Code first when writing `~/.claude.json`). Slash commands are single files written flat to `./.claude/commands/` (`project`) or `~/.claude/commands/` (`user`), and rules to `./.claude/rules/` (`project`) or `~/.claude/rules/` (`user`). Hooks are merged into `./.claude/settings.json` (`project`) or `~/.claude/settings.json` (`user`).
 
-`--mcps`, `--skills`, `--commands`, `--agents` and `--hooks` are independent and optional, but at least one kind must be selected. `--yes` skips confirmation and needs `--scope` plus at least one of them. `--force` overwrites entries, command files and skill directories that differ; a command file that differs and was not installed by shitaku is a conflict (exit `2`) without `--force`, and `--force` backs it up first. `--source <folder>` reads a custom catalog instead of the bundled one. Interactively, the agents prompt appears only when the catalog has agents. Agents are never gated behind a confirmation; they can grant tools or permissions, so read them first.
+`--mcps`, `--skills`, `--commands`, `--agents`, `--rules` and `--hooks` are independent and optional, but at least one kind must be selected, so `--yes` without `--rules` installs no rules. `--yes` skips confirmation and needs `--scope` plus at least one of them. `--force` overwrites entries, command files and skill directories that differ; a command file that differs and was not installed by shitaku is a conflict (exit `2`) without `--force`, and `--force` backs it up first. `--source <folder>` reads a custom catalog instead of the bundled one. Interactively, the agents prompt appears only when the catalog has agents. Interactively, the rules prompt appears only when the catalog has rules, and the recommended ones start selected. Agents and rules are never gated behind a confirmation; agents can grant tools or permissions and rules instruct the agent, so read them first.
 
 Before changing a file, shitaku backs it up under `~/.claude/.shitaku/backups/` and records the install in `~/.claude/.shitaku/manifest.json`.
 
@@ -41,7 +42,7 @@ Refuses (exit `3`) when a recorded file changed since the install unless `--forc
 
 ## `uninstall`
 
-Remove one installed MCP server, skill, slash command, agent or hook that shitaku owns. Never prompts.
+Remove one installed MCP server, skill, slash command, agent, rule or hook that shitaku owns. Never prompts.
 
 ```sh
 shitaku uninstall github
@@ -49,6 +50,7 @@ shitaku uninstall github --scope user
 shitaku uninstall demo --kind skill
 shitaku uninstall review --kind command
 shitaku uninstall reviewer --kind agent
+shitaku uninstall no-secrets --kind rule
 shitaku uninstall fmt --kind hook
 shitaku uninstall github --dry-run
 shitaku uninstall github --force
@@ -110,7 +112,7 @@ shitaku list commands
 shitaku list hooks
 ```
 
-Pass one kind (`mcps`, `skills`, `profiles`, `scripts`, `commands`, `hooks` or `agents`, plural only) to narrow. `--search <text>` filters by name or description (case-insensitive).
+Pass one kind (`mcps`, `skills`, `profiles`, `scripts`, `commands`, `hooks`, `agents` or `rules`, plural only) to narrow. `--search <text>` filters by name or description (case-insensitive).
 
 ## `doctor`
 

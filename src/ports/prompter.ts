@@ -1,6 +1,7 @@
 import type { AgentItem } from '@/domain/catalog/agent.js';
 import type { CommandItem } from '@/domain/catalog/command.js';
 import type { HookItem } from '@/domain/catalog/hook.js';
+import type { RuleItem } from '@/domain/catalog/rule.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
 import type { ScriptItem } from '@/domain/catalog/script.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
@@ -16,7 +17,7 @@ export class PromptCancelled extends Error {
 
 /** A planned item that cannot be installed without replacing something the user has. */
 export interface ConflictInfo {
-  kind: 'mcp' | 'skill' | 'script' | 'command' | 'agent';
+  kind: 'mcp' | 'skill' | 'script' | 'command' | 'agent' | 'rule';
   name: string;
   reason: string;
 }
@@ -44,6 +45,8 @@ export interface Prompter {
   selectCommands(options: CommandItem[]): Promise<string[]>;
   /** Only asked when the catalog has agents. May return an empty selection. */
   selectAgents(options: AgentItem[]): Promise<string[]>;
+  /** Only asked when the catalog has rules. Recommended rules start selected. May return an empty selection. */
+  selectRules(options: RuleItem[]): Promise<string[]>;
   /** Only asked when the catalog has hooks. May return an empty selection. */
   selectHooks(options: HookItem[]): Promise<string[]>;
   selectScope(): Promise<Scope>;

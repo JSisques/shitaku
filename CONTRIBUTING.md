@@ -1,6 +1,6 @@
 # Contributing to shitaku
 
-Thanks for helping. This guide covers local setup, adding catalog items (MCPs, skills, scripts, slash commands, hooks, agents, profiles), commit conventions and what a pull request needs to pass.
+Thanks for helping. This guide covers local setup, adding catalog items (MCPs, skills, scripts, slash commands, hooks, agents, rules, profiles), commit conventions and what a pull request needs to pass.
 
 ## Local setup
 
@@ -52,11 +52,12 @@ catalog/
   commands/<name>.md
   hooks/<name>.json
   agents/<name>.md
+  rules/<name>.md
 ```
 
-Every item must be listed in `catalog/catalog.json` under `items.mcps`, `items.profiles`, `items.skills`, `items.scripts`, `items.commands`, `items.hooks` or `items.agents`. The loader (`src/adapters/catalog/folder-source.ts`) validates items with the zod schemas in `src/domain/catalog/`. An invalid or unlisted item is skipped with a warning.
+Every item must be listed in `catalog/catalog.json` under `items.mcps`, `items.profiles`, `items.skills`, `items.scripts`, `items.commands`, `items.hooks`, `items.agents` or `items.rules`. The loader (`src/adapters/catalog/folder-source.ts`) validates items with the zod schemas in `src/domain/catalog/`. An invalid or unlisted item is skipped with a warning.
 
-After adding or changing an MCP, skill, script, slash command, hook or agent, run `pnpm run docs:catalog` to regenerate the catalog tables in `README.md`. CI fails (`pnpm run docs:catalog:check`) when they are out of date.
+After adding or changing an MCP, skill, script, slash command, hook, agent or rule, run `pnpm run docs:catalog` to regenerate the catalog tables in `README.md`. CI fails (`pnpm run docs:catalog:check`) when they are out of date.
 
 When catalog items change, also refresh the docs site pages:
 
@@ -67,7 +68,7 @@ pnpm run docs:website-catalog:check
 
 That regenerates Markdown under `website/src/content/docs/{en,es}/catalog/` from `catalog/` (read-only). Profiles stay browse-only with a not-installable callout. The isolated `.github/workflows/website.yml` workflow runs the same emit step before the Astro build; root `ci.yml` / `cd.yml` do not.
 
-Names for MCPs, skills, scripts, slash commands, hooks and agents must match `^[a-z0-9][a-z0-9-]*$` (lowercase letters, digits and hyphens; no leading hyphen).
+Names for MCPs, skills, scripts, slash commands, hooks, agents and rules must match `^[a-z0-9][a-z0-9-]*$` (lowercase letters, digits and hyphens; no leading hyphen).
 
 ### Add a skill
 
@@ -218,6 +219,41 @@ Validation limits:
 - A `name` or `description` may be a literal (`|`) or folded (`>`) block scalar, with optional chomping and indentation indicators. The description is shown on one line with whitespace collapsed and the file is installed verbatim. Other multi-line forms for these two keys (nested values, multi-line plain or quoted scalars) are rejected.
 
 Install behavior: the file is copied flat to `~/.claude/agents/<name>.md` (`user`) or `./.claude/agents/<name>.md` (`project`). Other files in that directory are never touched. A different `<name>.md` that shitaku did not install is a conflict and is never overwritten silently; `--force` backs it up first and `shitaku undo` restores it. `shitaku uninstall <name>` refuses a modified file without `--force`. The bundled catalog ships one agent, `pr-creator`, a least-privilege example that combines the `pr-writing` skill with `github` MCP tools; install behavior tests still use fixtures. Regenerate the README and website tables with `pnpm run docs:catalog` and `pnpm run docs:website-catalog`.
+
+### Adding catalog items: rules
+
+A rule is a single Markdown file that Claude Code loads as an instruction. A rule without `paths` is loaded in every session, so keep rules short and review one as you would a prompt: it steers the agent.
+
+1. Create `catalog/rules/<name>.md`. The file name (without `.md`) is the rule name and must match `^[a-z0-9][a-z0-9-]*$`.
+2. Start the file with frontmatter that has a single-line `name` equal to the file stem and a single-line `description`. The body after the frontmatter must not be empty.
+
+   ```md
+   ---
+   name: no-secrets
+   description: Never write secrets or credentials into code, config or logs.
+   ---
+
+   Never write real secrets, tokens or credentials into files, commits or logs.
+   ```
+
+3. Add the name to `items.rules` in `catalog/catalog.json`. To preselect it in the interactive prompt, also list it under `recommended.rules`:
+
+   ```json
+   "items": { "rules": ["no-secrets"] },
+   "recommended": { "rules": ["no-secrets"] }
+   ```
+
+   A file that is not listed, or a listed one that is missing or invalid, is skipped with a warning. A name under `recommended.rules` that is not a loaded rule is reported and ignored. No symlinks.
+
+Validation limits:
+
+- Only `name` and `description` are validated. Other keys, such as Claude Code's own `paths`, may span several lines, are copied verbatim and are not validated, so malformed nested YAML is not detected. Unknown keys pass through.
+- Quote glob patterns in `paths` (`- "src/**/*.ts"`): an unquoted pattern that starts with `*` or `{` is invalid YAML, and shitaku cannot catch it.
+- The keys `check` and `severity` are reserved for a future rule-check feature and are rejected today.
+- A `name` or `description` written as a block scalar (`|` or `>`) is rejected (single-line only).
+- Bundled rules stay at or below 1,500 bytes each and declare no `paths`; a test enforces both.
+
+Install behavior: the file is copied flat to `~/.claude/rules/<name>.md` (`user`) or `./.claude/rules/<name>.md` (`project`). Other files in that directory are never touched. A different `<name>.md` that shitaku did not install is a conflict and is never overwritten silently; `--force` backs it up first and `shitaku undo` restores it. `shitaku uninstall <name>` refuses a modified file without `--force`. Regenerate the README and website tables with `pnpm run docs:catalog` and `pnpm run docs:website-catalog`.
 
 ### Adding catalog items: hooks
 

@@ -5,6 +5,7 @@ import {
   deriveHookOwnership,
   deriveOwnedItems,
   deriveOwnership,
+  deriveRuleOwnership,
   deriveScriptOwnership,
   deriveSkillOwnership,
   emptyManifest,
@@ -683,10 +684,81 @@ describe('deriveHookOwnership', () => {
   });
 });
 
+describe('rule items', () => {
+  const rulePath = '/w/.claude/rules/naming.md';
+  const ruleInstall = (id: string, hash: string, over: Partial<Install> = {}): Install => {
+    const base = commandInstall(id, rulePath, hash);
+    return {
+      ...base,
+      files: base.files.map((f) => ({
+        ...f,
+        items: [{ kind: 'rule' as const, name: 'naming', action: 'create' as const, entryHash: hash, root: rulePath }],
+      })),
+      ...over,
+    };
+  };
+
+  it('parses a rule item whose root is the file path, accepting a null afterHash', () => {
+    const item = { kind: 'rule', name: 'naming', action: 'remove', entryHash: 'h1', root: rulePath };
+    const file = { path: rulePath, scope: 'project', backup: null, beforeHash: 'h1', afterHash: null, items: [item] };
+    const install = {
+      id: 'a',
+      createdAt: 't',
+      undoneAt: null,
+      source: { kind: 'bundled', location: 'x', catalogVersion: 1 },
+      files: [file],
+    };
+    const parsed = parseManifest(JSON.stringify({ version: 1, installs: [install] }));
+    expect(parsed.installs[0]?.files[0]?.items[0]).toMatchObject({ kind: 'rule', root: rulePath });
+  });
+
+  it('round-trips a rule item and keeps version 1', () => {
+    const m = manifest([ruleInstall('a', 'h1')]);
+    expect(parseManifest(JSON.stringify(m))).toEqual(m);
+    expect(m.version).toBe(1);
+  });
+
+  it('loads a manifest with only older kinds unchanged', () => {
+    const parsed = parseManifest(JSON.stringify(manifest([install('a', 'github', 'h1')])));
+    expect(parsed.version).toBe(1);
+    expect(deriveRuleOwnership(parsed)).toEqual({});
+  });
+
+  it('maps rule file paths to hashes, ignoring undone installs and commands', () => {
+    const undone = ruleInstall('c', 'h3', { undoneAt: '2026-10-03T00:00:00.000Z' });
+    const cmd = commandInstall('d', '/w/.claude/commands/x.md', 'hc');
+    expect(deriveRuleOwnership(manifest([ruleInstall('a', 'h1'), cmd]))).toEqual({ [rulePath]: 'h1' });
+    expect(deriveRuleOwnership(manifest([ruleInstall('a', 'h1'), ruleInstall('b', 'h2'), undone]))).toEqual({
+      [rulePath]: 'h2',
+    });
+    expect(deriveCommandOwnership(manifest([ruleInstall('a', 'h1')]))).toEqual({});
+  });
+
+  it('lists rules in owned items by file path with kind rule', () => {
+    expect(deriveOwnedItems(manifest([ruleInstall('a', 'h1')]))).toEqual([
+      { kind: 'rule', scope: 'project', path: rulePath, name: 'naming', hash: 'h1', installId: 'a' },
+    ]);
+  });
+
+  it('names rule in the afterHash refine message', () => {
+    const item = { kind: 'mcp', name: 'x', action: 'create', entryHash: 'h' };
+    const file = { path: '/p', scope: 'project', backup: null, beforeHash: null, afterHash: null, items: [item] };
+    const install = {
+      id: 'a',
+      createdAt: 't',
+      undoneAt: null,
+      source: { kind: 'bundled', location: 'x' },
+      files: [file],
+    };
+    expect(() => parseManifest(JSON.stringify({ version: 1, installs: [install] }))).toThrow(/rule/);
+  });
+});
+
 describe('isFlatFileKind', () => {
   it.each([
     ['command', true],
     ['agent', true],
+    ['rule', true],
     ['skill', false],
     ['script', false],
     ['hook', false],

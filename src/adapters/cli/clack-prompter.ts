@@ -3,6 +3,7 @@ import type { AgentItem } from '@/domain/catalog/agent.js';
 import type { CommandItem } from '@/domain/catalog/command.js';
 import type { HookItem } from '@/domain/catalog/hook.js';
 import type { McpItem } from '@/domain/catalog/schema.js';
+import type { RuleItem } from '@/domain/catalog/rule.js';
 import type { ScriptItem } from '@/domain/catalog/script.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
 import type { ChangePlan } from '@/domain/plan/change-plan.js';
@@ -24,6 +25,7 @@ const CONFLICT_LABELS: Record<ConflictInfo['kind'], string> = {
   script: 'Script',
   command: 'Command',
   agent: 'Agent',
+  rule: 'Rule',
 };
 
 export class ClackPrompter implements Prompter {
@@ -77,6 +79,21 @@ export class ClackPrompter implements Prompter {
     );
   }
 
+  async selectRules(options: RuleItem[]): Promise<string[]> {
+    return answer<string[]>(
+      await multiselect({
+        message: 'Which rules do you want to install? (rules instruct the agent; recommended ones are preselected)',
+        options: options.map((r) => ({
+          value: r.name,
+          label: r.name,
+          hint: r.recommended ? `${r.description} (recommended)` : r.description,
+        })),
+        initialValues: options.filter((r) => r.recommended).map((r) => r.name),
+        required: false,
+      }),
+    );
+  }
+
   async selectHooks(options: HookItem[]): Promise<string[]> {
     return answer<string[]>(
       await multiselect({
@@ -122,6 +139,7 @@ export class ClackPrompter implements Prompter {
       plan.scripts.length +
       plan.commands.length +
       plan.agents.length +
+      plan.rules.length +
       plan.hooks.filter(writesHookFile).length;
     return answer<boolean>(
       await confirm({ message: `Apply the changes to ${targets} location${targets === 1 ? '' : 's'}?` }),

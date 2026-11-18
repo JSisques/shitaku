@@ -6,7 +6,17 @@ import { enc } from '@test/helpers/skills.js';
 export const commandSource = (commands: CommandItem[]): CatalogSource => ({
   ref: () => ({ kind: 'bundled', location: '/catalog' }),
   load: () =>
-    Promise.resolve({ mcps: [], skills: [], scripts: [], commands, hooks: [], agents: [], profiles: [], issues: [] }),
+    Promise.resolve({
+      mcps: [],
+      skills: [],
+      scripts: [],
+      commands,
+      hooks: [],
+      agents: [],
+      rules: [],
+      profiles: [],
+      issues: [],
+    }),
 });
 
 /** A command and a newer catalog version of it. */

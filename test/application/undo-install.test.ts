@@ -9,9 +9,12 @@ import { ConfigError } from '@/domain/json-merge.js';
 import { appendInstall, loadManifest, manifestPath, stateDir } from '@/application/journal.js';
 import { sha256 } from '@/domain/hash.js';
 import { UndoSelectionError, UndoVerifyError, undoInstall } from '@/application/undo-install.js';
+import { getStatus } from '@/application/status.js';
+import { uninstallItem } from '@/application/uninstall-item.js';
 import { DEMO_V1, DEMO_V2, skillSource } from '@test/helpers/skills.js';
 import { SCRIPT_V1, scriptSource } from '@test/helpers/scripts.js';
 import { agentSource, REVIEWER } from '@test/helpers/agents.js';
+import { ruleItem, ruleSource } from '@test/helpers/rules.js';
 import { commandSource, REVIEW_V1 } from '@test/helpers/commands.js';
 import { FMT_V1, FMT_V2, GUARD, hookSource } from '@test/helpers/hooks.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
@@ -522,6 +525,88 @@ describe('undoInstall (agents)', () => {
     await install({ force: true });
     expect((await undoInstall(undoDeps(), {})).status).toBe('undone');
     expect(await readFile(file(), 'utf8')).toBe('mine');
+  });
+});
+
+describe('undoInstall (rules)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const naming = ruleItem('naming', ['paths:', '  - "src/**"']);
+  const dir = () => join(tmp.cwd, '.claude', 'rules');
+  const file = () => join(dir(), 'naming.md');
+  const undoDeps = () => ({ fs: deps.fs, paths: deps.paths });
+  const install = (extra: { force?: boolean } = {}) =>
+    initMcps(deps, { mcps: [], rules: ['naming'], scope: 'project', ...extra });
+  const stateOf = async () =>
+    (await getStatus({ ...deps, source: deps.source }, { scope: 'project' })).items.map((i) => i.state);
+  const uninstall = (force = false) =>
+    uninstallItem(
+      { fs: deps.fs, target: claudeCodeTarget, paths: deps.paths },
+      { name: 'naming', kind: 'rule', force },
+    );
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: ruleSource([naming]),
+      fs: new NodeFileSystem(),
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('removes the file and the rules directory the install created', async () => {
+    await install();
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'undone', exitCode: 0, changed: [] });
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('keeps a shared rules directory and its neighbor', async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(join(dir(), 'mine.md'), 'mine');
+    await install();
+    expect((await undoInstall(undoDeps(), {})).status).toBe('undone');
+    expect(await readdir(dir())).toEqual(['mine.md']);
+  });
+
+  it('refuses with exit 3 when the file was edited, unless forced', async () => {
+    await install();
+    await writeFile(file(), 'edited');
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'refused', exitCode: 3, changed: [file()] });
+    expect(await readFile(file(), 'utf8')).toBe('edited');
+    expect((await undoInstall(undoDeps(), { force: true })).status).toBe('undone');
+  });
+
+  it('restores the overwritten user file byte-identical', async () => {
+    await mkdir(dir(), { recursive: true });
+    await writeFile(file(), 'mine');
+    await install({ force: true });
+    expect((await undoInstall(undoDeps(), {})).status).toBe('undone');
+    expect(await readFile(file(), 'utf8')).toBe('mine');
+  });
+
+  it('round trips install, edit, refused uninstall, forced uninstall undo, and a drift-refused undo of the install', async () => {
+    await install();
+    expect(await stateOf()).toEqual(['installed']);
+    await writeFile(file(), 'edited');
+    expect(await stateOf()).toEqual(['modified']);
+    expect(await uninstall()).toMatchObject({ status: 'refused', exitCode: 3 });
+    expect(await uninstall(true)).toMatchObject({ status: 'removed', modified: true });
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'undone' });
+    expect(new Uint8Array(await readFile(file()))).toEqual(new TextEncoder().encode('edited'));
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'refused', exitCode: 3, changed: [file()] });
+    expect(await undoInstall(undoDeps(), { force: true })).toMatchObject({ status: 'undone' });
+    expect(await readdir(tmp.cwd)).toEqual([]);
+  });
+
+  it('undoes a clean install after the uninstall of an unmodified rule is undone', async () => {
+    await install();
+    expect(await uninstall()).toMatchObject({ status: 'removed', modified: false });
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'undone' });
+    expect(new Uint8Array(await readFile(file()))).toEqual(naming.bytes);
+    expect(await undoInstall(undoDeps(), {})).toMatchObject({ status: 'undone' });
+    expect(await readdir(tmp.cwd)).toEqual([]);
   });
 });
 

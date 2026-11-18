@@ -68,6 +68,16 @@ An agent is one Markdown file, `catalog/agents/<name>.md`, that Claude Code load
 - `uninstall` refuses an agent modified since the install unless `--force` is set.
 - Older shitaku versions throw a `ManifestError` on a manifest entry with `kind: 'agent'`: run `undo` or `uninstall` for agents before downgrading.
 
+## Rules safety
+
+A rule is one Markdown file, `catalog/rules/<name>.md`, that Claude Code loads as an instruction. It needs a single-line `name` equal to the file name, a single-line `description` and a non-empty body. Other keys, such as `paths`, may span several lines; they are copied verbatim and are not validated, so malformed YAML in them is not detected (quote glob patterns). `check` and `severity` are reserved and rejected.
+
+- A rule instructs the agent: an installed rule is loaded into its context and steers what it does. Installed rules are trusted like skills and slash commands: shitaku copies the file and does not analyze or sandbox it.
+- Rules from a `--source` folder are untrusted instructions. Read them before installing, and only use folders you trust.
+- Rules install to `~/.claude/rules/<name>.md` (`user`) or `./.claude/rules/<name>.md` (`project`). A different file that shitaku did not install is never overwritten silently: `init` exits `2` and writes nothing, and `--force` backs it up first so `undo` can restore it.
+- `uninstall` refuses a rule modified since the install unless `--force` is set.
+- Older shitaku versions throw a `ManifestError` on a manifest entry with `kind: 'rule'`: run `undo` or `uninstall` for rules before downgrading.
+
 ## Profiles
 
 Profiles appear in `list` and on this site for browsing. The CLI cannot select a profile yet — they are not installable by name.

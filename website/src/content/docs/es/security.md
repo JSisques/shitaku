@@ -48,3 +48,13 @@ Un agente es un archivo Markdown, `catalog/agents/<name>.md`, que Claude Code ca
 - Los agentes se instalan en `~/.claude/agents/<name>.md` (`user`) o `./.claude/agents/<name>.md` (`project`). Un archivo distinto que shitaku no instaló nunca se sobrescribe en silencio: `init` termina con código `2` y no escribe nada, y `--force` hace antes una copia de seguridad que `undo` puede restaurar.
 - `uninstall` rechaza un agente modificado desde la instalación salvo que uses `--force`.
 - Las versiones anteriores de shitaku lanzan un `ManifestError` ante una entrada del manifiesto con `kind: 'agent'`: ejecuta `undo` o `uninstall` para los agentes antes de bajar de versión.
+
+## Seguridad de las reglas
+
+Una regla es un archivo Markdown, `catalog/rules/<name>.md`, que Claude Code carga como instrucción. Necesita un `name` de una sola línea igual al nombre del archivo, una `description` de una sola línea y un cuerpo no vacío. Otras claves, como `paths`, pueden ocupar varias líneas; se copian tal cual y no se validan, así que el YAML mal formado en ellas no se detecta (entrecomilla los patrones glob). `check` y `severity` están reservadas y se rechazan.
+
+- Una regla orienta al agente: una regla instalada se carga en su contexto y condiciona lo que hace. Las reglas instaladas se tratan con la misma confianza que las skills y los comandos slash: shitaku copia el archivo y no lo analiza ni lo aísla.
+- Las reglas de una carpeta `--source` son instrucciones no confiables. Léelas antes de instalarlas y usa solo carpetas en las que confíes.
+- Las reglas se instalan en `~/.claude/rules/<name>.md` (`user`) o `./.claude/rules/<name>.md` (`project`). Un archivo distinto que shitaku no instaló nunca se sobrescribe en silencio: `init` termina con código `2` y no escribe nada, y `--force` hace antes una copia de seguridad que `undo` puede restaurar.
+- `uninstall` rechaza una regla modificada desde la instalación salvo que uses `--force`.
+- Las versiones anteriores de shitaku lanzan un `ManifestError` ante una entrada del manifiesto con `kind: 'rule'`: ejecuta `undo` o `uninstall` para las reglas antes de bajar de versión.

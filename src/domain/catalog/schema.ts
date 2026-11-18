@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AgentNameSchema, type AgentItem } from '@/domain/catalog/agent.js';
 import { CommandNameSchema, type CommandItem } from '@/domain/catalog/command.js';
 import { HookNameSchema, type HookItem } from '@/domain/catalog/hook.js';
+import { RuleNameSchema, type RuleItem } from '@/domain/catalog/rule.js';
 import { ScriptNameSchema, type ScriptItem } from '@/domain/catalog/script.js';
 import { SkillNameSchema, type SkillItem } from '@/domain/catalog/skill.js';
 import { extractPlaceholders, hasPlaceholder } from '@/domain/placeholders.js';
@@ -82,7 +83,10 @@ export const CatalogIndexSchema = z.object({
     commands: z.array(CommandNameSchema).default([]),
     hooks: z.array(HookNameSchema).default([]),
     agents: z.array(AgentNameSchema).default([]),
+    rules: z.array(RuleNameSchema).default([]),
   }),
+  /** Curated starting sets per kind. A name here must also be listed in `items`; the loader checks it. */
+  recommended: z.object({ rules: z.array(RuleNameSchema).default([]) }).prefault({}),
 });
 
 export type McpItem = z.infer<typeof McpItemSchema>;
@@ -96,5 +100,6 @@ export interface Catalog {
   commands: CommandItem[];
   hooks: HookItem[];
   agents: AgentItem[];
+  rules: RuleItem[];
   profiles: Profile[];
 }

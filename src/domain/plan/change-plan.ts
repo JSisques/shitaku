@@ -45,6 +45,8 @@ export interface ChangePlan {
   commands: FlatFileChange[];
   /** One entry per requested agent, in request order. */
   agents: FlatFileChange[];
+  /** One entry per requested rule, in request order. */
+  rules: FlatFileChange[];
   /** One entry per settings file the requested hooks go to. */
   hooks: HookFileChange[];
 }
@@ -149,6 +151,7 @@ export function buildPlan(input: BuildPlanInput): ChangePlan {
     scripts: [],
     commands: [],
     agents: [],
+    rules: [],
     hooks: [],
   };
 }

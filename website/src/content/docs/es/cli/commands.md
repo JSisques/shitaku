@@ -5,15 +5,15 @@ description: Resumen de comandos de la CLI de shitaku.
 
 # Comandos
 
-| Comando     | Propósito                                                       |
-| ----------- | --------------------------------------------------------------- |
-| `init`      | Instala servidores MCP, skills, comandos slash, agentes y hooks |
-| `undo`      | Restaura los archivos cambiados por la última instalación       |
-| `uninstall` | Elimina un MCP, skill, comando slash, agente o hook instalado   |
-| `status`    | Informa qué instaló shitaku y si cambió                         |
-| `list`      | Explora lo que ofrece un catálogo (solo lectura)                |
-| `doctor`    | Diagnostica elementos instalados y sugiere correcciones         |
-| `version`   | Imprime la versión del paquete instalado                        |
+| Comando     | Propósito                                                               |
+| ----------- | ----------------------------------------------------------------------- |
+| `init`      | Instala servidores MCP, skills, comandos slash, agentes, reglas y hooks |
+| `undo`      | Restaura los archivos cambiados por la última instalación               |
+| `uninstall` | Elimina un MCP, skill, comando slash, agente, regla o hook instalado    |
+| `status`    | Informa qué instaló shitaku y si cambió                                 |
+| `list`      | Explora lo que ofrece un catálogo (solo lectura)                        |
+| `doctor`    | Diagnostica elementos instalados y sugiere correcciones                 |
+| `version`   | Imprime la versión del paquete instalado                                |
 
 ## Agentes
 
@@ -28,6 +28,20 @@ shitaku uninstall reviewer --kind agent
 - `--agents <a,b>` instala cada agente como un único archivo en `./.claude/agents/` (`project`) o en `~/.claude/agents/` (`user`). De forma interactiva, la pregunta aparece solo si el catálogo tiene agentes.
 - `--agents` cuenta como flag de tipo: `--yes` lo acepta como selección.
 - `uninstall <name> --kind agent` elimina solo ese archivo.
+
+## Reglas
+
+Una regla es un archivo Markdown que Claude Code carga como instrucción para el agente. Léelas antes de instalarlas: orientan lo que hace el agente. No hay puerta de confirmación para las reglas, tampoco con `--source`.
+
+```sh
+shitaku list rules
+shitaku init --rules no-secrets,naming --scope project
+shitaku uninstall no-secrets --kind rule
+```
+
+- `--rules <a,b>` instala cada regla como un único archivo en `./.claude/rules/` (`project`) o en `~/.claude/rules/` (`user`). De forma interactiva, la pregunta aparece solo si el catálogo tiene reglas y las recomendadas vienen preseleccionadas.
+- `--rules` cuenta como flag de tipo: `--yes` sin `--rules` no instala ninguna regla.
+- `uninstall <name> --kind rule` elimina solo ese archivo.
 
 ## Hooks
 

@@ -24,6 +24,7 @@ description: Flags for shitaku init, undo, uninstall, status, list, and doctor.
 | `--skills <a,b>`   | Comma-separated skill names                                                  |
 | `--commands <a,b>` | Comma-separated slash command names                                          |
 | `--agents <a,b>`   | Comma-separated agent names (agents can grant tools or permissions)          |
+| `--rules <a,b>`    | Comma-separated rule names (rules instruct the agent)                        |
 | `--hooks <a,b>`    | Comma-separated hook names                                                   |
 | `--allow-hooks`    | Install the selected hooks without the confirmation prompt; `--yes` does not |
 
@@ -35,9 +36,9 @@ description: Flags for shitaku init, undo, uninstall, status, list, and doctor.
 
 ## `uninstall`
 
-| Flag                                              | Meaning                                          |
-| ------------------------------------------------- | ------------------------------------------------ |
-| `--kind mcp\|skill\|script\|command\|hook\|agent` | Disambiguate when a name exists as several kinds |
+| Flag                                                    | Meaning                                          |
+| ------------------------------------------------------- | ------------------------------------------------ |
+| `--kind mcp\|skill\|script\|command\|hook\|agent\|rule` | Disambiguate when a name exists as several kinds |
 
 ## `list`
 

@@ -9,7 +9,17 @@ export const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
 export const skillSource = (skills: SkillItem[]): CatalogSource => ({
   ref: () => ({ kind: 'bundled', location: '/catalog' }),
   load: () =>
-    Promise.resolve({ mcps: [], skills, scripts: [], commands: [], hooks: [], agents: [], profiles: [], issues: [] }),
+    Promise.resolve({
+      mcps: [],
+      skills,
+      scripts: [],
+      commands: [],
+      hooks: [],
+      agents: [],
+      rules: [],
+      profiles: [],
+      issues: [],
+    }),
 });
 
 /** Four files, one of them binary and two in subdirectories. SKILL.md sorts after assets/ and refs/ only by the apply order. */

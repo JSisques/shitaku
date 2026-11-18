@@ -22,6 +22,21 @@
     "profiles": ["base", "web", "backend"],
     "scripts": ["complexity", "dead-code", "duplication"],
     "commands": [],
-    "agents": ["pr-creator"]
+    "agents": ["pr-creator"],
+    "rules": [
+      "naming",
+      "small-changes",
+      "explain-why",
+      "no-new-deps",
+      "error-handling",
+      "ask-when-unsure",
+      "module-readme",
+      "conventional-commits",
+      "tests-for-changes",
+      "no-secrets"
+    ]
+  },
+  "recommended": {
+    "rules": ["module-readme", "conventional-commits", "tests-for-changes", "no-secrets", "ask-when-unsure"]
   }
 }

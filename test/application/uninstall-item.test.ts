@@ -13,9 +13,10 @@ import { uninstallItem, UninstallSelectionError, type UninstallRequest } from '@
 import { deriveOwnedItems } from '@/domain/manifest.js';
 import type { CatalogSource } from '@/ports/catalog-source.js';
 import { UnsafeTreeError, type FileSystem } from '@/ports/file-system.js';
-import { agentSource, REVIEWER } from '@test/helpers/agents.js';
+import { agentSource, makeAgent, REVIEWER } from '@test/helpers/agents.js';
 import { commandSource, REVIEW_V1 } from '@test/helpers/commands.js';
 import { FMT_V1, GUARD, hookSource } from '@test/helpers/hooks.js';
+import { ruleItem, ruleSource } from '@test/helpers/rules.js';
 import { DEMO_V1, faultyFs, skillSource } from '@test/helpers/skills.js';
 import { SCRIPT_V1, scriptSource } from '@test/helpers/scripts.js';
 import { makeTmpPaths, type TmpPaths } from '@test/helpers/tmp-paths.js';
@@ -422,6 +423,7 @@ describe('uninstallItem (scripts)', () => {
             commands: [],
             hooks: [],
             agents: [],
+            rules: [],
             profiles: [],
             issues: [],
           }),
@@ -788,6 +790,101 @@ describe('uninstallItem (agents)', () => {
     expect(await exists(commandFile)).toBe(false);
     expect(await exists(file())).toBe(true);
     expect(new Uint8Array(await readFile(file()))).toEqual(REVIEWER.bytes);
+  });
+});
+
+describe('uninstallItem (rules)', () => {
+  let tmp: TmpPaths;
+  let fs: NodeFileSystem;
+  let deps: InitDeps;
+  const naming = ruleItem('naming', ['paths:', '  - "src/**"']);
+  const dir = () => join(tmp.cwd, '.claude', 'rules');
+  const file = () => join(dir(), 'naming.md');
+  const exists = (path: string) =>
+    access(path).then(
+      () => true,
+      () => false,
+    );
+  const uninstall = (req: Partial<UninstallRequest> = {}) =>
+    uninstallItem(
+      { fs, target: claudeCodeTarget, paths: { homeDir: tmp.homeDir, cwd: tmp.cwd } },
+      { name: 'naming', kind: 'rule', ...req },
+    );
+  const install = (d: InitDeps = deps, extra: Partial<InitRequest> = {}) =>
+    initMcps(d, { mcps: [], rules: ['naming'], scope: 'project', ...extra });
+
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    fs = new NodeFileSystem();
+    deps = {
+      source: ruleSource([naming]),
+      fs,
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('removes an unmodified rule, backs up its bytes and journals a remove with afterHash null', async () => {
+    await install();
+    expect(await uninstall()).toMatchObject({
+      status: 'removed',
+      exitCode: 0,
+      modified: false,
+      files: [file()],
+      item: { kind: 'rule', scope: 'project', name: 'naming', path: file() },
+    });
+    expect(await exists(file())).toBe(false);
+    const last = (await loadManifest(fs, tmp.homeDir)).installs.at(-1)!;
+    expect(last.files[0]).toMatchObject({
+      path: file(),
+      afterHash: null,
+      items: [{ kind: 'rule', name: 'naming', action: 'remove', root: file() }],
+    });
+    expect(new Uint8Array(await readFile(join(stateDir(tmp.homeDir), last.files[0]!.backup!)))).toEqual(naming.bytes);
+  });
+
+  it('refuses a modified rule with exit 3, and --force removes it keeping a neighbor', async () => {
+    await install();
+    await writeFile(join(dir(), 'mine.md'), 'mine');
+    await writeFile(file(), 'edited');
+    expect(await uninstall()).toMatchObject({ status: 'refused', exitCode: 3, modified: true, files: [file()] });
+    expect(await readFile(file(), 'utf8')).toBe('edited');
+    expect(await uninstall({ force: true })).toMatchObject({ status: 'removed', exitCode: 0, modified: true });
+    expect(await readdir(dir())).toEqual(['mine.md']);
+  });
+
+  it('reports already-absent without writing when the file was deleted', async () => {
+    await install();
+    await rm(file());
+    const manifest = await readFile(manifestPath(tmp.homeDir), 'utf8');
+    expect(await uninstall()).toMatchObject({ status: 'already-absent', exitCode: 0, files: [] });
+    expect(await readFile(manifestPath(tmp.homeDir), 'utf8')).toBe(manifest);
+  });
+
+  it('resolves a rule at the rules root and does not touch the user scope copy', async () => {
+    await install();
+    await install(deps, { scope: 'user' });
+    expect(await uninstall({ scope: 'project' })).toMatchObject({ status: 'removed', item: { scope: 'project' } });
+    expect(await exists(join(tmp.homeDir, '.claude', 'rules', 'naming.md'))).toBe(true);
+  });
+
+  it('lists rule and agent candidates when the name is both, and kind rule resolves it', async () => {
+    const both: InitDeps = {
+      ...deps,
+      source: {
+        ref: () => deps.source.ref(),
+        load: async () => ({ ...(await deps.source.load()), agents: [makeAgent('naming')] }),
+      },
+    };
+    await install(both, { agents: ['naming'] });
+    const error = await uninstall({ kind: undefined }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UninstallSelectionError);
+    expect((error as UninstallSelectionError).candidates.map((c) => c.kind).sort()).toEqual(['agent', 'rule']);
+    expect(await uninstall()).toMatchObject({ status: 'removed', item: { kind: 'rule' } });
+    expect(await exists(file())).toBe(false);
+    expect(await exists(join(tmp.cwd, '.claude', 'agents', 'naming.md'))).toBe(true);
   });
 });
 

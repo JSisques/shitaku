@@ -3,7 +3,7 @@ import type { Action } from '@/domain/plan/change-plan.js';
 import { classifyOwned } from '@/domain/plan/classify.js';
 import type { Scope } from '@/ports/agent-target.js';
 
-/** The plan for one single-file item (a command today); the hash of a file is the sha256 of its bytes. */
+/** The plan for one single-file item (a command, agent or rule); the hash of a file is the sha256 of its bytes. */
 export interface FlatFileChange {
   name: string;
   /** Absolute path of the file. */

@@ -8,24 +8,24 @@ A read-only `shitaku status` command that reports every active, shitaku-managed 
 
 ### Requirement: Manifest-driven read-only report
 
-`status` MUST list only items recorded by installs with `undoneAt === null`. It MUST NOT write to configs, settings files, skill, script, command, or agent files, backups, or the manifest. Each item MUST carry `kind` (`mcp`, `skill`, `script`, `command`, `hook`, or `agent`; the model MUST allow further kinds), `name`, `scope`, `state`, `path`, and `installId`. Items MUST be keyed by scope, path, and name. Text output MUST group items by scope, then by kind. An agent's `path` MUST be its file path.
-(Previously: kinds were mcp|skill|script|command|hook)
+`status` MUST list only items recorded by installs with `undoneAt === null`. It MUST NOT write to configs, settings files, skill, script, command, agent, or rule files, backups, or the manifest. Each item MUST carry `kind` (`mcp`, `skill`, `script`, `command`, `hook`, `agent`, or `rule`; the model MUST allow further kinds), `name`, `scope`, `state`, `path`, and `installId`. Items MUST be keyed by scope, path, and name. Text output MUST group items by scope, then by kind. A rule's `path` MUST be its file path.
+(Previously: kinds were mcp|skill|script|command|hook|agent)
 
-#### Scenario: Active agent listed
+#### Scenario: Active rule listed
 
-- GIVEN one active install with agent `reviewer`
+- GIVEN one active install with rule `no-secrets`
 - WHEN `shitaku status` runs
-- THEN `reviewer` is listed with kind `agent`, scope, state, and path
+- THEN `no-secrets` is listed with kind `rule`, scope, state, and path
 
 #### Scenario: Same name in two scopes
 
-- GIVEN agent `reviewer` installed in project and user scope
+- GIVEN rule `no-secrets` installed in project and user scope
 - WHEN `status` runs
-- THEN two distinct `reviewer` items are listed, one per scope
+- THEN two distinct `no-secrets` items are listed, one per scope
 
-#### Scenario: Skill and agent with same name
+#### Scenario: Agent and rule with same name
 
-- GIVEN skill `x` and agent `x` are both owned
+- GIVEN agent `x` and rule `x` are both owned
 - WHEN `status` runs
 - THEN both are listed, each with its own kind and path
 
@@ -47,32 +47,32 @@ By default `status` MUST report both scopes. `--scope project|user` MUST restric
 
 ### Requirement: Item states
 
-The state table and ordering are unchanged, extended so that an agent file counts under `missing` when absent, and the hash used for agents is the file-bytes hash (as for commands). A user edit to an agent file MUST yield `modified`; `modified` MUST win over `out-of-date`.
-(Previously: no agent file state)
+The state table and ordering are unchanged, extended so that an agent or rule file counts under `missing` when absent, and the hash used for agents and rules is the file-bytes hash (as for commands). A user edit to a rule file MUST yield `modified`; `modified` MUST win over `out-of-date`.
+(Previously: no rule file state)
 
-#### Scenario: Installed agent
+#### Scenario: Installed rule
 
-- GIVEN disk, manifest, and catalog hashes equal for `reviewer`
+- GIVEN disk, manifest, and catalog hashes equal for `no-secrets`
 - WHEN `status` runs
-- THEN `reviewer` is `installed`
+- THEN `no-secrets` is `installed`
 
-#### Scenario: Modified agent
+#### Scenario: Modified rule
 
-- GIVEN the user edited `reviewer.md` and the catalog also changed
+- GIVEN the user edited `no-secrets.md` and the catalog also changed
 - WHEN `status` runs
-- THEN `reviewer` is `modified`
+- THEN `no-secrets` is `modified`
 
-#### Scenario: Out of date agent
+#### Scenario: Out of date rule
 
-- GIVEN `reviewer.md` is untouched and the catalog bytes differ
+- GIVEN `no-secrets.md` is untouched and the catalog bytes differ
 - WHEN `status` runs
-- THEN `reviewer` is `out-of-date`
+- THEN `no-secrets` is `out-of-date`
 
-#### Scenario: Missing agent and missing from catalog
+#### Scenario: Missing rule and missing from catalog
 
-- GIVEN `reviewer.md` was deleted and agent `old` was removed from the catalog
+- GIVEN `no-secrets.md` was deleted and rule `old` was removed from the catalog
 - WHEN `status` runs
-- THEN `reviewer` is `missing` and `old` is `missing-from-catalog`
+- THEN `no-secrets` is `missing` and `old` is `missing-from-catalog`
 
 ### Requirement: Unsafe and unreadable skill trees
 
@@ -221,3 +221,19 @@ A command path that is a symlink, a directory, a special file, or unreadable MUS
 - GIVEN owned `reviewer` present on disk
 - WHEN `doctor` runs
 - THEN no finding is reported for `reviewer`
+
+### Requirement: Doctor findings for rules
+
+`doctor` MUST report an owned rule whose file is absent as a finding with code `rule-missing`, naming the rule and its path. A present rule (modified or not) MUST NOT produce `rule-missing`. `doctor` MUST NOT write.
+
+#### Scenario: Rule removed
+
+- GIVEN owned rule `no-secrets` whose file was deleted
+- WHEN `doctor` runs
+- THEN it reports `no-secrets` as `rule-missing` and writes nothing
+
+#### Scenario: Healthy rule
+
+- GIVEN owned `no-secrets` present on disk
+- WHEN `doctor` runs
+- THEN no finding is reported for `no-secrets`

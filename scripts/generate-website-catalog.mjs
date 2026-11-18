@@ -7,7 +7,7 @@ import * as prettier from 'prettier';
 const root = join(import.meta.dirname, '..');
 const catalogDir = join(root, 'catalog');
 const locales = ['en', 'es'];
-const generatedKinds = ['mcps', 'skills', 'profiles', 'scripts', 'commands', 'hooks', 'agents'];
+const generatedKinds = ['mcps', 'skills', 'profiles', 'scripts', 'commands', 'hooks', 'agents', 'rules'];
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
@@ -163,6 +163,27 @@ ${description}
 ${AGENT_USAGE[locale](name)}
 
 This page is generated from \`catalog/agents/${name}.md\`.
+`;
+}
+
+const ruleDescription = (name) => frontmatterDescription(join(catalogDir, 'rules', `${name}.md`), `rules/${name}.md`);
+
+const RULE_USAGE = {
+  en: (name) =>
+    `A Claude Code rule: installing it writes \`${name}.md\` into the Claude Code rules directory (\`.claude/rules\`). Its text instructs the agent on every session, so read the file before you install it.`,
+  es: (name) =>
+    `Una regla de Claude Code: al instalarla se escribe \`${name}.md\` en el directorio de reglas de Claude Code (\`.claude/rules\`). Su texto instruye al agente en cada sesión, así que lee el archivo antes de instalarla.`,
+};
+
+function renderRule(name, locale) {
+  const description = ruleDescription(name);
+  return `${frontmatter(name, description)}# \`${name}\`
+
+${description}
+
+${RULE_USAGE[locale](name)}
+
+This page is generated from \`catalog/rules/${name}.md\`.
 `;
 }
 
@@ -323,6 +344,10 @@ async function expectedFiles() {
     for (const name of items.agents ?? []) {
       const rel = join('website/src/content/docs', locale, 'catalog/agents', `${name}.md`);
       files.set(rel, await formatMarkdown(rel, renderAgent(name, locale)));
+    }
+    for (const name of items.rules ?? []) {
+      const rel = join('website/src/content/docs', locale, 'catalog/rules', `${name}.md`);
+      files.set(rel, await formatMarkdown(rel, renderRule(name, locale)));
     }
     for (const name of items.hooks ?? []) {
       const rel = join('website/src/content/docs', locale, 'catalog/hooks', `${name}.md`);

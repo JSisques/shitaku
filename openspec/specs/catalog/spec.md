@@ -4,12 +4,12 @@
 
 ### Requirement: Catalog layout and schema
 
-The catalog MUST be a folder with `catalog.json` (`{ "version": 1, "items": { "mcps": [...], "skills": [...], "profiles": [...], "scripts": [...], "commands": [...], "hooks": [...], "agents": [...] } }`, listing item names; `skills`, `scripts`, `commands`, `hooks`, and `agents` are optional and default to empty), `mcps/<name>.json`, `skills/<name>/SKILL.md` (plus optional resources, including binary files), `scripts/<name>/index.mjs` plus validated metadata, `commands/<name>.md`, `hooks/<name>.json`, `agents/<name>.md`, and `profiles/<name>.json`. `instructions/` is reserved and MUST be ignored.
-(Previously: no agents kind in items or layout)
+The catalog MUST be a folder with `catalog.json` (`{ "version": 1, "items": { "mcps": [...], "skills": [...], "profiles": [...], "scripts": [...], "commands": [...], "hooks": [...], "agents": [...], "rules": [...] } }`, listing item names; `skills`, `scripts`, `commands`, `hooks`, `agents`, and `rules` are optional and default to empty), `mcps/<name>.json`, `skills/<name>/SKILL.md` (plus optional resources, including binary files), `scripts/<name>/index.mjs` plus validated metadata, `commands/<name>.md`, `hooks/<name>.json`, `agents/<name>.md`, `rules/<name>.md`, and `profiles/<name>.json`. `instructions/` is reserved and MUST be ignored.
+(Previously: no rules kind in items or layout)
 
-#### Scenario: Layout with agents
+#### Scenario: Layout with rules
 
-- GIVEN a catalog with `agents/reviewer.md` listed in `items.agents`
+- GIVEN a catalog with `rules/no-secrets.md` listed in `items.rules`
 - WHEN loaded
 - THEN the layout is accepted and other kinds are unaffected
 
@@ -265,8 +265,8 @@ The catalog MUST support `agents/<name>.md` listed in `items.agents` (optional, 
 
 ### Requirement: Opt-in nested frontmatter reader
 
-The frontmatter reader MUST offer an opt-in `allowNested` mode, used only for agents. In that mode, top-level scalar keys MUST be extracted, and top-level keys whose value is a YAML block scalar MUST be decoded into their string value in `data`. The supported block-scalar subset is: a header of `|` (literal) or `>` (folded), optionally followed by a chomping indicator (`-` strip, `+` keep; absent means clip) and an indentation indicator (`1`-`9`) in either order, optionally followed by a trailing `# comment`. Content indentation MUST be the indicator when present, otherwise the indentation of the first non-blank content line. The scalar MUST end at the first non-blank line indented less than the content indentation, or at the next top-level key. Literal (`|`) MUST keep line breaks; folded (`>`) MUST join consecutive lines with a single space and keep blank lines as paragraph breaks. Blank lines inside the block MUST be preserved, CRLF line endings MUST be handled, and a header with no content lines MUST decode to an empty string. A non-blank block-scalar line whose indentation starts with a tab MUST be rejected with the error `frontmatter key 'X' has a block scalar indented with a tab`. Other indented lines and list items belonging to a key whose value is empty or a nested mapping or list MUST be accepted and kept opaque (not parsed or validated); only such keys appear in the `opaque` result. Default (strict) mode MUST be unchanged: skills and commands MUST keep rejecting multi-line, block-scalar, or nested values exactly as before, including the handling of blank lines inside frontmatter. The reader MUST remain pure (no `fs`, `os`, `path`, `child_process`, or `process`). Malformed nested YAML is not detected, and full YAML semantics (flow or quoted multi-line scalars, anchors, tags, block scalars inside nested values) are not supported; these limits MUST be documented.
-(Previously: block scalars were accepted and treated as opaque, in nested mode)
+The frontmatter reader MUST offer an opt-in `allowNested` mode, used only for agents and rules. In that mode, top-level scalar keys MUST be extracted, and top-level keys whose value is a YAML block scalar MUST be decoded into their string value in `data`. The supported block-scalar subset is: a header of `|` (literal) or `>` (folded), optionally followed by a chomping indicator (`-` strip, `+` keep; absent means clip) and an indentation indicator (`1`-`9`) in either order, optionally followed by a trailing `# comment`. Content indentation MUST be the indicator when present, otherwise the indentation of the first non-blank content line. The scalar MUST end at the first non-blank line indented less than the content indentation, or at the next top-level key. Literal (`|`) MUST keep line breaks; folded (`>`) MUST join consecutive lines with a single space and keep blank lines as paragraph breaks. Blank lines inside the block MUST be preserved, CRLF line endings MUST be handled, and a header with no content lines MUST decode to an empty string. A non-blank block-scalar line whose indentation starts with a tab MUST be rejected with the error `frontmatter key 'X' has a block scalar indented with a tab`. Other indented lines and list items belonging to a key whose value is empty or a nested mapping or list MUST be accepted and kept opaque (not parsed or validated); only such keys appear in the `opaque` result. Default (strict) mode MUST be unchanged: skills and commands MUST keep rejecting multi-line, block-scalar, or nested values exactly as before, including the handling of blank lines inside frontmatter. The reader MUST remain pure (no `fs`, `os`, `path`, `child_process`, or `process`). Malformed nested YAML is not detected, and full YAML semantics (flow or quoted multi-line scalars, anchors, tags, block scalars inside nested values) are not supported; these limits MUST be documented.
+(Previously: block scalars were accepted and treated as opaque, in nested mode; used only for agents)
 
 #### Scenario: Strict mode unchanged for commands and skills
 
@@ -286,9 +286,15 @@ The frontmatter reader MUST offer an opt-in `allowNested` mode, used only for ag
 - WHEN parsed with `allowNested`
 - THEN top-level `name` and `description` are returned and parsing succeeds, and `tools` and `hooks` are reported as opaque
 
+#### Scenario: Nested mode for rules
+
+- GIVEN a rule whose frontmatter has `paths:` followed by indented list items
+- WHEN parsed with `allowNested`
+- THEN top-level `name` and `description` are returned and parsing succeeds, and `paths` is reported as opaque
+
 #### Scenario: Missing frontmatter still rejected
 
-- GIVEN an agent file with no frontmatter block, or an unterminated one
+- GIVEN a rule or agent file with no frontmatter block, or an unterminated one
 - WHEN parsed with `allowNested`
 - THEN it is rejected
 
@@ -350,7 +356,7 @@ The frontmatter reader MUST offer an opt-in `allowNested` mode, used only for ag
 
 - GIVEN CONTRIBUTING, README, and `website/src/content/docs/{en,es}/security.md`
 - WHEN inspected
-- THEN each states that agent `name` and `description` may be block scalars, and that other nested agent YAML is passed through without syntax validation
+- THEN each states that agent `name` and `description` may be block scalars, and that other nested agent and rule YAML is passed through without syntax validation
 - AND none states that agent `name` or `description` must be single-line, or links the single-line limit to issue #238
 
 ### Requirement: Trust copy for custom sources
@@ -368,3 +374,67 @@ The `--source` trust copy (help text and documentation) MUST state that catalogs
 - GIVEN an agent in a `--source` catalog and `--yes`
 - WHEN init runs
 - THEN the agent installs without an extra confirmation prompt
+
+### Requirement: Rule catalog entries
+
+The catalog MUST support `rules/<name>.md` listed in `items.rules` (optional, default empty). The loader MUST validate each rule on load. A rule is invalid when: a listed name has no file, a `rules/*.md` file is not listed, frontmatter is missing or unparseable, `name` or `description` is missing or empty or whitespace, `name` differs from the file stem, the body is empty, or the name does not match `^[a-z0-9][a-z0-9-]*$`. Invalid rules MUST be reported with path and reason and MUST NOT be installable; valid items remain usable. Source guards (traversal, symlink, size limit) MUST apply. Rules MUST NOT be validated against an allowed-field list: unknown frontmatter keys, and nested frontmatter such as a `paths:` list, MUST pass through and bytes MUST stay verbatim. Rule subdirectories are not scanned. The bundled catalog MUST ship the ten seed rules defined in `rules-install`.
+
+#### Scenario: Valid rule loads
+
+- GIVEN `rules/no-secrets.md` has frontmatter `name: no-secrets` and a `description`, a non-empty body, and `items.rules` lists `no-secrets`
+- WHEN loaded
+- THEN rule `no-secrets` is available with its bytes unchanged
+
+#### Scenario: Name differs from file stem
+
+- GIVEN `rules/a.md` has frontmatter `name: b`
+- WHEN loaded
+- THEN an error names the path and reason, and `a` is not selectable
+
+#### Scenario: Required fields
+
+- GIVEN frontmatter lacks `name`, or lacks `description`, or either is whitespace only
+- WHEN loaded
+- THEN the rule is rejected naming the file and the field
+
+#### Scenario: Empty body
+
+- GIVEN valid frontmatter followed by no body or only whitespace
+- WHEN loaded
+- THEN the rule is rejected naming the file
+
+#### Scenario: Name regex
+
+- GIVEN a name `Naming`, `-x`, or `a_b`
+- WHEN loaded
+- THEN it is rejected naming the name; a name with digits such as `rule2` is accepted
+
+#### Scenario: Nested frontmatter and unknown keys pass through
+
+- GIVEN frontmatter with `name`, `description`, a multi-line `paths:` list, and unknown key `futurefield: 1`
+- WHEN loaded
+- THEN the rule is valid, top-level `name` and `description` are extracted, and the bytes equal the file on disk
+
+#### Scenario: Unlisted, ghost, or guarded
+
+- GIVEN an unlisted `rules/x.md`, a listed `ghost` with no file, or a symlinked rule file
+- WHEN loaded
+- THEN an error names the path and reason, the rule is not selectable, and valid items remain usable
+
+#### Scenario: Invalid name in the index
+
+- GIVEN `items.rules` lists `../evil`
+- WHEN loaded
+- THEN the whole catalog fails to load with an error naming the entry
+
+#### Scenario: Old catalog without rules
+
+- GIVEN `catalog.json` has no `items.rules`
+- WHEN loaded
+- THEN it loads with zero rules and no error
+
+#### Scenario: Profiles unaffected
+
+- GIVEN a profile JSON and the profile schema
+- WHEN loaded and resolved after this change
+- THEN `ProfileSchema` and profile resolution accept and behave exactly as before and no rule field exists

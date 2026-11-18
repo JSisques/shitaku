@@ -1,5 +1,5 @@
 import { extractPlaceholders } from '@/domain/placeholders.js';
-import { isFlatFileKind, type OwnedItem } from '@/domain/manifest.js';
+import { isFlatFileKind, type FlatFileKind, type OwnedItem } from '@/domain/manifest.js';
 import type { ItemKind, Observed, StatusState } from '@/domain/plan/status-plan.js';
 import type { Scope } from '@/ports/agent-target.js';
 
@@ -10,12 +10,20 @@ export type DoctorCode =
   | 'skill-missing'
   | 'command-missing'
   | 'agent-missing'
+  | 'rule-missing'
   | 'hook-missing'
   | 'env-unset'
   | 'duplicate-mcp' // severity 'problem'
   | 'modified'
   | 'out-of-date' // severity 'info'
   | 'script-tool-missing'; // severity 'info'
+
+/** The problem code for a flat file that is gone; a record so a new flat-file kind cannot be forgotten. */
+const MISSING_CODE: Record<FlatFileKind, DoctorCode> = {
+  command: 'command-missing',
+  agent: 'agent-missing',
+  rule: 'rule-missing',
+};
 
 export interface Finding {
   severity: 'problem' | 'info';
@@ -104,12 +112,12 @@ function itemFindings(o: ItemObservation, env: DiagnoseInput['env']): Finding[] 
     ];
   }
   if (isFlatFileKind(o.item.kind) && o.state === 'missing') {
-    // `agent-missing` fires only when the file is absent: an edited agent is `modified`, reported below.
+    // The missing code fires only when the file is absent: an edited file is `modified`, reported below.
     return [
       {
         ...base,
         severity: 'problem',
-        code: o.item.kind === 'agent' ? 'agent-missing' : 'command-missing',
+        code: MISSING_CODE[o.item.kind],
         message: `${label(o)} is missing at ${o.item.path}`,
         fix: `run shitaku init again to reinstall the ${o.item.kind}`,
       },

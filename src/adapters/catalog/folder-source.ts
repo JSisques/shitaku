@@ -9,6 +9,7 @@ import type { McpItem, Profile } from '@/domain/catalog/schema.js';
 import { parseAgent, type AgentItem } from '@/domain/catalog/agent.js';
 import { parseCommand, type CommandItem } from '@/domain/catalog/command.js';
 import { HookItemSchema, type HookItem } from '@/domain/catalog/hook.js';
+import { parseRule, type RuleItem } from '@/domain/catalog/rule.js';
 import { parseSkill, type SkillItem } from '@/domain/catalog/skill.js';
 import { parseScript, type ScriptItem } from '@/domain/catalog/script.js';
 import type { CatalogIssue, CatalogSource, LoadedCatalog, SourceRef } from '@/ports/catalog-source.js';
@@ -60,6 +61,11 @@ export class FolderCatalogSource implements CatalogSource {
     const commands = await this.loadCommands(index.items.commands, issues);
     const hooks = await this.loadHooks(index.items.hooks, issues);
     const agents = await this.loadAgents(index.items.agents, issues);
+    const rules = this.flagRecommended(
+      await this.loadRules(index.items.rules, issues),
+      index.recommended.rules,
+      issues,
+    );
     const known = {
       mcps: mcps.map((m) => m.name),
       skills: skills.map((sk) => sk.name),
@@ -78,7 +84,7 @@ export class FolderCatalogSource implements CatalogSource {
       }
     });
 
-    return { mcps, skills, scripts, commands, hooks, agents, profiles, issues };
+    return { mcps, skills, scripts, commands, hooks, agents, rules, profiles, issues };
   }
 
   /** Loads each listed skill as bytes. A bad skill is skipped with an issue; an unlisted directory is an issue too. */
@@ -137,6 +143,24 @@ export class FolderCatalogSource implements CatalogSource {
       const parsed = parseAgent(name, bytes);
       return 'issue' in parsed ? parsed : { item: parsed.agent };
     });
+  }
+
+  /** Loads each listed rule as one file. A bad rule is skipped with an issue; an unlisted `*.md` is an issue too. */
+  private loadRules(listed: readonly string[], issues: CatalogIssue[]): Promise<RuleItem[]> {
+    return this.loadFileItems<RuleItem>('rules', '.md', listed, issues, (name, bytes) => {
+      const parsed = parseRule(name, bytes);
+      return 'issue' in parsed ? parsed : { item: parsed.rule };
+    });
+  }
+
+  /** Marks the rules named in `recommended`. A name that is not a loaded rule is dropped with an issue. */
+  private flagRecommended(rules: RuleItem[], recommended: readonly string[], issues: CatalogIssue[]): RuleItem[] {
+    const loaded = new Set(rules.map((r) => r.name));
+    for (const name of recommended) {
+      if (!loaded.has(name))
+        issues.push({ file: 'catalog.json', reason: `recommended rule '${name}' is not a loaded rule` });
+    }
+    return rules.map((r) => ({ ...r, recommended: recommended.includes(r.name) }));
   }
 
   /** Loads each listed hook as one JSON file. A bad hook is skipped with an issue; an unlisted `*.json` is an issue too. */
