@@ -214,6 +214,16 @@ describe('website workflow isolation', () => {
     expect(website).toContain('.github/workflows/website.yml');
   });
 
+  it('watches the frontmatter reader and scripts lib in push and pull_request paths', () => {
+    const website = read('.github/workflows/website.yml');
+    const pushBlock = website.slice(website.indexOf('  push:'), website.indexOf('  pull_request:'));
+    const prBlock = website.slice(website.indexOf('  pull_request:'), website.indexOf('  workflow_dispatch:'));
+    for (const block of [pushBlock, prBlock]) {
+      expect(block).toContain("- 'src/domain/catalog/frontmatter.ts'");
+      expect(block).toContain("- 'scripts/lib/**'");
+    }
+  });
+
   it('keeps ci.yml free of website build, install, and Pages deploy', () => {
     const ci = read('.github/workflows/ci.yml');
     expect(ci).not.toMatch(
