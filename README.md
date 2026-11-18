@@ -149,9 +149,10 @@ Installable Claude Code subagents live as single files under `catalog/agents/<na
 
 <!-- catalog:agents:start -->
 
-| Name         | Description                                                                                                                                                                                                        |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pr-creator` | Drafts a pull request with the pr-writing skill and opens or edits it through the GitHub MCP only after explicit user confirmation. Requires the pr-writing skill, the github MCP server and a pushed head branch. |
+| Name                  | Description                                                                                                                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pr-creator`          | Drafts a pull request with the pr-writing skill and opens or edits it through the GitHub MCP only after explicit user confirmation. Requires the pr-writing skill, the github MCP server and a pushed head branch. |
+| `socratic-challenger` | Challenges an idea, plan or decision with Socratic questions on demand, optionally summarizes the decisions reached and keeps a Q&A log, and never implements features. Requires the socratic-method skill.        |
 
 <!-- catalog:agents:end -->
 
