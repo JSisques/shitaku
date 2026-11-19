@@ -349,6 +349,8 @@ Install locations: `~/.claude/agents/<name>.md` (`user`) or `./.claude/agents/<n
 - `shitaku uninstall <name>` removes just that file and refuses (exit `3`) when it was modified since the install unless `--force` is set. `status` reports an agent with the same states as other items (`doctor` code `agent-missing`).
 - Profiles list `agents`, but profiles cannot be installed by name yet.
 
+An agent can declare the skills it needs with a `skills:` frontmatter key (a block list or an inline `[a, b]` list). When you install the agent, `init` adds those skills to the same run, in the same scope, and the plan shows why: `docs-writing: create (required by agent docs-writer)`. A declared skill the catalog does not have is reported as a `warning:` line (`agent <name> requires skill <skill>, which is not in the catalog`), and one that is already on disk but not managed by shitaku as a `note:` line; neither blocks the install and the exit code is unchanged. `--dry-run` prints the same lines. `uninstall --kind agent` keeps the skills it pulled in, while `shitaku undo` reverts the whole run, skills included.
+
 Before downgrading shitaku, run `shitaku undo` or `shitaku uninstall` for any install that included agents: versions without agent support throw a `ManifestError` on a manifest entry with `kind: 'agent'`.
 
 ### Rules (install)
