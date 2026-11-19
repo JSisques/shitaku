@@ -288,11 +288,12 @@ describe('bundled catalog', () => {
     expect(entries).not.toContain('lib');
   });
 
-  it('ships commit-writing, docs-writing, example-skill, pr-writing, product-owner, refactoring, socratic-method and test-writing as registered loadable bundled skills', async () => {
+  it('ships api-design, commit-writing, docs-writing, example-skill, pr-writing, product-owner, refactoring, socratic-method and test-writing as registered loadable bundled skills', async () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { skills?: unknown };
     };
     expect(index.items.skills).toEqual([
+      'api-design',
       'commit-writing',
       'docs-writing',
       'example-skill',
@@ -309,6 +310,7 @@ describe('bundled catalog', () => {
       .filter((name) => !name.startsWith('.'))
       .sort();
     expect(entries).toEqual([
+      'api-design',
       'commit-writing',
       'docs-writing',
       'example-skill',
@@ -321,9 +323,13 @@ describe('bundled catalog', () => {
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.skills).toHaveLength(8);
+    expect(catalog.skills).toHaveLength(9);
 
     const byName = Object.fromEntries(catalog.skills.map((sk) => [sk.name, sk]));
+    expect(byName['api-design']).toMatchObject({ name: 'api-design' });
+    expect(byName['api-design']?.description.length).toBeGreaterThan(0);
+    expect(byName['api-design']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
+
     expect(byName['commit-writing']).toMatchObject({ name: 'commit-writing' });
     expect(byName['commit-writing']?.description.length).toBeGreaterThan(0);
     expect(byName['commit-writing']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
@@ -438,6 +444,30 @@ describe('bundled catalog', () => {
       ],
       forbidden: [/shitaku/i, 'Co-Authored-By'],
     });
+  });
+
+  it('keeps the api-design skill content contract', () => {
+    expectSkillContract('api-design', {
+      required: [
+        'Repository conventions first',
+        'OpenAPI',
+        'openapi: 3.1',
+        'Idempotency-Key',
+        'application/problem+json',
+        'RFC 9457',
+        'cursor',
+        '/v1',
+        'backward-compatible',
+        'breaking change',
+        'Deprecation',
+        'Sunset',
+        'Not for product requirements',
+      ],
+      forbidden: [/shitaku/i, 'Co-Authored-By', 'RFC 7807'],
+    });
+    // The YAML example must not add a `---` line: the contract split would truncate the body there.
+    const raw = readFileSync(join(catalogRoot, 'skills', 'api-design', 'SKILL.md'), 'utf8');
+    expect(raw.split(/\r?\n---\r?\n/)).toHaveLength(2);
   });
 
   it('ships the bundled agents as registered loadable agents', async () => {
