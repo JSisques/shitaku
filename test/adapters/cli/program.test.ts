@@ -1026,6 +1026,29 @@ describe('runCli', () => {
       expect(await readdir(join(tmp.cwd, '.claude'))).toEqual(['skills']);
     });
 
+    it('skips a declared skill already installed byte-identical, naming the agent, with no warning or note', async () => {
+      const dir = await writeCatalog();
+      expect(await run('init', '--yes', '--skills', 'docs', '--scope', 'project', '--source', dir)).toBe(0);
+      out.length = 0;
+      expect(await run('init', '--yes', '--agents', 'writer', '--scope', 'project', '--source', dir)).toBe(0);
+      expect(out).toContain('  docs: skip (already installed; required by agent writer)');
+      expect(out.join('\n')).not.toMatch(/^(warning|note):/m);
+    });
+
+    it('replaces an auto-added skill whole with --force after a backup, and undo restores it', async () => {
+      const dir = await writeCatalog();
+      await mineAt(skillFile('docs'));
+      await writeFile(join(tmp.cwd, '.claude', 'skills', 'docs', 'notes.txt'), 'mine too');
+      expect(await run('init', '--yes', '--force', '--agents', 'writer', '--scope', 'project', '--source', dir)).toBe(
+        0,
+      );
+      expect(await readFile(skillFile('docs'), 'utf8')).toBe(SKILL('docs'));
+      expect(await readdir(join(tmp.cwd, '.claude', 'skills', 'docs'))).toEqual(['SKILL.md']);
+      expect(await run('undo')).toBe(0);
+      expect(await readFile(skillFile('docs'), 'utf8')).toBe('mine\n');
+      expect(await readFile(join(tmp.cwd, '.claude', 'skills', 'docs', 'notes.txt'), 'utf8')).toBe('mine too');
+    });
+
     it('installs the agent and its auto-added skill with --yes, and exits 0 despite a warning', async () => {
       const dir = await writeCatalog();
       expect(await run('init', '--yes', '--agents', 'ghosty,writer', '--scope', 'project', '--source', dir)).toBe(0);
