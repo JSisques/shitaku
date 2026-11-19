@@ -304,7 +304,7 @@ describe('bundled catalog', () => {
     expect(entries).not.toContain('lib');
   });
 
-  it('ships docs-writing, example-skill, pr-writing, product-owner and socratic-method as registered loadable bundled skills', async () => {
+  it('ships docs-writing, example-skill, pr-writing, product-owner, refactoring and socratic-method as registered loadable bundled skills', async () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { skills?: unknown };
     };
@@ -313,6 +313,7 @@ describe('bundled catalog', () => {
       'example-skill',
       'pr-writing',
       'product-owner',
+      'refactoring',
       'socratic-method',
     ]);
 
@@ -321,11 +322,18 @@ describe('bundled catalog', () => {
     const entries = readdirSync(skillsDir)
       .filter((name) => !name.startsWith('.'))
       .sort();
-    expect(entries).toEqual(['docs-writing', 'example-skill', 'pr-writing', 'product-owner', 'socratic-method']);
+    expect(entries).toEqual([
+      'docs-writing',
+      'example-skill',
+      'pr-writing',
+      'product-owner',
+      'refactoring',
+      'socratic-method',
+    ]);
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.skills).toHaveLength(5);
+    expect(catalog.skills).toHaveLength(6);
 
     const byName = Object.fromEntries(catalog.skills.map((sk) => [sk.name, sk]));
     expect(byName['docs-writing']).toMatchObject({ name: 'docs-writing' });
@@ -343,6 +351,10 @@ describe('bundled catalog', () => {
     expect(byName['product-owner']).toMatchObject({ name: 'product-owner' });
     expect(byName['product-owner']?.description.length).toBeGreaterThan(0);
     expect(byName['product-owner']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
+
+    expect(byName['refactoring']).toMatchObject({ name: 'refactoring' });
+    expect(byName['refactoring']?.description.length).toBeGreaterThan(0);
+    expect(byName['refactoring']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
 
     expect(byName['socratic-method']).toMatchObject({ name: 'socratic-method' });
     expect(byName['socratic-method']?.description.length).toBeGreaterThan(0);
@@ -377,6 +389,24 @@ describe('bundled catalog', () => {
         'roadmap',
         'tech lead',
         'Not for technical design',
+      ],
+      forbidden: [/shitaku/i, 'Co-Authored-By'],
+    });
+  });
+
+  it('keeps the refactoring skill content contract', () => {
+    expectSkillContract('refactoring', {
+      required: [
+        'characterization test',
+        'behavior',
+        'Extract Function',
+        'Inline Function',
+        'Rename',
+        'baseline',
+        'revert',
+        'pure rename',
+        'refactor:',
+        'Not for new features',
       ],
       forbidden: [/shitaku/i, 'Co-Authored-By'],
     });
