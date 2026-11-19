@@ -99,13 +99,14 @@ The tables below are generated from `catalog/` by `pnpm run docs:catalog`. Do no
 
 <!-- catalog:skills:start -->
 
-| Name              | Description                                                                                                                                                                                                                             |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docs-writing`    | Trigger: write docs, update README, edit CHANGELOG, add JSDoc or TSDoc, code comments. Write and maintain project docs: README structure, Keep a Changelog, why-not-what comments, docs in sync with code, concise neutral tone.        |
-| `example-skill`   | Minimal example skill that shows the catalog skill layout.                                                                                                                                                                              |
-| `pr-writing`      | Trigger: write PR, pull request title, PR description, open a PR. Draft a Conventional Commits PR title and body; suggest only labels, reviewers and milestone discovered in the repository.                                            |
-| `product-owner`   | Trigger: product vision, backlog, user stories, acceptance criteria, prioritize features, define MVP, roadmap, release plan. Act as product owner: goals, epics, Given/When/Then criteria, MoSCoW and value vs effort, success metrics. |
-| `socratic-method` | Trigger: socratic method, question assumptions, clarify gaps, challenge before coding. Coach via questions before implementing or rewriting.                                                                                            |
+| Name              | Description                                                                                                                                                                                                                              |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs-writing`    | Trigger: write docs, update README, edit CHANGELOG, add JSDoc or TSDoc, code comments. Write and maintain project docs: README structure, Keep a Changelog, why-not-what comments, docs in sync with code, concise neutral tone.         |
+| `example-skill`   | Minimal example skill that shows the catalog skill layout.                                                                                                                                                                               |
+| `pr-writing`      | Trigger: write PR, pull request title, PR description, open a PR. Draft a Conventional Commits PR title and body; suggest only labels, reviewers and milestone discovered in the repository.                                             |
+| `product-owner`   | Trigger: product vision, backlog, user stories, acceptance criteria, prioritize features, define MVP, roadmap, release plan. Act as product owner: goals, epics, Given/When/Then criteria, MoSCoW and value vs effort, success metrics.  |
+| `refactoring`     | Trigger: refactor code, clean up code, restructure, extract function, rename, remove duplication, reduce complexity. Refactor safely: tests first, behavior unchanged, small named steps, test after each step, atomic refactor commits. |
+| `socratic-method` | Trigger: socratic method, question assumptions, clarify gaps, challenge before coding. Coach via questions before implementing or rewriting.                                                                                             |
 
 <!-- catalog:skills:end -->
 
