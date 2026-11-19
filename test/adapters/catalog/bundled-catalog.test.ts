@@ -6,29 +6,13 @@ import { resolveProfile } from '@/domain/catalog/profile.js';
 
 const catalogRoot = join(import.meta.dirname, '..', '..', '..', 'catalog');
 
-/** Skill names from a top-level `skills:` block sequence; [] when absent; throws on any other form. */
-function agentSkills(text: string): string[] {
-  const [, frontmatter = ''] = text.split(/^---\r?\n|\r?\n---\r?\n/);
-  const lines = frontmatter.split(/\r?\n/);
-  const start = lines.findIndex((line) => /^skills:/.test(line));
-  if (start === -1) return [];
-  if (lines[start]?.trim() !== 'skills:') throw new Error('unsupported skills form in frontmatter');
-  const skills: string[] = [];
-  for (const line of lines.slice(start + 1)) {
-    if (!/^\s/.test(line)) break;
-    const match = /^\s+- ([a-z0-9-]+)\s*$/.exec(line);
-    if (!match?.[1]) throw new Error(`unsupported skills entry in frontmatter: ${line}`);
-    skills.push(match[1]);
-  }
-  return skills;
-}
-
 /** "<agent>: <skill>" for every agent skill missing from `registered`. */
-function danglingSkills(agents: readonly { name: string; text: string }[], registered: readonly string[]): string[] {
+function danglingSkills(
+  agents: readonly { name: string; skills: string[] }[],
+  registered: readonly string[],
+): string[] {
   return agents.flatMap((agent) =>
-    agentSkills(agent.text)
-      .filter((skill) => !registered.includes(skill))
-      .map((skill) => `${agent.name}: ${skill}`),
+    agent.skills.filter((skill) => !registered.includes(skill)).map((skill) => `${agent.name}: ${skill}`),
   );
 }
 
@@ -684,13 +668,12 @@ describe('bundled catalog', () => {
       items: { skills: string[] };
     };
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
-    const agents = catalog.agents.map((agent) => ({ name: agent.name, text: new TextDecoder().decode(agent.bytes) }));
-    expect(agents.flatMap((agent) => agentSkills(agent.text)).length).toBeGreaterThan(0);
-    expect(danglingSkills(agents, index.items.skills)).toEqual([]);
+    expect(catalog.agents.flatMap((agent) => agent.skills).length).toBeGreaterThan(0);
+    expect(danglingSkills(catalog.agents, index.items.skills)).toEqual([]);
   });
 
   it('detects an agent skill missing from the registered skills', () => {
-    const agents = [{ name: 'broken', text: '---\nname: broken\nskills:\n  - missing-skill\n---\nbody\n' }];
+    const agents = [{ name: 'broken', skills: ['docs-writing', 'missing-skill'] }];
     expect(danglingSkills(agents, ['docs-writing'])).toEqual(['broken: missing-skill']);
   });
 

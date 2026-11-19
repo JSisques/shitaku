@@ -973,6 +973,135 @@ describe('runCli', () => {
     });
   });
 
+  describe('skills declared by agents', () => {
+    const agentFile = (name: string) => join(tmp.cwd, '.claude', 'agents', `${name}.md`);
+    const skillFile = (name: string) => join(tmp.cwd, '.claude', 'skills', name, 'SKILL.md');
+    const AGENT = (name: string, skills: string[]) =>
+      `---\nname: ${name}\ndescription: ${name} agent\nskills: [${skills.join(', ')}]\n---\nBody\n`;
+    const SKILL = (name: string) => `---\nname: ${name}\ndescription: ${name} skill\n---\nBody\n`;
+    const AGENTS: Record<string, string[]> = {
+      writer: ['docs'],
+      reviewer: ['docs', 'lint'],
+      planner: ['extra'],
+      ghosty: ['ghost'],
+    };
+    /** A folder catalog with skills docs, lint and extra, the agents above and the hook fmt. */
+    const writeCatalog = async (overrides: Record<string, string[]> = {}): Promise<string> => {
+      const declaredBy = { ...AGENTS, ...overrides };
+      const dir = join(tmp.root, 'declared-catalog');
+      const skills = ['docs', 'lint', 'extra'];
+      await mkdir(join(dir, 'agents'), { recursive: true });
+      await mkdir(join(dir, 'hooks'), { recursive: true });
+      const items = { mcps: [], skills, scripts: [], agents: Object.keys(AGENTS), hooks: ['fmt'], profiles: [] };
+      await writeFile(join(dir, 'catalog.json'), JSON.stringify({ version: 1, items }));
+      for (const [name, declared] of Object.entries(declaredBy))
+        await writeFile(join(dir, 'agents', `${name}.md`), AGENT(name, declared));
+      for (const name of skills) {
+        await mkdir(join(dir, 'skills', name), { recursive: true });
+        await writeFile(join(dir, 'skills', name, 'SKILL.md'), SKILL(name));
+      }
+      await writeFile(
+        join(dir, 'hooks', 'fmt.json'),
+        JSON.stringify({ name: 'fmt', description: 'Format', event: 'PostToolUse', matcher: 'Edit', command: 'x' }),
+      );
+      return dir;
+    };
+    const pick = (script: Parameters<typeof usePrompter>[0]) =>
+      usePrompter({ mcps: [], skills: [], hooks: [], ...script });
+    const mineAt = async (path: string) => {
+      await mkdir(join(path, '..'), { recursive: true });
+      await writeFile(path, 'mine\n');
+    };
+
+    it('shows the required-by reason, warning and note lines on --dry-run and writes nothing', async () => {
+      const dir = await writeCatalog({ ghosty: ['ghost', 'local'] });
+      await mineAt(skillFile('local'));
+      expect(await run('init', '--agents', 'writer,ghosty', '--scope', 'project', '--dry-run', '--source', dir)).toBe(
+        0,
+      );
+      expect(out).toContain('  docs: create (required by agent writer)');
+      expect(out).toContain('warning: agent ghosty requires skill ghost, which is not in the catalog');
+      expect(out).toContain('note: agent ghosty requires skill local, found on disk, not managed by shitaku');
+      expect(await readdir(tmp.homeDir)).toEqual([]);
+      expect(await readdir(join(tmp.cwd, '.claude'))).toEqual(['skills']);
+    });
+
+    it('installs the agent and its auto-added skill with --yes, and exits 0 despite a warning', async () => {
+      const dir = await writeCatalog();
+      expect(await run('init', '--yes', '--agents', 'ghosty,writer', '--scope', 'project', '--source', dir)).toBe(0);
+      expect(await readFile(agentFile('writer'), 'utf8')).toBe(AGENT('writer', ['docs']));
+      expect(await readFile(skillFile('docs'), 'utf8')).toBe(SKILL('docs'));
+      expect(out.join('\n')).toContain('warning: agent ghosty requires skill ghost');
+    });
+
+    it('exits 2 on a conflicting auto-added skill without --force and writes nothing', async () => {
+      const dir = await writeCatalog();
+      await mineAt(skillFile('docs'));
+      expect(await run('init', '--yes', '--agents', 'writer', '--scope', 'project', '--source', dir)).toBe(2);
+      expect(err).toContain("conflict: skill 'docs' already exists with different content");
+      expect(await readFile(skillFile('docs'), 'utf8')).toBe('mine\n');
+      expect(await readdir(join(tmp.cwd, '.claude'))).toEqual(['skills']);
+      expect(await readdir(tmp.homeDir)).toEqual([]);
+    });
+
+    it('drops the skills of a skipped agent, keeping one shared with a remaining agent and naming only it', async () => {
+      const dir = await writeCatalog();
+      await mineAt(agentFile('writer'));
+      await mineAt(agentFile('planner'));
+      pick({
+        agents: ['writer', 'reviewer', 'planner'],
+        scope: 'project',
+        conflict: 'skip',
+        confirm: true,
+      });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(await readFile(skillFile('docs'), 'utf8')).toBe(SKILL('docs'));
+      expect(await readFile(skillFile('lint'), 'utf8')).toBe(SKILL('lint'));
+      await expect(readFile(skillFile('extra'), 'utf8')).rejects.toThrow();
+      expect(out).toContain('  docs: create (required by agent reviewer)');
+    });
+
+    it('keeps an explicitly selected skill when the agent that declared it is skipped', async () => {
+      const dir = await writeCatalog();
+      await mineAt(agentFile('planner'));
+      pick({
+        skills: ['extra'],
+        agents: ['planner'],
+        scope: 'project',
+        conflict: 'skip',
+        confirm: true,
+      });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(await readFile(skillFile('extra'), 'utf8')).toBe(SKILL('extra'));
+      expect(out.join('\n')).not.toContain('required by');
+    });
+
+    it('does not overwrite a skipped conflicting auto-added skill while overwriting another item', async () => {
+      const dir = await writeCatalog();
+      await mineAt(agentFile('planner'));
+      await mineAt(skillFile('extra'));
+      pick({ agents: ['planner'], scope: 'project', confirm: true });
+      prompter.resolveConflict = (c) => Promise.resolve(c.kind === 'skill' ? 'skip' : 'overwrite');
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(await readFile(skillFile('extra'), 'utf8')).toBe('mine\n');
+      expect(await readFile(agentFile('planner'), 'utf8')).toBe(AGENT('planner', ['extra']));
+    });
+
+    it('keeps the auto-added skills when the hook prompt is declined and the plan is rebuilt', async () => {
+      const dir = await writeCatalog();
+      pick({
+        agents: ['writer'],
+        hooks: ['fmt'],
+        scope: 'project',
+        confirmHooks: false,
+        confirm: true,
+      });
+      expect(await run('init', '--source', dir)).toBe(0);
+      expect(await readFile(skillFile('docs'), 'utf8')).toBe(SKILL('docs'));
+      expect(out).toContain('  docs: create (required by agent writer)');
+    });
+  });
+
   describe('hooks', () => {
     const settings = (root = tmp.cwd) => join(root, '.claude', 'settings.json');
     const FMT = {
