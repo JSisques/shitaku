@@ -78,7 +78,7 @@ Return the changed files (or the diff); a decision summary with the conventions 
 
 ### Reference Dockerfile
 
-Illustrative runtime; the shape, not the runtime, is the point.
+Illustrative runtime; the shape, not the runtime, is the point. The health check script is a placeholder for any cheap probe of the service.
 
 ```dockerfile
 # syntax=docker/dockerfile:1
