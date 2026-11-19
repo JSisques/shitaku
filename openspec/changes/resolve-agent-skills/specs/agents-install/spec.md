@@ -24,7 +24,7 @@ Skipping a conflicting agent (conflict prompt) or declining its hooks MUST re-pl
 
 - GIVEN agent `docs-writer` declares `docs-writing` and the skill is already installed byte-identical in the run scope
 - WHEN `init --agents docs-writer --yes` runs
-- THEN the plan holds `docs-writer` and `docs-writing` classified `skip` with the reason `required by agent docs-writer`
+- THEN the plan holds `docs-writer` and `docs-writing` classified `skip` with the reason `already installed; required by agent docs-writer`
 - AND no warning and no note is printed
 
 #### Scenario: Declared catalog skill is auto-added

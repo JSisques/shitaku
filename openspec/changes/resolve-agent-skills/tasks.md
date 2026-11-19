@@ -9,14 +9,14 @@
 | Chained PRs recommended | Yes                                                                     |
 | Suggested split         | PR 1 -> PR 2a -> PR 2b -> PR 3                                          |
 | Delivery strategy       | ask-on-risk                                                             |
-| Chain strategy          | pending                                                                 |
+| Chain strategy          | stacked-to-main                                                         |
 
-Decision needed before apply: Yes
+Decision needed before apply: No (resolved)
 Chained PRs recommended: Yes
 Chain strategy: stacked-to-main
 400-line budget risk: High
 
-The chain strategy (stacked-to-main vs feature-branch-chain vs size-exception) has NOT been chosen. The orchestrator must ask before `sdd-apply`. For `feature-branch-chain`: PR1 base = tracker branch `feat/resolve-agent-skills-280`; PR2a base = PR1 branch; PR2b base = PR2a branch; PR3 base = PR2b branch.
+The chain strategy was chosen as `stacked-to-main`: each PR is based on the previous slice branch, and the verify remediation (PR 5) is stacked on PR 3.
 
 ### Suggested Work Units
 
@@ -84,3 +84,9 @@ Strict TDD per task: RED test first, then GREEN code, then refactor.
 - [x] 4.2 Modify `README.md` (agents section): describe auto-install of declared skills, the `required by agent X` reason in the plan, `warning:` vs `note:` lines, exit code unaffected, `uninstall --kind agent` keeps skills.
 - [x] 4.3 Verify docs against the spec scenario "Limit documented": `website/src/content/docs/en/security.md` and `website/src/content/docs/es/security.md` (read-only) still state that agent `name`/`description` may be block scalars and nested YAML passes through unvalidated; no doc claims `skills` is opaque or links the single-line limit to #238. Note the website agent-install docs update as a follow-up (R10), no edit here.
 - [x] 4.4 PR 3 gate: `pnpm run format:check && pnpm run lint && pnpm run test` (tooling/naming guards green).
+
+## Phase 5: PR 5, verify remediation
+
+- [x] 5.1 Add end-to-end CLI tests in `test/adapters/cli/program.test.ts` for the spec scenarios "Declared catalog skill is already present" (skip entry with reason, no warning or note) and "Force replace of an auto-added skill" (whole-directory replace after backup, undo restores). Mutation-checked: both fail when the reason suffix or `force` is broken.
+- [x] 5.2 Reword the "already present" scenario reason in `specs/agents-install/spec.md` to the implemented `already installed; required by agent docs-writer`.
+- [x] 5.3 Update the stale chain-strategy header in this file.
