@@ -1,0 +1,11 @@
+{
+  "name": "repo-map",
+  "description": "Write a deterministic structural map of the repository: stack, workspaces, commands, entry points, tree, conventions, the import graph and exported symbols.",
+  "tools": [],
+  "args": ["--format json|markdown|both", "--out <dir>", "--max-depth <n>", "--ignore <glob>"],
+  "output": "JSON map written to .shitaku/repo-map.json and a size-capped Markdown digest to .shitaku/repo-map.md (no timestamps, git optional)",
+  "exitCodes": {
+    "0": "map written",
+    "2": "CLI, IO, or fatal failure"
+  }
+}

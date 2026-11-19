@@ -20,7 +20,7 @@
     ],
     "skills": ["docs-writing", "example-skill", "pr-writing", "product-owner", "socratic-method"],
     "profiles": ["base", "web", "backend"],
-    "scripts": ["complexity", "dead-code", "duplication"],
+    "scripts": ["complexity", "dead-code", "duplication", "repo-map"],
     "commands": [],
     "agents": ["pr-creator", "qa", "socratic-challenger", "docs-writer"],
     "rules": [

@@ -32,6 +32,24 @@ function danglingSkills(agents: readonly { name: string; text: string }[], regis
   );
 }
 
+/** Exact flat file list of catalog/scripts/repo-map/. Update it in the same commit that adds a module. */
+const REPO_MAP_FILES = [
+  'args.mjs',
+  'build-map.mjs',
+  'extract-js.mjs',
+  'extractors.mjs',
+  'glob.mjs',
+  'index.mjs',
+  'jsonc.mjs',
+  'project.mjs',
+  'render-json.mjs',
+  'render-markdown.mjs',
+  'resolve.mjs',
+  'scan.mjs',
+  'script.json',
+  'tokenize-js.mjs',
+];
+
 function expectSkillContract(
   name: string,
   { required, forbidden }: { required: readonly string[]; forbidden: readonly (string | RegExp)[] },
@@ -194,22 +212,22 @@ describe('bundled catalog', () => {
     expect(index.items.commands).toEqual([]);
   });
 
-  it('ships complexity, dead-code, and duplication as registered and loadable bundled scripts', async () => {
+  it('ships complexity, dead-code, duplication, and repo-map as registered and loadable bundled scripts', async () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { scripts?: unknown };
     };
-    expect(index.items.scripts).toEqual(['complexity', 'dead-code', 'duplication']);
+    expect(index.items.scripts).toEqual(['complexity', 'dead-code', 'duplication', 'repo-map']);
 
     const scriptsDir = join(catalogRoot, 'scripts');
     expect(statSync(scriptsDir).isDirectory()).toBe(true);
     const entries = readdirSync(scriptsDir)
       .filter((name) => !name.startsWith('.'))
       .sort();
-    expect(entries).toEqual(['complexity', 'dead-code', 'duplication']);
+    expect(entries).toEqual(['complexity', 'dead-code', 'duplication', 'repo-map']);
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.scripts).toHaveLength(3);
+    expect(catalog.scripts).toHaveLength(4);
 
     const byName = Object.fromEntries(catalog.scripts.map((s) => [s.name, s]));
     expect(byName['complexity']).toMatchObject({
@@ -236,6 +254,12 @@ describe('bundled catalog', () => {
       tools: ['jscpd'],
     });
     expect(byName['duplication']?.files.map((f) => f.path).sort()).toEqual(['index.mjs', 'script.json']);
+
+    expect(byName['repo-map']).toMatchObject({
+      name: 'repo-map',
+      tools: [],
+    });
+    expect(byName['repo-map']?.files.map((f) => f.path).sort()).toEqual(REPO_MAP_FILES);
   });
 
   it('ships dead-code and duplication without script-root npm bootstrap artifacts', () => {
@@ -251,6 +275,33 @@ describe('bundled catalog', () => {
       expect(entries).not.toContain('package-lock.json');
       expect(entries).not.toContain('node_modules');
     }
+  });
+
+  it('documents the repo-map formats, depth option and both outputs in its metadata', () => {
+    const meta = JSON.parse(readFileSync(join(catalogRoot, 'scripts', 'repo-map', 'script.json'), 'utf8')) as {
+      args: string[];
+      description: string;
+      output: string;
+    };
+    expect(meta.description).toMatch(/import graph/i);
+    expect(meta.description).toMatch(/exported symbols/i);
+    expect(meta.args).toEqual(['--format json|markdown|both', '--out <dir>', '--max-depth <n>', '--ignore <glob>']);
+    expect(meta.output).toContain('.shitaku/repo-map.json');
+    expect(meta.output).toContain('.shitaku/repo-map.md');
+  });
+
+  it('ships repo-map as a flat set of modules without script-root npm bootstrap artifacts', () => {
+    const scriptDir = join(catalogRoot, 'scripts', 'repo-map');
+    expect(statSync(scriptDir).isDirectory()).toBe(true);
+
+    const entries = readdirSync(scriptDir)
+      .filter((name) => !name.startsWith('.'))
+      .sort();
+    expect(entries).toEqual(REPO_MAP_FILES);
+    expect(entries).not.toContain('package.json');
+    expect(entries).not.toContain('package-lock.json');
+    expect(entries).not.toContain('node_modules');
+    expect(entries).not.toContain('lib');
   });
 
   it('ships docs-writing, example-skill, pr-writing, product-owner and socratic-method as registered loadable bundled skills', async () => {
@@ -620,5 +671,34 @@ describe('bundled catalog', () => {
     expect(readme).toMatch(/shitaku run(?:\s|$)/);
     expect(readme).toContain('`./.shitaku/scripts/`');
     expect(readme).toContain('script.json');
+  });
+
+  it('lists every bundled script in each hand-written enumeration of the scripts', () => {
+    const root = join(catalogRoot, '..');
+    const files = [
+      'README.md',
+      'CONTRIBUTING.md',
+      join('website', 'src', 'content', 'docs', 'en', 'catalog', 'overview.md'),
+      join('website', 'src', 'content', 'docs', 'es', 'catalog', 'overview.md'),
+    ];
+    for (const file of files) {
+      const text = readFileSync(join(root, file), 'utf8');
+      // Prose enumerations name several bundled scripts on one line; generated table rows are skipped.
+      const prose = text.split('\n').filter((line) => !line.startsWith('|') && /`?complexity`?/.test(line));
+      expect(prose.length, `${file} enumerates the bundled scripts`).toBeGreaterThan(0);
+      for (const line of prose) {
+        for (const name of ['complexity', 'dead-code', 'duplication', 'repo-map']) {
+          expect(line, `${file} must list ${name}`).toContain(name);
+        }
+      }
+    }
+  });
+
+  it('documents the repo-map outputs and its guarantees in the README', () => {
+    const readme = readFileSync(join(catalogRoot, '..', 'README.md'), 'utf8');
+    expect(readme).toContain('.shitaku/repo-map.json');
+    expect(readme).toContain('.shitaku/repo-map.md');
+    expect(readme).toMatch(/no timestamps/i);
+    expect(readme).toMatch(/never edits `\.gitignore`/);
   });
 });
