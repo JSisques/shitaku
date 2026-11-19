@@ -31,4 +31,20 @@ describe('frontmatter reader portability', () => {
     expect(run.status).toBe(0);
     expect(run.stdout).toBe('{"description":"a\\nb\\n"}');
   });
+
+  it('reads block and flow lists under plain Node with no flags', () => {
+    const script = [
+      `const { readFrontmatter } = await import(${JSON.stringify(pathToFileURL(FILE).href)});`,
+      `const options = { allowNested: true, lists: ['skills'] };`,
+      `const flow = readFrontmatter('---\\nskills: [a, b]\\n---\\n', 'x.md', options);`,
+      `const block = readFrontmatter('---\\nskills:\\n  - a\\n  - b\\n---\\n', 'x.md', options);`,
+      'process.stdout.write(JSON.stringify([flow.lists.skills, block.lists.skills]));',
+    ].join('\n');
+    const env = { ...process.env };
+    delete env['NODE_OPTIONS'];
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e', script], { env, encoding: 'utf8' });
+    expect(run.stderr).not.toMatch(/ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX|ERR_MODULE_NOT_FOUND/);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toBe('[["a","b"],["a","b"]]');
+  });
 });
