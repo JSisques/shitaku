@@ -288,13 +288,14 @@ describe('bundled catalog', () => {
     expect(entries).not.toContain('lib');
   });
 
-  it('ships api-design, commit-writing, docs-writing, example-skill, pr-writing, product-owner, refactoring, socratic-method and test-writing as registered loadable bundled skills', async () => {
+  it('ships api-design, commit-writing, devops, docs-writing, example-skill, pr-writing, product-owner, refactoring, socratic-method and test-writing as registered loadable bundled skills', async () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { skills?: unknown };
     };
     expect(index.items.skills).toEqual([
       'api-design',
       'commit-writing',
+      'devops',
       'docs-writing',
       'example-skill',
       'pr-writing',
@@ -312,6 +313,7 @@ describe('bundled catalog', () => {
     expect(entries).toEqual([
       'api-design',
       'commit-writing',
+      'devops',
       'docs-writing',
       'example-skill',
       'pr-writing',
@@ -323,7 +325,7 @@ describe('bundled catalog', () => {
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.skills).toHaveLength(9);
+    expect(catalog.skills).toHaveLength(10);
 
     const byName = Object.fromEntries(catalog.skills.map((sk) => [sk.name, sk]));
     expect(byName['api-design']).toMatchObject({ name: 'api-design' });
@@ -333,6 +335,10 @@ describe('bundled catalog', () => {
     expect(byName['commit-writing']).toMatchObject({ name: 'commit-writing' });
     expect(byName['commit-writing']?.description.length).toBeGreaterThan(0);
     expect(byName['commit-writing']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
+
+    expect(byName['devops']).toMatchObject({ name: 'devops' });
+    expect(byName['devops']?.description.length).toBeGreaterThan(0);
+    expect(byName['devops']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
 
     expect(byName['docs-writing']).toMatchObject({ name: 'docs-writing' });
     expect(byName['docs-writing']?.description.length).toBeGreaterThan(0);
@@ -467,6 +473,29 @@ describe('bundled catalog', () => {
     });
     // The YAML example must not add a `---` line: the contract split would truncate the body there.
     const raw = readFileSync(join(catalogRoot, 'skills', 'api-design', 'SKILL.md'), 'utf8');
+    expect(raw.split(/\r?\n---\r?\n/)).toHaveLength(2);
+  });
+
+  it('keeps the devops skill content contract', () => {
+    expectSkillContract('devops', {
+      required: [
+        'Repository conventions first',
+        'multi-stage',
+        '.dockerignore',
+        'non-root',
+        'type=secret',
+        'lockfile',
+        'least privilege',
+        'health check',
+        'rollback',
+        'same artifact',
+        'environment parity',
+        'Not for Kubernetes',
+      ],
+      forbidden: [/shitaku/i, 'Co-Authored-By', ':latest', 'kubectl'],
+    });
+    // The Dockerfile example must not add a `---` line: the contract split would truncate the body there.
+    const raw = readFileSync(join(catalogRoot, 'skills', 'devops', 'SKILL.md'), 'utf8');
     expect(raw.split(/\r?\n---\r?\n/)).toHaveLength(2);
   });
 
