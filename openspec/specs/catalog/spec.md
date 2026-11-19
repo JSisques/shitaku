@@ -158,14 +158,15 @@ The catalog MUST support `commands/<name>.md` listed in `items.commands` (option
 
 ### Requirement: Agent catalog entries
 
-The catalog MUST support `agents/<name>.md` listed in `items.agents` (optional, default empty). The loader MUST validate each agent on load. An agent is invalid when: a listed name has no file, an `agents/*.md` file is not listed, frontmatter is missing or unparseable, `name` or `description` is missing, empty, or whitespace-only after decoding, `name` or `description` is a nested value (mapping or list) that cannot be read as a scalar, the decoded and trimmed `name` differs from the file stem, the body is empty, or the name does not match `^[a-z0-9][a-z0-9-]*$`. `name` and `description` MAY be written as YAML block scalars (see "Opt-in nested frontmatter reader"). The parsed `name` and `description` MUST be trimmed, and the parsed `description` MUST have all internal whitespace runs (including newlines) collapsed to a single space, so every consumer receives a single-line value. Invalid agents MUST be reported with path and reason and MUST NOT be installable; valid items remain usable. Source guards (traversal, symlink, size limit) MUST apply. Agents MUST NOT be validated against an allowed-field list: unknown frontmatter keys MUST pass through and bytes MUST stay verbatim, including for block-scalar agents. Agent subdirectories are not scanned. The bundled catalog MUST ship `"agents": []` and `catalog/agents/.gitkeep`, and is not required to ship an agent.
-(Previously: a block-scalar `name` or `description` was opaque and rejected with `key 'X' must be a single-line value`; the parsed description was not normalized)
+The catalog MUST support `agents/<name>.md` listed in `items.agents` (optional, default empty). The loader MUST validate each agent on load. An agent is invalid when: a listed name has no file, an `agents/*.md` file is not listed, frontmatter is missing or unparseable, `name` or `description` is missing, empty, or whitespace-only after decoding, `name` or `description` is a nested value (mapping or list) that cannot be read as a scalar, the decoded and trimmed `name` differs from the file stem, the body is empty, the name does not match `^[a-z0-9][a-z0-9-]*$`, or its `skills` value is malformed (see "Opt-in nested frontmatter reader"). `name` and `description` MAY be written as YAML block scalars (see "Opt-in nested frontmatter reader"). The parsed `name` and `description` MUST be trimmed, and the parsed `description` MUST have all internal whitespace runs (including newlines) collapsed to a single space, so every consumer receives a single-line value. A valid agent MUST expose its declared skills as a parsed list of names, `skills`, in declaration order with duplicates removed (first occurrence kept); the list MUST be empty when the key is absent or empty. Parsed skill names MUST NOT be validated against the catalog at load time. Invalid agents MUST be reported with path and reason and MUST NOT be installable; valid items remain usable. Source guards (traversal, symlink, size limit) MUST apply. Agents MUST NOT be validated against an allowed-field list: unknown frontmatter keys MUST pass through and bytes MUST stay verbatim, including for block-scalar agents and for agents with a `skills` list in either form. Agent subdirectories are not scanned. The bundled catalog MUST ship `"agents": []` and `catalog/agents/.gitkeep`, and is not required to ship an agent.
+(Previously: `skills` was an opaque nested key with no parsed value and no validation, so an agent exposed no skills list)
 
 #### Scenario: Valid agent loads
 
 - GIVEN `agents/reviewer.md` has frontmatter `name: reviewer` and a `description`, a non-empty body, and `items.agents` lists `reviewer`
 - WHEN loaded
 - THEN agent `reviewer` is available with its bytes unchanged
+- AND its `skills` list is empty
 
 #### Scenario: Name differs from file stem
 
@@ -201,7 +202,7 @@ The catalog MUST support `agents/<name>.md` listed in `items.agents` (optional, 
 
 - GIVEN frontmatter with a multi-line `tools` list, `skills`, `mcpServers`, `hooks`, and `experimental` nested blocks
 - WHEN loaded
-- THEN the agent is valid, top-level `name` and `description` are extracted, and the bytes equal the file on disk
+- THEN the agent is valid, top-level `name` and `description` are extracted, the `skills` list is parsed, and the bytes equal the file on disk
 
 #### Scenario: Unlisted, ghost, or guarded
 
@@ -263,10 +264,55 @@ The catalog MUST support `agents/<name>.md` listed in `items.agents` (optional, 
 - WHEN loaded
 - THEN its bytes equal the file on disk, including the block-scalar syntax
 
+#### Scenario: Skills as a block sequence
+
+- GIVEN an agent with `skills:` followed by the items `- docs-writing` and `- pr-writing`
+- WHEN loaded
+- THEN the agent is valid and its `skills` list is `['docs-writing', 'pr-writing']`
+
+#### Scenario: Skills as an inline flow sequence
+
+- GIVEN an agent with `skills: [docs-writing, pr-writing]`
+- WHEN loaded
+- THEN the agent is valid and its `skills` list equals the one parsed from the block form
+
+#### Scenario: Skills absent
+
+- GIVEN an agent with no `skills` key
+- WHEN loaded
+- THEN its `skills` list is empty and the agent is valid
+
+#### Scenario: Duplicate skill names collapse
+
+- GIVEN an agent with `skills: [a, b, a]`
+- WHEN loaded
+- THEN its `skills` list is `['a', 'b']`
+
+#### Scenario: Malformed skills rejects only that agent
+
+- GIVEN `agents/bad.md` whose `skills` value is malformed and a valid `agents/good.md`
+- WHEN loaded
+- THEN an error names `agents/bad.md` and the key `skills`, `bad` is not selectable, and `good` remains usable
+
+#### Scenario: Unknown skill names are not validated at load
+
+- GIVEN an agent declaring `skills: [not-in-catalog]`
+- WHEN loaded
+- THEN the agent is valid and its `skills` list is `['not-in-catalog']`
+
 ### Requirement: Opt-in nested frontmatter reader
 
-The frontmatter reader MUST offer an opt-in `allowNested` mode, used only for agents and rules. In that mode, top-level scalar keys MUST be extracted, and top-level keys whose value is a YAML block scalar MUST be decoded into their string value in `data`. The supported block-scalar subset is: a header of `|` (literal) or `>` (folded), optionally followed by a chomping indicator (`-` strip, `+` keep; absent means clip) and an indentation indicator (`1`-`9`) in either order, optionally followed by a trailing `# comment`. Content indentation MUST be the indicator when present, otherwise the indentation of the first non-blank content line. The scalar MUST end at the first non-blank line indented less than the content indentation, or at the next top-level key. Literal (`|`) MUST keep line breaks; folded (`>`) MUST join consecutive lines with a single space and keep blank lines as paragraph breaks. Blank lines inside the block MUST be preserved, CRLF line endings MUST be handled, and a header with no content lines MUST decode to an empty string. A non-blank block-scalar line whose indentation starts with a tab MUST be rejected with the error `frontmatter key 'X' has a block scalar indented with a tab`. Other indented lines and list items belonging to a key whose value is empty or a nested mapping or list MUST be accepted and kept opaque (not parsed or validated); only such keys appear in the `opaque` result. The reader MUST additionally accept an opt-in `mappings` option (a list of top-level key names, used with `allowNested`) and return a `maps` result. A listed key with an empty inline value MUST have its indented block parsed one nested level deep into `maps[key]` instead of being opaque; only `parseRule` requests `['check']`. The block reader MUST accept this strict subset of YAML: keys matching `^[a-z][a-z0-9-]*$` at one consistent space indent greater than zero; plain scalars (rejected when starting with a YAML indicator or containing `: ` or an inner ` #`; a trailing ` # comment` is stripped); single-quoted scalars (`''` decodes to `'`); double-quoted scalars with only the escapes `\\ \" \/ \n \t`; and block sequences (`- item`) of scalars under a key with an empty value, with all items at one indent not less than the key's indent. It MUST reject, with an issue naming the key and the offending line: flow collections, anchors, aliases, tags, block scalars, multi-line plain scalars, nesting deeper than one level, duplicate keys, tab indentation, and any other double-quote escape (the issue MUST advise single quotes). Full-line comments and blank lines MUST be skipped. A listed key with a non-empty inline value MUST stay in `data` so the rule layer can report `check must be a nested mapping`. Calls without `mappings` MUST return exactly today's result shapes with no `maps` key, and every key not listed (such as `paths:`) MUST remain opaque exactly as before. Default (strict) mode MUST be unchanged: skills and commands MUST keep rejecting multi-line, block-scalar, or nested values exactly as before, including the handling of blank lines inside frontmatter. The reader MUST remain pure (no `fs`, `os`, `path`, `child_process`, or `process`). Malformed nested YAML elsewhere is not detected, and full YAML semantics (flow or quoted multi-line scalars, anchors, tags, block scalars inside nested values) are not supported; these limits MUST be documented.
-(Previously: nested keys were all opaque; no opt-in `mappings` option existed, so a nested mapping could not be read as structured data)
+The frontmatter reader MUST offer an opt-in `allowNested` mode, used only for agents and rules. In that mode, top-level scalar keys MUST be extracted, and top-level keys whose value is a YAML block scalar MUST be decoded into their string value in `data`. The supported block-scalar subset is: a header of `|` (literal) or `>` (folded), optionally followed by a chomping indicator (`-` strip, `+` keep; absent means clip) and an indentation indicator (`1`-`9`) in either order, optionally followed by a trailing `# comment`. Content indentation MUST be the indicator when present, otherwise the indentation of the first non-blank content line. The scalar MUST end at the first non-blank line indented less than the content indentation, or at the next top-level key. Literal (`|`) MUST keep line breaks; folded (`>`) MUST join consecutive lines with a single space and keep blank lines as paragraph breaks. Blank lines inside the block MUST be preserved, CRLF line endings MUST be handled, and a header with no content lines MUST decode to an empty string. A non-blank block-scalar line whose indentation starts with a tab MUST be rejected with the error `frontmatter key 'X' has a block scalar indented with a tab`. Other indented lines and list items belonging to a key whose value is empty or a nested mapping or list MUST be accepted and kept opaque (not parsed or validated); only such keys appear in the `opaque` result. The reader MUST additionally accept an opt-in `mappings` option (a list of top-level key names, used with `allowNested`) and return a `maps` result. A listed key with an empty inline value MUST have its indented block parsed one nested level deep into `maps[key]` instead of being opaque; only `parseRule` requests `['check']`. The block reader MUST accept this strict subset of YAML: keys matching `^[a-z][a-z0-9-]*$` at one consistent space indent greater than zero; plain scalars (rejected when starting with a YAML indicator or containing `: ` or an inner ` #`; a trailing ` # comment` is stripped); single-quoted scalars (`''` decodes to `'`); double-quoted scalars with only the escapes `\\ \" \/ \n \t`; and block sequences (`- item`) of scalars under a key with an empty value, with all items at one indent not less than the key's indent. It MUST reject, with an issue naming the key and the offending line: flow collections, anchors, aliases, tags, block scalars, multi-line plain scalars, nesting deeper than one level, duplicate keys, tab indentation, and any other double-quote escape (the issue MUST advise single quotes). Full-line comments and blank lines MUST be skipped. A listed key with a non-empty inline value MUST stay in `data` so the rule layer can report `check must be a nested mapping`. Calls without `mappings` MUST return exactly today's result shapes with no `maps` key, and every key not listed (such as `paths:`) MUST remain opaque exactly as before.
+
+The reader MUST also accept an opt-in `lists` option (a list of top-level key names, used with `allowNested`, independent of and combinable with `mappings`) and return a `lists` result mapping each listed key present in the frontmatter to a `string[]`. Only `parseAgent` requests `['skills']`. A listed key MUST be read as a list of scalars from exactly one of two forms, and both forms MUST yield the same list for the same items:
+
+- Block form: the key has an empty inline value (a trailing `# comment` is ignored) followed by `- item` lines at one consistent indent not less than the key's indent. Each item MUST be a plain scalar (trailing ` # comment` stripped), a single-quoted scalar (`''` decodes to `'`), or a double-quoted scalar with only the escapes `\\ \" \/ \n \t`. Blank lines and full-line comments between items MUST be skipped. A key with an empty inline value and no items MUST yield an empty list.
+- Inline flow form: the key's inline value is `[` items `]`, on one line, with items separated by commas, each item a plain, single-quoted or double-quoted scalar as above. Whitespace around items and around the brackets MUST be ignored. `[]` and `[ ]` MUST yield an empty list. A single trailing comma before `]` (`[a, b,]`) MUST be accepted. Commas inside a quoted item are part of the item. A trailing ` # comment` after `]` MUST be ignored. A plain item MUST NOT contain `,`, `[`, `]`, `{`, `}` or `: `, nor start with a YAML indicator.
+
+Anything else under a listed key MUST be rejected with an issue naming the key and the offending line, and the key MUST NOT silently fall back to opaque. This includes: a nested mapping (an indented `name: value` line, or an item of the form `- name: value`), an item that is itself a flow collection or a nested sequence, a block scalar (`|` or `>`), a plain non-list inline value (`skills: foo`), a flow sequence that does not close on the same line or has trailing text after `]` other than a comment, an empty item (`[a,,b]`, a lone leading comma, or a `-` with no value), more than one trailing comma, anchors, aliases, tags, tab indentation, items at inconsistent indents, and any other double-quote escape (the issue MUST advise single quotes). Duplicate occurrences of the listed key MUST be rejected. Items are returned in order and exactly as written after unquoting and trimming; de-duplication is the caller's concern. A listed key MUST NOT appear in `opaque`.
+
+Calls without `lists` MUST return exactly today's result shapes with no `lists` key, so every key not listed MUST behave exactly as before, including `skills` when not requested. Default (strict) mode MUST be unchanged: skills and commands MUST keep rejecting multi-line, block-scalar, or nested values exactly as before, including the handling of blank lines inside frontmatter. The reader MUST remain pure (no `fs`, `os`, `path`, `child_process`, or `process`). Malformed nested YAML elsewhere is not detected, and full YAML semantics (flow or quoted multi-line scalars, anchors, tags, block scalars inside nested values) are not supported; these limits MUST be documented.
+(Previously: only `allowNested` and `mappings` existed; every nested list such as an agent `skills` list was opaque, with no opt-in `lists` option and no inline flow sequence support)
 
 #### Scenario: Strict mode unchanged for commands and skills
 
@@ -412,6 +458,96 @@ The frontmatter reader MUST offer an opt-in `allowNested` mode, used only for ag
 - GIVEN any `check` block the reader accepts
 - WHEN read by a standard YAML 1.2 parser
 - THEN it yields the same values (strict-subset guarantee)
+
+#### Scenario: List read from a block sequence
+
+- GIVEN `skills:` followed by `- a`, `- 'b'` and `- "c"` at two-space indent
+- WHEN parsed with `allowNested` and `lists: ['skills']`
+- THEN `lists.skills` is `['a', 'b', 'c']` and `skills` is not reported as opaque
+
+#### Scenario: Block sequence indent forms
+
+- GIVEN `skills:` followed by items at zero indent (`- a`) or at two-space indent, all items at the same indent
+- WHEN parsed with `lists: ['skills']`
+- THEN both yield the same list
+
+#### Scenario: Block sequence with comments and blank lines
+
+- GIVEN `skills:` with a full-line comment, a blank line, and an item `- a # note`
+- WHEN parsed with `lists: ['skills']`
+- THEN `lists.skills` is `['a']`
+
+#### Scenario: List read from an inline flow sequence
+
+- GIVEN `skills: [a, b]`
+- WHEN parsed with `lists: ['skills']`
+- THEN `lists.skills` is `['a', 'b']`, identical to the block form of the same items
+
+#### Scenario: Inline quotes, spacing and trailing comma
+
+- GIVEN `skills: [ 'a', "b" , c, ]`
+- WHEN parsed with `lists: ['skills']`
+- THEN `lists.skills` is `['a', 'b', 'c']`
+
+#### Scenario: Comma inside a quoted inline item
+
+- GIVEN `skills: ['a,b', c]`
+- WHEN parsed with `lists: ['skills']`
+- THEN `lists.skills` is `['a,b', 'c']`
+
+#### Scenario: Empty inline list
+
+- GIVEN `skills: []` or `skills: [ ]`
+- WHEN parsed with `lists: ['skills']`
+- THEN `lists.skills` is an empty list and no issue is returned
+
+#### Scenario: Empty key without items
+
+- GIVEN `skills:` followed directly by another top-level key
+- WHEN parsed with `lists: ['skills']`
+- THEN `lists.skills` is an empty list and no issue is returned
+
+#### Scenario: Trailing comment after the inline list
+
+- GIVEN `skills: [a, b] # needed`
+- WHEN parsed with `lists: ['skills']`
+- THEN `lists.skills` is `['a', 'b']`
+
+#### Scenario: Malformed lists rejected
+
+- GIVEN a listed key with a nested mapping (`skills:` followed by `  docs: yes`), an item `- docs: yes`, a nested flow item `[[a]]`, a block scalar `skills: |`, a plain value `skills: foo`, an unclosed `skills: [a, b`, trailing text `skills: [a] x`, an empty item `[a,,b]`, a double trailing comma `[a,,]`, a bare `-`, an anchor, a tab indent, mixed item indents, or a double-quoted `\s` escape
+- WHEN parsed with `lists: ['skills']`
+- THEN an issue naming `skills` and the offending line is returned, the `\s` issue advises single quotes, and the key is not silently treated as opaque
+
+#### Scenario: Duplicate listed key rejected
+
+- GIVEN two `skills:` keys in one frontmatter
+- WHEN parsed with `lists: ['skills']`
+- THEN an issue naming `skills` is returned
+
+#### Scenario: Lists coexist with other options and opaque keys
+
+- GIVEN an agent with `tools:` as a list, a `hooks:` nested block, and `skills: [a]`
+- WHEN parsed with `allowNested` and `lists: ['skills']`
+- THEN `tools` and `hooks` are reported as opaque and `lists.skills` is `['a']`
+
+#### Scenario: Calls without lists unchanged
+
+- GIVEN an agent parsed with `allowNested` and no `lists` option
+- WHEN `skills:` is followed by indented list items or an inline list
+- THEN `skills` is handled exactly as before (opaque when nested), the result has no `lists` key, and the result shape is identical to before this change
+
+#### Scenario: Strict mode ignores lists
+
+- GIVEN a skill or command whose frontmatter contains a `skills` key
+- WHEN parsed in default mode
+- THEN behavior and error messages are identical to before this change
+
+#### Scenario: Reader stays pure
+
+- GIVEN the portability guard for the domain layer
+- WHEN it inspects the frontmatter reader
+- THEN the module still imports no `fs`, `os`, `path`, `child_process`, `process`, adapters or application code
 
 ### Requirement: Trust copy for custom sources
 

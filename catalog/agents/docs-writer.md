@@ -11,7 +11,7 @@ You write and update documentation, README sections, guides, code comments and J
 ## Requirements
 
 - The `docs-writing` skill. If its rules are not in your context, stop and report that it must be installed. Do not improvise a documentation style.
-- Installing this agent does not install the skill.
+- Installing this agent also installs the `docs-writing` skill it declares.
 
 ## How you work
 

@@ -1,4 +1,4 @@
-import type { AgentItem } from '@/domain/catalog/agent.js';
+import { parseAgent, type AgentItem } from '@/domain/catalog/agent.js';
 import type { CatalogSource } from '@/ports/catalog-source.js';
 import { enc } from '@test/helpers/skills.js';
 
@@ -6,12 +6,13 @@ import { enc } from '@test/helpers/skills.js';
 export const agentBytes = (name: string, extra: string[] = [], body = 'You are an agent.\n'): Uint8Array =>
   enc(['---', `name: ${name}`, `description: ${name} agent`, ...extra, '---', body].join('\n'));
 
-/** An agent item whose bytes match its name. */
-export const makeAgent = (name: string, extra: string[] = []): AgentItem => ({
-  name,
-  description: `${name} agent`,
-  bytes: agentBytes(name, extra),
-});
+/** An agent item whose bytes match its name; `skills` is parsed from the bytes, so put a `skills:` line in `extra`. */
+export const makeAgent = (name: string, extra: string[] = []): AgentItem => {
+  const bytes = agentBytes(name, extra);
+  const parsed = parseAgent(name, bytes);
+  if ('issue' in parsed) throw new Error(`makeAgent(${name}): ${parsed.issue}`);
+  return parsed.agent;
+};
 
 /** An agent with nested frontmatter (a tools list). */
 export const REVIEWER: AgentItem = makeAgent('reviewer', ['tools:', '  - Read', '  - Grep']);

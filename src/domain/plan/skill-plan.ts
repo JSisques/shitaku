@@ -20,6 +20,10 @@ export interface SkillChange {
   desiredHash: string;
   /** Tree hash of `present`; null when the directory is absent or empty. */
   presentHash: string | null;
+  /** Every selected agent that declares this skill; absent when none does. */
+  requiredBy?: string[];
+  /** Set only when the skill is in the plan because agents need it, not because the user selected it. */
+  autoAdded?: true;
 }
 
 export interface SkillPlanEntry {
@@ -28,6 +32,8 @@ export interface SkillPlanEntry {
   scope: Scope;
   /** Files found at `root`, null when it does not exist. */
   present: SkillFile[] | null;
+  requiredBy?: string[];
+  autoAdded?: true;
 }
 
 export interface BuildSkillPlanInput {
@@ -49,7 +55,7 @@ export const classifySkill = (
 ): { action: Action; reason?: string } => classifyOwned(present, desired, owned, force, 'skill');
 
 export function buildSkillPlan({ skills, owned, force = false }: BuildSkillPlanInput): SkillChange[] {
-  return skills.map(({ skill, root, scope, present }): SkillChange => {
+  return skills.map(({ skill, root, scope, present, requiredBy, autoAdded }): SkillChange => {
     const presentFiles = present ?? [];
     const desiredHash = treeHash(skill.files) ?? '';
     const presentHash = treeHash(presentFiles);
@@ -65,6 +71,8 @@ export function buildSkillPlan({ skills, owned, force = false }: BuildSkillPlanI
       removed: decision.action === 'update' ? presentFiles.map((f) => f.path).filter((p) => !kept.has(p)) : [],
       desiredHash,
       presentHash,
+      ...(requiredBy === undefined ? {} : { requiredBy }),
+      ...(autoAdded === undefined ? {} : { autoAdded }),
     };
   });
 }

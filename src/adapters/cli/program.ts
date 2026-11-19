@@ -28,6 +28,7 @@ import { collapseWhitespace, LIST_KINDS, type CatalogEntry, type ListKind } from
 import type { InstallMethod } from '@/domain/install-method.js';
 import { ConfigError } from '@/domain/json-merge.js';
 import { ManifestError, type OwnedItem } from '@/domain/manifest.js';
+import { requiredByReason } from '@/domain/plan/agent-dependencies.js';
 import type { ChangePlan } from '@/domain/plan/change-plan.js';
 import type { Finding } from '@/domain/plan/doctor-plan.js';
 import type { PlannedHook } from '@/domain/plan/hook-plan.js';
@@ -157,7 +158,8 @@ function printPlan(deps: CliDeps, plan: ChangePlan): void {
   }
   for (const skill of plan.skills) {
     deps.out(`${skill.scope} scope: ${skill.root}`);
-    deps.out(row(skill.name, skill.action, skill.reason));
+    const why = [skill.reason, skill.autoAdded && skill.requiredBy && requiredByReason(skill.requiredBy)];
+    deps.out(row(skill.name, skill.action, why.filter(Boolean).join('; ')));
   }
   for (const script of plan.scripts) {
     deps.out(`${script.scope} scope: ${script.root}`);
@@ -181,6 +183,8 @@ function printPlan(deps: CliDeps, plan: ChangePlan): void {
   }
   for (const v of plan.requiredEnv)
     deps.out(v.set ? `env ${v.name}: set` : `warning: ${v.name} is not set; set it before using the server`);
+  for (const warning of plan.warnings) deps.out(`warning: ${warning}`);
+  for (const note of plan.notes) deps.out(`note: ${note}`);
 }
 
 /** What each hook the plan would write or change adds to its settings file, for the gate to show. */
@@ -301,14 +305,18 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
       agent: new Set(agents),
       rule: new Set(rules),
     };
+    const skippedSkills: string[] = [];
     for (const c of conflicts) {
       const choice = await deps.prompter.resolveConflict({
         kind: c.kind,
         name: c.name,
         reason: c.reason ?? 'conflict',
       });
-      if (choice === 'skip') keep[c.kind].delete(c.name);
-      else force = true;
+      if (choice === 'skip') {
+        keep[c.kind].delete(c.name);
+        // An auto-added skill is not in `skills`, so the re-plan would add it back under --force.
+        if (c.kind === 'skill') skippedSkills.push(c.name);
+      } else force = true;
     }
     request = {
       mcps: mcps.filter((m) => keep.mcp.has(m)),
@@ -317,6 +325,7 @@ async function runInit(deps: CliDeps, opts: InitOptions): Promise<number> {
       commands: commands.filter((c) => keep.command.has(c)),
       agents: agents.filter((a) => keep.agent.has(a)),
       rules: rules.filter((r) => keep.rule.has(r)),
+      skippedSkills,
       hooks,
       scope,
       force,

@@ -215,8 +215,15 @@ An agent is a single Markdown file that Claude Code loads as a subagent. Its fro
 
 Validation limits:
 
-- Only `name` and `description` are validated. Other keys such as `tools`, `model`, `hooks` or `mcpServers` may span several lines, are copied verbatim and are not validated; unknown keys are ignored.
+- Only `name` and `description` are validated, and `skills` is read as a list (see below). Other keys such as `tools`, `model`, `hooks` or `mcpServers` may span several lines, are copied verbatim and are not validated; unknown keys are ignored.
 - A `name` or `description` may be a literal (`|`) or folded (`>`) block scalar, with optional chomping and indentation indicators. The description is shown on one line with whitespace collapsed and the file is installed verbatim. Other multi-line forms for these two keys (nested values, multi-line plain or quoted scalars) are rejected.
+
+Declared skills: an agent may list the skills it needs under `skills:`, either as a block list (`- a` lines) or as an inline `[a, b]` list. A plain scalar such as `skills: a, b` is rejected. The reader accepts no multi-line flow lists and no nested values. Skill names are not validated at load; each name is checked for safety only when `init` resolves it.
+
+- On `init`, a declared skill that exists in the catalog is added to the same run and scope, and the plan shows `required by agent <name>`.
+- A declared skill missing from both the catalog and the disk prints a `warning:` line. One that is already on disk but not managed by shitaku prints a `note:` line and is left alone. Neither changes the exit code, and `--dry-run` prints both.
+- `uninstall` of an agent does not remove its skills; `shitaku undo` reverts the whole run.
+- The bundled-catalog guard (`test/adapters/catalog/bundled-catalog.test.ts`) checks that every skill a bundled agent declares is in the catalog.
 
 Install behavior: the file is copied flat to `~/.claude/agents/<name>.md` (`user`) or `./.claude/agents/<name>.md` (`project`). Other files in that directory are never touched. A different `<name>.md` that shitaku did not install is a conflict and is never overwritten silently; `--force` backs it up first and `shitaku undo` restores it. `shitaku uninstall <name>` refuses a modified file without `--force`. The bundled catalog ships these agents: `pr-creator`, a least-privilege example that combines the `pr-writing` skill with `github` MCP tools; `qa`, which reviews changes for missing tests and regressions, writes only test files and can use optional `playwright` MCP tools; `socratic-challenger`, which applies the `socratic-method` skill and writes only a Q&A log; and `docs-writer`, which applies the `docs-writing` skill without a shell and writes only documentation and code comments. Install behavior tests still use fixtures. Regenerate the README and website tables with `pnpm run docs:catalog` and `pnpm run docs:website-catalog`.
 

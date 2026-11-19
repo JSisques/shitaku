@@ -61,6 +61,22 @@ describe('buildSkillPlan', () => {
     });
   });
 
+  it('copies requiredBy and autoAdded from the entry and leaves the reason alone', () => {
+    const [change] = buildSkillPlan({
+      skills: [
+        { skill: skill('demo', v2), root, scope: 'project', present: v2, requiredBy: ['a', 'b'], autoAdded: true },
+      ],
+      owned: {},
+    });
+    expect(change).toMatchObject({ requiredBy: ['a', 'b'], autoAdded: true, reason: 'already installed' });
+  });
+
+  it('adds neither field when the entry does not carry them', () => {
+    const [change] = plan(null);
+    expect(change).not.toHaveProperty('requiredBy');
+    expect(change).not.toHaveProperty('autoAdded');
+  });
+
   it('carries the scope of the entry into the change', () => {
     expect(plan(null)[0]?.scope).toBe('project');
   });

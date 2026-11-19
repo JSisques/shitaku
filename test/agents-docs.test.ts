@@ -73,6 +73,50 @@ describe('agents docs', () => {
     expect(readFileSync(join(ROOT, file), 'utf8')).toMatch(pattern);
   });
 
+  describe.each([
+    [
+      'README.md',
+      {
+        'declared skills': /`skills:`/,
+        reason: /required by agent/,
+        warning: /`warning:`/,
+        note: /`note:`/,
+        'exit code': /exit code[^\n]*(unchanged|unaffected)/i,
+        'uninstall keeps skills': /uninstall --kind agent`[^\n]*(keeps|does not remove)[^\n]*skills/i,
+      },
+    ],
+    [
+      'CONTRIBUTING.md',
+      {
+        'block form': /`skills:`[^\n]*block/i,
+        'inline form': /\[a, b\]/,
+        'plain scalar rejected': /`skills: a, b`[^\n]*rejected/,
+        'not validated at load': /skill names are not validated at load/i,
+        reason: /required by agent/,
+        warning: /`warning:`/,
+        note: /`note:`/,
+        'reader limits': /multi-line flow/i,
+        'bundled guard': /bundled[- ]catalog guard/i,
+      },
+    ],
+  ] as [string, Record<string, RegExp>][])('declared skills in %s', (file, tokens) => {
+    const text = readFileSync(join(ROOT, file), 'utf8');
+    it.each(Object.entries(tokens))('states: %s', (_label, token) => {
+      expect(text).toMatch(token);
+    });
+  });
+
+  it.each([
+    'README.md',
+    'CONTRIBUTING.md',
+    'website/src/content/docs/en/security.md',
+    'website/src/content/docs/es/security.md',
+  ])('does not call agent skills opaque or tie the single-line limit to #238 in %s', (file) => {
+    const text = readFileSync(join(ROOT, file), 'utf8');
+    expect(text).not.toMatch(/`skills`[^\n]*opaque|opaque[^\n]*`skills`/i);
+    expect(text).not.toMatch(/#238/);
+  });
+
   it('keeps the flag out of CONTRIBUTING.md, which links to the README for usage', () => {
     expect(readFileSync(join(ROOT, 'CONTRIBUTING.md'), 'utf8')).not.toMatch(/--kind agent/);
   });

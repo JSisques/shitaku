@@ -28,34 +28,29 @@ const indentOf = (line: string): number => line.length - line.trimStart().length
 const hasTabIndent = (line: string): boolean => /^[ \t]*\t/.test(line);
 const isDash = (text: string): boolean => text === '-' || text.startsWith('- ');
 
-/** Decodes a single-quoted scalar (`''` is a quote, no other escapes). */
-const readSingleQuoted = (text: string): Scalar => {
+/** A quoted scalar scanned from `from`: its decoded value and the index just past the closing quote. */
+type Scanned = { value: string; end: number } | { reason: string };
+
+/** Scans a single-quoted scalar opening at `text[from]` (`''` is a quote, no other escapes). */
+const scanSingleQuoted = (text: string, from: number): Scanned => {
   let out = '';
-  for (let i = 1; i < text.length; i++) {
+  for (let i = from + 1; i < text.length; i++) {
     const char = text[i];
     if (char !== "'") out += char;
     else if (text[i + 1] === "'") {
       out += "'";
       i++;
-    } else {
-      return QUOTED_TAIL.test(text.slice(i + 1))
-        ? { value: out }
-        : { reason: 'has text after the closing single quote' };
-    }
+    } else return { value: out, end: i + 1 };
   }
   return { reason: 'has an unterminated single-quoted value' };
 };
 
-/** Decodes a double-quoted scalar with the escapes `\\ \" \/ \n \t` only. */
-const readDoubleQuoted = (text: string): Scalar => {
+/** Scans a double-quoted scalar opening at `text[from]` with the escapes `\\ \" \/ \n \t` only. */
+const scanDoubleQuoted = (text: string, from: number): Scanned => {
   let out = '';
-  for (let i = 1; i < text.length; i++) {
+  for (let i = from + 1; i < text.length; i++) {
     const char = text[i] ?? '';
-    if (char === '"') {
-      return QUOTED_TAIL.test(text.slice(i + 1))
-        ? { value: out }
-        : { reason: 'has text after the closing double quote' };
-    }
+    if (char === '"') return { value: out, end: i + 1 };
     if (char !== '\\') {
       out += char;
       continue;
@@ -82,11 +77,97 @@ const readPlain = (text: string): Scalar => {
   return { value };
 };
 
+/** A whole-text quoted scalar: after the closing quote only whitespace or a comment may follow. */
+const finishQuoted = (text: string, scanned: Scanned, quote: 'single' | 'double'): Scalar => {
+  if ('reason' in scanned) return scanned;
+  return QUOTED_TAIL.test(text.slice(scanned.end))
+    ? { value: scanned.value }
+    : { reason: `has text after the closing ${quote} quote` };
+};
+
 /** Decodes one scalar (the text after `key:` or `- `), quoted or plain, without its trailing comment. */
 const readScalar = (text: string): Scalar => {
-  if (text.startsWith("'")) return readSingleQuoted(text);
-  if (text.startsWith('"')) return readDoubleQuoted(text);
+  if (text.startsWith("'")) return finishQuoted(text, scanSingleQuoted(text, 0), 'single');
+  if (text.startsWith('"')) return finishQuoted(text, scanDoubleQuoted(text, 0), 'double');
   return readPlain(text);
+};
+
+/** An issue for a key, naming it and, when given, the offending line. */
+const keyIssue = (key: string, reason: string, line?: string): { issue: string } => ({
+  issue: `frontmatter key '${key}' ${reason}${line === undefined ? '' : ` (line: ${line.trim()})`}`,
+});
+
+/** Reads one item of a single-line flow sequence starting at `from`: a quoted scalar or a plain run. */
+const readFlowItem = (text: string, from: number): Scanned => {
+  const first = text[from];
+  if (first === "'") return scanSingleQuoted(text, from);
+  if (first === '"') return scanDoubleQuoted(text, from);
+  let end = from;
+  while (end < text.length && text[end] !== ',' && text[end] !== ']') end++;
+  const raw = text.slice(from, end).trim();
+  if (raw === '') return { reason: 'has an empty flow sequence item' };
+  if (raw.startsWith('[') || raw.startsWith('{'))
+    return { reason: 'has a nested flow collection, which is not supported' };
+  if (/[[{}]/.test(raw)) return { reason: 'has a flow sequence item with a bracket; quote the item' };
+  if (/\s#/.test(raw)) return { reason: 'has a comment inside the flow sequence' };
+  const scalar = readPlain(raw);
+  return 'reason' in scalar ? { reason: `has a flow sequence item: ${scalar.reason}` } : { value: scalar.value, end };
+};
+
+/**
+ * Reads `[a, b]` on one line (`text` starts with `[`) into its items. Items are plain, single-quoted or
+ * double-quoted scalars; one trailing comma is accepted; only a comment may follow the closing bracket.
+ */
+const readFlowSequence = (text: string): { items: string[] } | { reason: string } => {
+  const items: string[] = [];
+  const skipSpaces = (from: number): number => from + (text.slice(from).length - text.slice(from).trimStart().length);
+  let i = skipSpaces(1);
+  while (text[i] !== ']') {
+    if (i >= text.length) return { reason: 'has a flow sequence that does not close on the same line' };
+    const item = readFlowItem(text, i);
+    if ('reason' in item) return item;
+    items.push(item.value);
+    i = skipSpaces(item.end);
+    if (text[i] === ',') i = skipSpaces(i + 1);
+    else if (text[i] !== ']') {
+      return i >= text.length
+        ? { reason: 'has a flow sequence that does not close on the same line' }
+        : { reason: 'has text after a flow sequence item' };
+    }
+  }
+  return QUOTED_TAIL.test(text.slice(i + 1)) ? { items } : { reason: 'has text after the closing bracket' };
+};
+
+/**
+ * Reads the block sequence that follows a listed key at `lines[start]` (items at column 0 or indented, all at one
+ * indent). Blank lines and full-line comments are skipped; `next` is the first line that is not part of the list.
+ */
+const readBlockSequence = (
+  lines: readonly string[],
+  start: number,
+  key: string,
+): { items: string[]; next: number } | { issue: string } => {
+  const items: string[] = [];
+  let itemIndent = -1;
+  let i = start;
+  for (; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    if (isBlank(line) || line.trimStart().startsWith('#')) continue;
+    if (hasTabIndent(line)) return keyIssue(key, 'is indented with a tab, which is not supported', line);
+    const text = line.trim();
+    if (!isDash(text)) {
+      if (indentOf(line) === 0) break;
+      return keyIssue(key, 'must be a block or flow sequence of scalars, not a nested mapping', line);
+    }
+    if (itemIndent < 0) itemIndent = indentOf(line);
+    if (indentOf(line) !== itemIndent) return keyIssue(key, 'has inconsistent sequence indentation', line);
+    const body = text.slice(1).trim();
+    if (body === '' || body.startsWith('#')) return keyIssue(key, 'has an empty sequence item', line);
+    const scalar = readScalar(body);
+    if ('reason' in scalar) return keyIssue(key, `sequence item ${scalar.reason}`, line);
+    items.push(scalar.value);
+  }
+  return { items, next: i };
 };
 
 /**
@@ -100,9 +181,7 @@ export function readBlockMapping(
   start: number,
   key: string,
 ): { value: BlockMapping; next: number } | { issue: string } {
-  const fail = (reason: string, line?: string): { issue: string } => ({
-    issue: `frontmatter key '${key}' ${reason}${line === undefined ? '' : ` (line: ${line.trim()})`}`,
-  });
+  const fail = (reason: string, line?: string): { issue: string } => keyIssue(key, reason, line);
   /** First index at or after `from` that is not blank and not an indented full-line comment. */
   const skip = (from: number): number => {
     let i = from;
@@ -191,6 +270,16 @@ export type NestedFrontmatterResult =
 /** Result of nested mode with `mappings`: `maps` holds the block mappings of the listed keys. */
 export type MappedFrontmatterResult =
   | { data: Record<string, string>; opaque: string[]; maps: Record<string, BlockMapping>; body: string }
+  | FrontmatterIssue;
+/** Result of nested mode with `lists`: `lists` holds each listed key present, read as a list of scalars. */
+export type ListedFrontmatterResult =
+  | {
+      data: Record<string, string>;
+      opaque: string[];
+      maps: Record<string, BlockMapping>;
+      lists: Record<string, string[]>;
+      body: string;
+    }
   | FrontmatterIssue;
 
 const unquote = (value: string): string => {
@@ -289,8 +378,15 @@ const splitBlock = (text: string): { lines: string[]; body: string } | undefined
  * its name goes to `opaque` and its value is not parsed; an indented line with no owning key is an issue.
  * With `mappings` (nested mode only), a listed key with an empty value has its indented block read one level deep
  * into `maps` instead of being opaque (see `readBlockMapping`); a listed key with an inline value stays in `data`.
+ * With `lists` (nested mode only), a listed key is read as a list of scalars into `lists`, from a block sequence or a
+ * single-line flow sequence (`[a, b]`); anything else under it is an issue, and a listed key is never opaque.
  * `file` names the source file in issue messages. `body` is the text after the closing `---`.
  */
+export function readFrontmatter(
+  text: string,
+  file: string,
+  options: { allowNested: true; lists: readonly string[]; mappings?: readonly string[] },
+): ListedFrontmatterResult;
 export function readFrontmatter(
   text: string,
   file: string,
@@ -301,13 +397,13 @@ export function readFrontmatter(text: string, file: string, options?: { allowNes
 export function readFrontmatter(
   text: string,
   file: string,
-  options: { allowNested?: boolean; mappings?: readonly string[] },
-): FrontmatterResult | NestedFrontmatterResult | MappedFrontmatterResult;
+  options: { allowNested?: boolean; mappings?: readonly string[]; lists?: readonly string[] },
+): FrontmatterResult | NestedFrontmatterResult | MappedFrontmatterResult | ListedFrontmatterResult;
 export function readFrontmatter(
   text: string,
   file: string,
-  options: { allowNested?: boolean; mappings?: readonly string[] } = {},
-): FrontmatterResult | NestedFrontmatterResult | MappedFrontmatterResult {
+  options: { allowNested?: boolean; mappings?: readonly string[]; lists?: readonly string[] } = {},
+): FrontmatterResult | NestedFrontmatterResult | MappedFrontmatterResult | ListedFrontmatterResult {
   const split = splitBlock(text);
   if (!split) return { issue: `${file} has no frontmatter block`, file };
   const nested = options.allowNested === true;
@@ -315,6 +411,8 @@ export function readFrontmatter(
   const opaque: string[] = [];
   const mappings = nested ? options.mappings : undefined;
   const maps: Record<string, BlockMapping> = {};
+  const listKeys = nested ? options.lists : undefined;
+  const lists: Record<string, string[]> = {};
   let owner = false;
   for (let i = 0; i < split.lines.length; i++) {
     const line = split.lines[i] ?? '';
@@ -329,6 +427,23 @@ export function readFrontmatter(
     if (colon < 1) return { issue: `frontmatter line is not 'key: value': ${line}`, file };
     const key = line.slice(0, colon).trim();
     const value = line.slice(colon + 1).trim();
+    if (listKeys?.includes(key)) {
+      if (Object.hasOwn(lists, key)) return { issue: keyIssue(key, 'is declared more than once', line).issue, file };
+      owner = false;
+      if (value === '' || value.startsWith('#')) {
+        const block = readBlockSequence(split.lines, i + 1, key);
+        if ('issue' in block) return { issue: block.issue, file };
+        lists[key] = block.items;
+        i = block.next - 1;
+        continue;
+      }
+      const flow = value.startsWith('[')
+        ? readFlowSequence(value)
+        : { reason: 'must be a block or flow sequence of scalars' };
+      if ('reason' in flow) return { issue: keyIssue(key, flow.reason, line).issue, file };
+      lists[key] = flow.items;
+      continue;
+    }
     const header = nested ? parseHeader(value) : undefined;
     if (header) {
       const block = readBlockScalar(split.lines, i + 1, header, key);
@@ -353,5 +468,6 @@ export function readFrontmatter(
     } else data[key] = unquote(value);
   }
   if (!nested) return { data, body: split.body };
+  if (listKeys) return { data, opaque, maps, lists, body: split.body };
   return mappings ? { data, opaque, maps, body: split.body } : { data, opaque, body: split.body };
 }
