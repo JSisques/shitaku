@@ -44,29 +44,23 @@ Plan MUST classify by tree hash: create|skip|update|conflict. Conflicts MUST sho
 
 ### Requirement: Bundled catalog scripts
 
-Bundled catalog MUST list `complexity`, `dead-code`, and `duplication` in `items.scripts` and MUST ship `catalog/scripts/complexity/` (`index.mjs`, validated metadata, shipped ESLint flat config), `catalog/scripts/dead-code/` (`index.mjs`, validated metadata, no shipped npm deps or script-root bootstrap), and `catalog/scripts/duplication/` (`index.mjs`, validated metadata, no shipped npm deps or script-root bootstrap). Concrete scripts MAY ship; the prior no-concrete-scripts constraint MUST NOT apply.
-(Previously: Only `complexity` and `dead-code`.)
+Bundled catalog MUST list `complexity`, `dead-code`, `duplication`, and `repo-map` in `items.scripts` and MUST ship `catalog/scripts/complexity/` (`index.mjs`, validated metadata, shipped ESLint flat config), `catalog/scripts/dead-code/` (`index.mjs`, validated metadata, no shipped npm deps or script-root bootstrap), `catalog/scripts/duplication/` (`index.mjs`, validated metadata, no shipped npm deps or script-root bootstrap), and `catalog/scripts/repo-map/` (`index.mjs`, flat helper `.mjs` modules with no `lib/` subdirectory, validated metadata, no shipped npm deps or script-root bootstrap). A multi-file script directory MUST be copied as-is on install. Concrete scripts MAY ship; the prior no-concrete-scripts constraint MUST NOT apply.
+(Previously: `complexity`, `dead-code`, and `duplication` only.)
 
 #### Scenario: Registered and loadable
 
 - GIVEN default catalog
 - WHEN loaded
-- THEN `complexity`, `dead-code`, and `duplication` are valid and selectable
+- THEN `complexity`, `dead-code`, `duplication`, and `repo-map` are valid and selectable
 
-#### Scenario: Project install root complexity
+#### Scenario: Project install root repo-map
 
-- GIVEN init installs `complexity` with `--scope project`
+- GIVEN init installs `repo-map` with `--scope project`
 - WHEN apply completes
-- THEN tree under `<cwd>/.shitaku/scripts/complexity/` includes `index.mjs` and shipped config
+- THEN tree under `<cwd>/.shitaku/scripts/repo-map/` includes `index.mjs` and all helper `.mjs` modules without script-root npm bootstrap
 
-#### Scenario: Project install root dead-code
+#### Scenario: Existing siblings unchanged
 
-- GIVEN init installs `dead-code` with `--scope project`
+- GIVEN init installs `complexity`, `dead-code`, or `duplication` with `--scope project`
 - WHEN apply completes
-- THEN tree under `<cwd>/.shitaku/scripts/dead-code/` includes `index.mjs` without script-root npm bootstrap
-
-#### Scenario: Project install root duplication
-
-- GIVEN init installs `duplication` with `--scope project`
-- WHEN apply completes
-- THEN tree under `<cwd>/.shitaku/scripts/duplication/` includes `index.mjs` without script-root npm bootstrap
+- THEN their install trees match the prior behavior (`index.mjs`, shipped config for `complexity`, no script-root npm bootstrap for the others)
