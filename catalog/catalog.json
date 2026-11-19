@@ -18,7 +18,15 @@
       "cloudflare-observability",
       "rea"
     ],
-    "skills": ["docs-writing", "example-skill", "pr-writing", "product-owner", "refactoring", "socratic-method"],
+    "skills": [
+      "docs-writing",
+      "example-skill",
+      "pr-writing",
+      "product-owner",
+      "refactoring",
+      "socratic-method",
+      "test-writing"
+    ],
     "profiles": ["base", "web", "backend"],
     "scripts": ["complexity", "dead-code", "duplication", "repo-map"],
     "commands": [],

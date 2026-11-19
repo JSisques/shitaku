@@ -288,7 +288,7 @@ describe('bundled catalog', () => {
     expect(entries).not.toContain('lib');
   });
 
-  it('ships docs-writing, example-skill, pr-writing, product-owner, refactoring and socratic-method as registered loadable bundled skills', async () => {
+  it('ships docs-writing, example-skill, pr-writing, product-owner, refactoring, socratic-method and test-writing as registered loadable bundled skills', async () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { skills?: unknown };
     };
@@ -299,6 +299,7 @@ describe('bundled catalog', () => {
       'product-owner',
       'refactoring',
       'socratic-method',
+      'test-writing',
     ]);
 
     const skillsDir = join(catalogRoot, 'skills');
@@ -313,11 +314,12 @@ describe('bundled catalog', () => {
       'product-owner',
       'refactoring',
       'socratic-method',
+      'test-writing',
     ]);
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.skills).toHaveLength(6);
+    expect(catalog.skills).toHaveLength(7);
 
     const byName = Object.fromEntries(catalog.skills.map((sk) => [sk.name, sk]));
     expect(byName['docs-writing']).toMatchObject({ name: 'docs-writing' });
@@ -343,6 +345,10 @@ describe('bundled catalog', () => {
     expect(byName['socratic-method']).toMatchObject({ name: 'socratic-method' });
     expect(byName['socratic-method']?.description.length).toBeGreaterThan(0);
     expect(byName['socratic-method']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
+
+    expect(byName['test-writing']).toMatchObject({ name: 'test-writing' });
+    expect(byName['test-writing']?.description.length).toBeGreaterThan(0);
+    expect(byName['test-writing']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
   });
 
   it('keeps the pr-writing skill content contract', () => {
@@ -393,6 +399,22 @@ describe('bundled catalog', () => {
         'Not for new features',
       ],
       forbidden: [/shitaku/i, 'Co-Authored-By'],
+    });
+  });
+
+  it('keeps the test-writing skill content contract', () => {
+    expectSkillContract('test-writing', {
+      required: [
+        'Repository conventions first',
+        'test pyramid',
+        'Mock only at boundaries',
+        'Arrange-Act-Assert',
+        'Edge-case checklist',
+        'fails before the fix',
+        'No flakiness',
+        'Not for refactoring safety nets',
+      ],
+      forbidden: [/shitaku/i, 'Co-Authored-By', /\b(?:vitest|jest|pytest|mocha)\b/i],
     });
   });
 
