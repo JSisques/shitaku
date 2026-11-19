@@ -20,6 +20,12 @@ describe('buildPlan', () => {
     expect(plan(null).agents).toEqual([]);
   });
 
+  it('starts with no warnings and no notes', () => {
+    const { warnings, notes } = plan(null);
+    expect(warnings).toEqual([]);
+    expect(notes).toEqual([]);
+  });
+
   it('plans no hook files for an MCP-only request', () => {
     expect(plan(null).hooks).toEqual([]);
   });

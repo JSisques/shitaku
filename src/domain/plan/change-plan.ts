@@ -37,7 +37,7 @@ export interface ChangePlan {
   requiredEnv: EnvStatus[];
   /** Names of every env variable the planned items declare; the apply-time leak scan checks their values. */
   declaredEnv: string[];
-  /** One entry per requested skill, in request order. */
+  /** One entry per requested skill in request order, then the skills selected agents require. */
   skills: SkillChange[];
   /** One entry per requested script, in request order. */
   scripts: ScriptChange[];
@@ -49,6 +49,10 @@ export interface ChangePlan {
   rules: FlatFileChange[];
   /** One entry per settings file the requested hooks go to. */
   hooks: HookFileChange[];
+  /** Problems worth the user's attention, such as a skill an agent needs that cannot be found. */
+  warnings: string[];
+  /** Informational messages that need no action. */
+  notes: string[];
 }
 
 export interface BuildPlanInput {
@@ -153,5 +157,7 @@ export function buildPlan(input: BuildPlanInput): ChangePlan {
     agents: [],
     rules: [],
     hooks: [],
+    warnings: [],
+    notes: [],
   };
 }

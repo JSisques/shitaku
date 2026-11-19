@@ -242,6 +242,8 @@ async function planMcps(
       agents: [],
       rules: [],
       hooks: [],
+      warnings: [],
+      notes: [],
     };
   const items = req.mcps.map((name) => catalogMcps.find((m) => m.name === name)!);
   const path = deps.target.configPath(req.scope, deps.paths);
