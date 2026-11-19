@@ -60,6 +60,8 @@ Return the OpenAPI 3.1 contract (or the diff to the existing one); a decision su
 ```yaml
 openapi: 3.1.0
 info: { title: Orders API, version: 1.0.0 }
+security:
+  - bearerAuth: []
 paths:
   /v1/orders:
     get:
@@ -86,12 +88,16 @@ paths:
       responses:
         '201':
           description: Order created
+          headers:
+            Location: { schema: { type: string } }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Order' }
         '409': { $ref: '#/components/responses/Problem' }
         '422': { $ref: '#/components/responses/Problem' }
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
   responses:
     Problem:
       description: Error in Problem Details format
