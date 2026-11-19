@@ -57,17 +57,17 @@ Generated lines (excluded): README row + 2 website pages. Push only after commit
 
 ### Phase 3: Generated docs
 
-- [ ] 3.1 Run `pnpm run docs:catalog` (README skills table), then `pnpm run docs:website-catalog` (en and es pages). Do not hand-edit (Req: Catalog-only surface)
-- [ ] 3.2 Run `pnpm run docs:catalog:check` and `pnpm run docs:website-catalog:check`; both must pass
-- [ ] 3.3 Run `pnpm run format:check`; if generated files need formatting, run `pnpm run format` and re-run both checks
-- [ ] 3.4 Confirm the diff contains only `README.md` and `website/src/content/docs/{en,es}/catalog/skills/devops.md`
-- [ ] 3.5 Commit: `docs: list devops skill in README and website`
+- [x] 3.1 Run `pnpm run docs:catalog` (README skills table), then `pnpm run docs:website-catalog` (en and es pages). Do not hand-edit (Req: Catalog-only surface)
+- [x] 3.2 Run `pnpm run docs:catalog:check` and `pnpm run docs:website-catalog:check`; both must pass
+- [x] 3.3 Run `pnpm run format:check`; if generated files need formatting, run `pnpm run format` and re-run both checks
+- [x] 3.4 Confirm the diff contains only `README.md` and `website/src/content/docs/{en,es}/catalog/skills/devops.md`
+- [x] 3.5 Commit: `docs: list devops skill in README and website`
 
 ## Phase 4: Final verification (no commit)
 
-- [ ] 4.1 Run `pnpm test`, `pnpm run typecheck`, `pnpm run lint`, `pnpm run format:check`
-- [ ] 4.2 Run `pnpm run build`, then `node dist/main.js init --skills devops --scope project --dry-run`; expect `devops` classified `create` and no files, backups, or manifest written (Req: Installable create when absent)
-- [ ] 4.3 Confirm `git status` is clean of stray files from the dry-run and `dist/` is not committed
+- [x] 4.1 Run `pnpm test`, `pnpm run typecheck`, `pnpm run lint`, `pnpm run format:check`
+- [x] 4.2 Run `pnpm run build`, then `node dist/main.js init --skills devops --scope project --dry-run`; expect `devops` classified `create` and no files, backups, or manifest written (Req: Installable create when absent)
+- [x] 4.3 Confirm `git status` is clean of stray files from the dry-run and `dist/` is not committed
 
 ## Parallelism
 
