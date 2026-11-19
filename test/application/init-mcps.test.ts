@@ -19,8 +19,12 @@ import {
   UnknownScriptError,
   UnknownSkillError,
   type InitDeps,
+  type InitRequest,
 } from '@/application/init-mcps.js';
 import { appendInstall, manifestPath, stateDir } from '@/application/journal.js';
+import { undoInstall } from '@/application/undo-install.js';
+import { uninstallItem } from '@/application/uninstall-item.js';
+import type { AgentItem } from '@/domain/catalog/agent.js';
 import type { SkillItem } from '@/domain/catalog/skill.js';
 import { hashEntry, sha256, treeHash } from '@/domain/hash.js';
 import { hookEntryHash } from '@/domain/plan/hook-plan.js';
@@ -29,7 +33,7 @@ import { UnsafeTreeError } from '@/ports/file-system.js';
 import { parseManifest, type Manifest } from '@/domain/manifest.js';
 import { DEMO_V1, DEMO_V2, faultyFs, skillSource } from '@test/helpers/skills.js';
 import { SCRIPT_V1, SCRIPT_V2, scriptSource } from '@test/helpers/scripts.js';
-import { agentSource, REVIEWER, REVIEWER_V2 } from '@test/helpers/agents.js';
+import { agentSource, makeAgent, REVIEWER, REVIEWER_V2 } from '@test/helpers/agents.js';
 import { ruleItem, ruleSource } from '@test/helpers/rules.js';
 import { commandSource, REVIEW_V1, REVIEW_V2 } from '@test/helpers/commands.js';
 import { FMT_V1, FMT_V2, GUARD, hookSource } from '@test/helpers/hooks.js';
@@ -1647,5 +1651,139 @@ describe('initMcps (hooks)', () => {
     await mine('{"model":"sonnet","model":"opus"}\n');
     await install();
     expect((await read()).model).toBe('opus');
+  });
+});
+
+describe('planInit (skills declared by agents)', () => {
+  let tmp: TmpPaths;
+  let deps: InitDeps;
+  const real = new NodeFileSystem();
+  const skill = (name: string): SkillItem => ({
+    ...DEMO_V1,
+    name,
+    files: [{ path: 'SKILL.md', bytes: new TextEncoder().encode(`---\nname: ${name}\n---\n${name}`) }],
+  });
+  const WRITER = makeAgent('writer', ['skills: [docs, lint]']);
+  const EDITOR = makeAgent('editor', ['skills: [lint, ghost]']);
+  const PLAIN = makeAgent('plain');
+  const sourceOf = (agents: AgentItem[], skills: SkillItem[]): CatalogSource => ({
+    ref: () => ({ kind: 'bundled', location: '/catalog' }),
+    load: async () => ({ ...(await agentSource(agents).load()), skills }),
+  });
+  const skillsDir = (scope: Scope = 'project') => join(scope === 'user' ? tmp.homeDir : tmp.cwd, '.claude', 'skills');
+  const plan = (req: Partial<InitRequest> = {}) =>
+    planInit(deps, { mcps: [], agents: ['writer'], scope: 'project', ...req });
+  const manifest = async (): Promise<Manifest> => parseManifest(await readFile(manifestPath(tmp.homeDir), 'utf8'));
+  beforeEach(async () => {
+    tmp = await makeTmpPaths();
+    deps = {
+      source: sourceOf([WRITER, EDITOR, PLAIN], [skill('docs'), skill('lint')]),
+      fs: real,
+      target: claudeCodeTarget,
+      paths: { homeDir: tmp.homeDir, cwd: tmp.cwd },
+      env: {},
+    };
+  });
+  afterEach(() => tmp.cleanup());
+
+  it('adds a declared catalog skill in the run scope, marked as auto-added and required by the agent', async () => {
+    const { skills } = await plan();
+    expect(skills.map((s) => s.name)).toEqual(['docs', 'lint']);
+    expect(skills[0]).toMatchObject({
+      action: 'create',
+      root: join(skillsDir(), 'docs'),
+      requiredBy: ['writer'],
+      autoAdded: true,
+    });
+  });
+
+  it('plans one entry for an explicit and required skill, without autoAdded but with requiredBy', async () => {
+    const { skills } = await plan({ skills: ['docs'] });
+    expect(skills.filter((s) => s.name === 'docs')).toHaveLength(1);
+    expect(skills.find((s) => s.name === 'docs')).toMatchObject({ requiredBy: ['writer'] });
+    expect(skills.find((s) => s.name === 'docs')).not.toHaveProperty('autoAdded');
+  });
+
+  it('plans a skill required by two agents once, naming both', async () => {
+    const { skills } = await plan({ agents: ['writer', 'editor'] });
+    expect(skills.filter((s) => s.name === 'lint')).toHaveLength(1);
+    expect(skills.find((s) => s.name === 'lint')).toMatchObject({ requiredBy: ['writer', 'editor'] });
+  });
+
+  it('leaves out a skill named in skippedSkills', async () => {
+    expect((await plan({ skippedSkills: ['docs'] })).skills.map((s) => s.name)).toEqual(['lint']);
+  });
+
+  it('puts explicit skills first, then auto-added ones in resolution order', async () => {
+    expect((await plan({ skills: ['lint'] })).skills.map((s) => s.name)).toEqual(['lint', 'docs']);
+  });
+
+  it('still rejects an unknown explicit skill', async () => {
+    await expect(plan({ skills: ['ghost'] })).rejects.toThrow(UnknownSkillError);
+  });
+
+  it('warns about a declared skill found nowhere and still plans the agent', async () => {
+    const result = await plan({ agents: ['editor'] });
+    expect(result.warnings).toEqual(['agent editor requires skill ghost, which is not in the catalog']);
+    expect(result.agents).toHaveLength(1);
+  });
+
+  it('notes a declared skill that exists on disk', async () => {
+    await mkdir(join(skillsDir(), 'ghost'), { recursive: true });
+    await writeFile(join(skillsDir(), 'ghost', 'SKILL.md'), 'mine');
+    const result = await plan({ agents: ['editor'] });
+    expect(result.warnings).toEqual([]);
+    expect(result.notes).toEqual(['agent editor requires skill ghost, found on disk, not managed by shitaku']);
+  });
+
+  it('plans an agent without skills exactly as before', async () => {
+    const result = await plan({ agents: ['plain'] });
+    expect(result.skills).toEqual([]);
+    expect(result.warnings).toEqual([]);
+    expect(result.notes).toEqual([]);
+  });
+
+  it('classifies an auto-added skill whose target differs and is unowned as a conflict', async () => {
+    await mkdir(join(skillsDir(), 'docs'), { recursive: true });
+    await writeFile(join(skillsDir(), 'docs', 'SKILL.md'), 'mine');
+    expect((await plan()).skills.find((s) => s.name === 'docs')).toMatchObject({ action: 'conflict' });
+  });
+
+  it('journals auto-added skills like explicit ones, and undo reverts them', async () => {
+    await initMcps(deps, { mcps: [], agents: ['writer'], scope: 'project' });
+    const items = (await manifest()).installs[0]!.files.flatMap((f) => f.items);
+    expect(items.filter((i) => i.kind === 'skill').map((i) => i.name)).toEqual(['docs', 'lint']);
+    expect(await undoInstall({ fs: real, paths: deps.paths }, {})).toMatchObject({ status: 'undone' });
+    expect(await real.exists(join(skillsDir(), 'docs'))).toBe(false);
+    expect(await real.exists(join(tmp.cwd, '.claude', 'agents', 'writer.md'))).toBe(false);
+  });
+
+  it('records an auto-added skill with the same fields as an explicit one', async () => {
+    await initMcps(deps, { mcps: [], agents: ['writer'], scope: 'project' });
+    const auto = (await manifest()).installs[0]!.files.flatMap((f) => f.items).find((i) => i.name === 'docs')!;
+    await tmp.cleanup();
+    tmp = await makeTmpPaths();
+    deps = { ...deps, paths: { homeDir: tmp.homeDir, cwd: tmp.cwd } };
+    await initMcps(deps, { mcps: [], skills: ['docs'], scope: 'project' });
+    const explicit = (await manifest()).installs[0]!.files.flatMap((f) => f.items).find((i) => i.name === 'docs')!;
+    expect(Object.keys(auto).sort()).toEqual(Object.keys(explicit).sort());
+    expect(auto).toMatchObject({ kind: 'skill', action: 'create', entryHash: explicit.entryHash });
+  });
+
+  it('keeps a pre-existing skills directory when undo reverts the install', async () => {
+    await mkdir(skillsDir(), { recursive: true });
+    await initMcps(deps, { mcps: [], agents: ['writer'], scope: 'project' });
+    await undoInstall({ fs: real, paths: deps.paths }, {});
+    expect(await real.exists(skillsDir())).toBe(true);
+  });
+
+  it('uninstalling the agent keeps the auto-added skill', async () => {
+    await initMcps(deps, { mcps: [], agents: ['writer'], scope: 'project' });
+    const result = await uninstallItem(
+      { fs: real, target: claudeCodeTarget, paths: deps.paths },
+      { name: 'writer', kind: 'agent' },
+    );
+    expect(result.status).toBe('removed');
+    expect(await real.exists(join(skillsDir(), 'docs', 'SKILL.md'))).toBe(true);
   });
 });

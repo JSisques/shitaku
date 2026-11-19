@@ -21,6 +21,7 @@ import {
 } from '@/domain/plan/flat-file-plan.js';
 import { buildScriptPlan, writesScript, type ScriptChange, type ScriptPlanEntry } from '@/domain/plan/script-plan.js';
 import { buildSkillPlan, writesSkill, type SkillChange, type SkillPlanEntry } from '@/domain/plan/skill-plan.js';
+import { resolveAgentDependencies } from '@/domain/plan/agent-dependencies.js';
 import { buildPlan, replanFile, writesFile } from '@/domain/plan/change-plan.js';
 import type { ChangePlan, FileChange } from '@/domain/plan/change-plan.js';
 import type { AgentTarget, Scope } from '@/ports/agent-target.js';
@@ -35,6 +36,7 @@ import {
   rollback,
   StaleFileError,
 } from './install-transaction.js';
+import { classifyMissingSkills } from './agent-skills.js';
 import { appendInstall, loadManifest, scriptsDir, stateDir } from './journal.js';
 import { readPresent } from './skill-tree.js';
 
@@ -53,6 +55,8 @@ export interface InitRequest {
   mcps: string[];
   /** Skill names to install; defaults to none. */
   skills?: string[];
+  /** Skills an agent requires that the user declined (skipped on conflict); never auto-added. */
+  skippedSkills?: string[];
   /** Script names to install; defaults to none. */
   scripts?: string[];
   /** Command names to install; defaults to none. */
@@ -110,16 +114,26 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
   const manifest = await loadManifest(deps.fs, deps.paths.homeDir);
   const mcpPlan = await planMcps(deps, req, catalog.mcps, manifest);
   const skillsDir = deps.target.skillsDir(req.scope, deps.paths);
+  const { required, missing } = resolveAgentDependencies(
+    agentNames.map((name) => catalog.agents.find((a) => a.name === name)!),
+    { skills: catalog.skills.map((sk) => sk.name) },
+  ).skills;
+  const skipped = new Set(req.skippedSkills ?? []);
+  const autoNames = [...required.keys()].filter((name) => !skillNames.includes(name) && !skipped.has(name));
   const skillEntries: SkillPlanEntry[] = [];
-  for (const name of skillNames) {
+  for (const name of [...skillNames, ...autoNames]) {
     const root = `${skillsDir}/${name}`;
+    const requiredBy = required.get(name);
     skillEntries.push({
       skill: catalog.skills.find((sk) => sk.name === name)!,
       root,
       scope: req.scope,
       present: await readPresent(deps.fs, root),
+      ...(requiredBy && { requiredBy }),
+      ...(!skillNames.includes(name) && { autoAdded: true as const }),
     });
   }
+  const { warnings, notes } = await classifyMissingSkills(deps, req.scope, missing);
   const scriptRootBase = scriptsDir(req.scope, deps.paths);
   const scriptEntries: ScriptPlanEntry[] = [];
   for (const name of scriptNames) {
@@ -181,6 +195,8 @@ export async function planInit(deps: InitDeps, req: InitRequest): Promise<Change
       hookNames.map((name) => catalog.hooks.find((h) => h.name === name)!),
       manifest,
     ),
+    warnings: [...mcpPlan.warnings, ...warnings],
+    notes: [...mcpPlan.notes, ...notes],
   };
 }
 
