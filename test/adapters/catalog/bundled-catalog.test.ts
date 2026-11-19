@@ -288,11 +288,12 @@ describe('bundled catalog', () => {
     expect(entries).not.toContain('lib');
   });
 
-  it('ships docs-writing, example-skill, pr-writing, product-owner, refactoring, socratic-method and test-writing as registered loadable bundled skills', async () => {
+  it('ships commit-writing, docs-writing, example-skill, pr-writing, product-owner, refactoring, socratic-method and test-writing as registered loadable bundled skills', async () => {
     const index = JSON.parse(readFileSync(join(catalogRoot, 'catalog.json'), 'utf8')) as {
       items: { skills?: unknown };
     };
     expect(index.items.skills).toEqual([
+      'commit-writing',
       'docs-writing',
       'example-skill',
       'pr-writing',
@@ -308,6 +309,7 @@ describe('bundled catalog', () => {
       .filter((name) => !name.startsWith('.'))
       .sort();
     expect(entries).toEqual([
+      'commit-writing',
       'docs-writing',
       'example-skill',
       'pr-writing',
@@ -319,9 +321,13 @@ describe('bundled catalog', () => {
 
     const catalog = await new FolderCatalogSource(catalogRoot, 'bundled').load();
     expect(catalog.issues).toEqual([]);
-    expect(catalog.skills).toHaveLength(7);
+    expect(catalog.skills).toHaveLength(8);
 
     const byName = Object.fromEntries(catalog.skills.map((sk) => [sk.name, sk]));
+    expect(byName['commit-writing']).toMatchObject({ name: 'commit-writing' });
+    expect(byName['commit-writing']?.description.length).toBeGreaterThan(0);
+    expect(byName['commit-writing']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
+
     expect(byName['docs-writing']).toMatchObject({ name: 'docs-writing' });
     expect(byName['docs-writing']?.description.length).toBeGreaterThan(0);
     expect(byName['docs-writing']?.files.map((f) => f.path)).toEqual(['SKILL.md']);
@@ -415,6 +421,22 @@ describe('bundled catalog', () => {
         'Not for refactoring safety nets',
       ],
       forbidden: [/shitaku/i, 'Co-Authored-By', /\b(?:vitest|jest|pytest|mocha)\b/i],
+    });
+  });
+
+  it('keeps the commit-writing skill content contract', () => {
+    expectSkillContract('commit-writing', {
+      required: [
+        'Repository conventions first',
+        'Conventional Commits',
+        'why',
+        'BREAKING CHANGE:',
+        'atomic',
+        'only on explicit request',
+        'attribution trailers',
+        'Not for pull request',
+      ],
+      forbidden: [/shitaku/i, 'Co-Authored-By'],
     });
   });
 
