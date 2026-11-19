@@ -588,6 +588,28 @@ describe('FolderCatalogSource', () => {
     expect(new TextDecoder().decode(catalog.agents[0]?.bytes)).toBe(text);
   });
 
+  it('loads an agent with its declared skills parsed from an inline list', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], agents: ['reviewer'] } });
+    await put('agents/reviewer.md', agentBytes('reviewer', ['skills: [a, b]']));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.issues).toEqual([]);
+    expect(catalog.agents[0]?.skills).toEqual(['a', 'b']);
+    expect(catalog.agents[0]?.bytes).toEqual(agentBytes('reviewer', ['skills: [a, b]']));
+  });
+
+  it('skips only the agent with a malformed skills value and names the key', async () => {
+    await put('catalog.json', { version: 1, items: { mcps: [], agents: ['bad', 'good'] } });
+    await put('agents/bad.md', agentBytes('bad', ['skills: foo']));
+    await put('agents/good.md', agentBytes('good', ['skills:', '  - a']));
+
+    const catalog = await new FolderCatalogSource(dir, 'folder').load();
+    expect(catalog.agents.map((a) => [a.name, a.skills])).toEqual([['good', ['a']]]);
+    expect(catalog.issues).toHaveLength(1);
+    expect(catalog.issues[0]?.file).toBe('agents/bad.md');
+    expect(catalog.issues[0]?.reason).toContain("key 'skills'");
+  });
+
   it('skips an invalid agent, reports its path, and keeps the valid ones', async () => {
     await put('catalog.json', { version: 1, items: { mcps: [], agents: ['good', 'nofront'] } });
     await put('agents/good.md', agentBytes('good'));
